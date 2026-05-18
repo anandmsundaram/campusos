@@ -28,6 +28,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Sidebar
         userName={profile?.name ?? null}
         userEmail={user.email ?? ''}
+        userId={user.id}
         logout={logout}
       />
       {/* Offset by sidebar on desktop; pad bottom for mobile nav */}

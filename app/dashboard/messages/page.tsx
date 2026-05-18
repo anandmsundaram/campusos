@@ -88,6 +88,7 @@ export default function MessagesPage() {
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
   const threadEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -95,7 +96,6 @@ export default function MessagesPage() {
     if (!user) return
     setUserId(user.id)
 
-    // Fetch all messages the user is part of
     const { data: msgs } = await supabase
       .from('messages')
       .select('id, sender_id, receiver_id, request_id, content, created_at')
@@ -108,11 +108,9 @@ export default function MessagesPage() {
       return
     }
 
-    // Collect unique request IDs and other-user IDs
     const requestIds = [...new Set(msgs.map(m => m.request_id).filter(Boolean))] as string[]
     const otherIds = [...new Set(msgs.map(m => m.sender_id === user.id ? m.receiver_id : m.sender_id))]
 
-    // Fetch request titles and other-user names in parallel
     const [reqResult, profileResult] = await Promise.all([
       requestIds.length > 0
         ? supabase.from('requests').select('id, title, category').in('id', requestIds)
@@ -141,12 +139,12 @@ export default function MessagesPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Scroll thread to bottom when messages change
+  // Scroll to bottom whenever selected conversation or message count changes
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [selectedKey, rawMessages.length])
 
-  // Real-time subscription
+  // Realtime subscription
   useEffect(() => {
     if (!userId) return
     const supabase = createClient()
@@ -156,21 +154,18 @@ export default function MessagesPage() {
         const msg = payload.new as { id: string; sender_id: string; receiver_id: string; request_id: string | null; content: string; created_at: string }
         if (msg.sender_id !== userId && msg.receiver_id !== userId) return
 
-        // Skip if already in state (optimistic)
         setRawMessages(prev => {
           if (prev.find(m => m.id === msg.id)) return prev
 
           const otherId = msg.sender_id === userId ? msg.receiver_id : msg.sender_id
-          // Enrich from existing data in state
           const existingConv = buildConversations(prev, userId).find(c => c.other_user_id === otherId)
 
-          const enriched: MessageRow = {
+          return [...prev, {
             ...msg,
             request_title: existingConv?.request_title ?? null,
             request_category: existingConv?.request_category ?? null,
             other_name: existingConv?.other_name ?? null,
-          }
-          return [...prev, enriched]
+          }]
         })
       })
       .subscribe()
@@ -187,7 +182,6 @@ export default function MessagesPage() {
     const content = draft.trim()
     const tempId = `temp-${Date.now()}`
 
-    // Optimistic update
     const optimistic: MessageRow = {
       id: tempId,
       sender_id: userId,
@@ -202,6 +196,11 @@ export default function MessagesPage() {
     setRawMessages(prev => [...prev, optimistic])
     setDraft('')
 
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
+
     const supabase = createClient()
     const { data: inserted, error } = await supabase
       .from('messages')
@@ -215,12 +214,20 @@ export default function MessagesPage() {
       .single()
 
     if (error) {
-      // Roll back optimistic update
       setRawMessages(prev => prev.filter(m => m.id !== tempId))
       setSendError(error.message)
     } else if (inserted) {
-      // Replace temp ID with real ID
       setRawMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: inserted.id } : m))
+
+      // Notify the receiver
+      await supabase.from('notifications').insert({
+        user_id: selectedConv.other_user_id,
+        type: 'new_message',
+        message: selectedConv.request_title
+          ? `New message about "${selectedConv.request_title}"`
+          : 'You have a new message',
+        related_request_id: selectedConv.request_id ?? undefined,
+      })
     }
 
     setSending(false)
@@ -232,7 +239,6 @@ export default function MessagesPage() {
     ? [...selectedConv.messages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     : []
 
-  // Mobile: show thread panel if conversation selected
   const showList = !selectedKey
   const showThread = !!selectedKey
 
@@ -248,7 +254,7 @@ export default function MessagesPage() {
 
   return (
     <div className="flex h-[calc(100vh-0px)] md:h-screen overflow-hidden">
-      {/* Left panel: conversation list */}
+      {/* Conversation list */}
       <div className={`${showThread ? 'hidden md:flex' : 'flex'} w-full md:w-72 flex-col border-r border-[#1e2d4a] bg-[#060b17] flex-shrink-0`}>
         <div className="flex items-center gap-2 px-4 py-4 border-b border-[#1e2d4a]">
           <h1 className="text-sm font-semibold text-white">Messages</h1>
@@ -264,8 +270,8 @@ export default function MessagesPage() {
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
               <div className="mb-3 text-3xl">💬</div>
               <p className="text-sm font-medium text-slate-400">No messages yet</p>
-              <p className="mt-1 text-xs text-slate-600 leading-relaxed">
-                Conversations appear here after a request is matched
+              <p className="mt-2 text-xs text-slate-600 leading-relaxed">
+                Accept an offer to start chatting with your helper
               </p>
             </div>
           ) : (
@@ -275,9 +281,7 @@ export default function MessagesPage() {
                 type="button"
                 onClick={() => setSelectedKey(conv.key)}
                 className={`w-full flex items-start gap-3 px-4 py-3.5 border-b border-[#1e2d4a] transition-colors text-left ${
-                  selectedKey === conv.key
-                    ? 'bg-blue-500/[0.08]'
-                    : 'hover:bg-white/[0.03]'
+                  selectedKey === conv.key ? 'bg-blue-500/[0.08]' : 'hover:bg-white/[0.03]'
                 }`}
               >
                 <div className="h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-full bg-gradient-to-br from-blue-500/30 to-blue-700/30 text-sm font-semibold text-blue-300">
@@ -285,9 +289,7 @@ export default function MessagesPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline justify-between gap-2">
-                    <span className="text-sm font-medium text-white truncate">
-                      {conv.other_name ?? 'Unknown'}
-                    </span>
+                    <span className="text-sm font-medium text-white truncate">{conv.other_name ?? 'Unknown'}</span>
                     <span className="text-[10px] text-slate-600 flex-shrink-0">{timeAgo(conv.last_at)}</span>
                   </div>
                   {conv.request_title && (
@@ -306,12 +308,12 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* Right panel: thread */}
+      {/* Message thread */}
       <div className={`${showList ? 'hidden md:flex' : 'flex'} flex-1 flex-col bg-[#0a0f1e]`}>
         {!selectedConv ? (
           <div className="flex flex-col items-center justify-center flex-1 text-center px-4">
-            <div className="mb-3 text-4xl opacity-40">💬</div>
-            <p className="text-sm text-slate-500">Select a conversation to view messages</p>
+            <div className="mb-3 text-4xl opacity-30">💬</div>
+            <p className="text-sm text-slate-500">Select a conversation</p>
           </div>
         ) : (
           <>
@@ -336,7 +338,10 @@ export default function MessagesPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
+            <div className="flex-1 overflow-y-auto px-4 py-5 flex flex-col gap-3">
+              {threadMessages.length === 0 && (
+                <p className="text-center text-xs text-slate-600 py-4">No messages yet. Say hello!</p>
+              )}
               {threadMessages.map(msg => {
                 const isMine = msg.sender_id === userId
                 return (
@@ -348,10 +353,10 @@ export default function MessagesPage() {
                           : 'bg-[#0d1526] border border-[#1e2d4a] text-slate-200 rounded-bl-sm'
                       }`}
                     >
-                      {msg.content}
-                      <div className={`mt-1 text-[10px] ${isMine ? 'text-blue-200/60' : 'text-slate-600'}`}>
+                      <p>{msg.content}</p>
+                      <p className={`mt-1 text-[10px] ${isMine ? 'text-blue-200/60' : 'text-slate-600'}`}>
                         {timeAgo(msg.created_at)}
-                      </div>
+                      </p>
                     </div>
                   </div>
                 )
@@ -360,12 +365,11 @@ export default function MessagesPage() {
             </div>
 
             {/* Input */}
-            <div className="border-t border-[#1e2d4a] bg-[#060b17] px-4 py-3">
-              {sendError && (
-                <p className="mb-2 text-xs text-red-400">{sendError}</p>
-              )}
+            <div className="border-t border-[#1e2d4a] bg-[#060b17] px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))]">
+              {sendError && <p className="mb-2 text-xs text-red-400">{sendError}</p>}
               <form onSubmit={handleSend} className="flex items-end gap-2">
                 <textarea
+                  ref={textareaRef}
                   rows={1}
                   value={draft}
                   onChange={e => {

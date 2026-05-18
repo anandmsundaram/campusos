@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 
 const YEARS = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'Graduate', 'PhD'] as const
 
-const EDU_BYPASSES = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com'])
+const EDU_BYPASSES = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com'])
 
 function isEduEmail(email: string) {
   const normalized = email.trim().toLowerCase()

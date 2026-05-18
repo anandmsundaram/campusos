@@ -11,12 +11,26 @@ export interface FeedRequest {
   title: string
   category: string
   urgency: string
+  status: string
   location: string | null
   budget: number | null
   scheduled_time: string | null
   created_at: string
   requester_id: string
   profiles: ProfileInfo | ProfileInfo[] | null
+}
+
+export interface OfferOnCard {
+  id: string
+  helper_id: string
+  message: string | null
+  counter_budget: number | null
+  status: 'pending' | 'accepted' | 'rejected'
+  profiles: ProfileInfo | ProfileInfo[] | null
+}
+
+export interface FeedRequestWithOffers extends FeedRequest {
+  request_offers: OfferOnCard[]
 }
 
 export interface MyOffer {
@@ -109,12 +123,15 @@ const OFFER_STATUS_BADGE: Record<string, string> = {
 
 interface Props {
   requests: FeedRequest[]
+  myRequests: FeedRequestWithOffers[]
   myOffers: MyOffer[]
   currentUserId: string
 }
 
-export default function RequestFeed({ requests, myOffers, currentUserId }: Props) {
+export default function RequestFeed({ requests, myRequests, myOffers, currentUserId }: Props) {
   const router = useRouter()
+
+  const [localMyRequests, setLocalMyRequests] = useState<FeedRequestWithOffers[]>(myRequests)
 
   // Tab
   const [tab, setTab] = useState<'all' | 'mine' | 'offers'>('all')
@@ -135,11 +152,35 @@ export default function RequestFeed({ requests, myOffers, currentUserId }: Props
   // View-offers modal (requester side)
   const [offersTarget, setOffersTarget] = useState<OffersTarget | null>(null)
 
+  // Accept/decline handlers update local state immediately
+  function handleOfferAccepted(requestId: string, offerId: string) {
+    setLocalMyRequests(prev => prev.map(r => {
+      if (r.id !== requestId) return r
+      return {
+        ...r,
+        status: 'matched',
+        request_offers: r.request_offers.map(o =>
+          o.id === offerId ? { ...o, status: 'accepted' as const } : o
+        ),
+      }
+    }))
+  }
+
+  function handleOfferDeclined(requestId: string, offerId: string) {
+    setLocalMyRequests(prev => prev.map(r => {
+      if (r.id !== requestId) return r
+      return {
+        ...r,
+        request_offers: r.request_offers.map(o =>
+          o.id === offerId ? { ...o, status: 'rejected' as const } : o
+        ),
+      }
+    }))
+  }
+
   // Derived request lists
   const filteredRequests = useMemo(() => {
-    let items = tab === 'mine'
-      ? requests.filter((r) => r.requester_id === currentUserId)
-      : requests
+    let items: FeedRequest[] = tab === 'mine' ? localMyRequests : requests
 
     if (catFilter !== 'all') items = items.filter((r) => r.category === catFilter)
     if (urgencyFilter !== 'all') items = items.filter((r) => r.urgency === urgencyFilter)
@@ -151,7 +192,7 @@ export default function RequestFeed({ requests, myOffers, currentUserId }: Props
     }
 
     return items
-  }, [tab, requests, currentUserId, catFilter, urgencyFilter, sortBy])
+  }, [tab, requests, localMyRequests, catFilter, urgencyFilter, sortBy])
 
   function openOfferModal(req: FeedRequest) {
     setOfferTarget({ requestId: req.id, title: req.title, budget: req.budget })
@@ -191,6 +232,17 @@ export default function RequestFeed({ requests, myOffers, currentUserId }: Props
       return
     }
 
+    // Notify the requester
+    const reqData = [...requests, ...localMyRequests].find(r => r.id === offerTarget.requestId)
+    if (reqData?.requester_id) {
+      await supabase.from('notifications').insert({
+        user_id: reqData.requester_id,
+        type: 'offer_received',
+        message: `You received a new offer on "${offerTarget.title}"`,
+        related_request_id: offerTarget.requestId,
+      })
+    }
+
     setOfferedIds((prev) => new Set(prev).add(offerTarget.requestId))
     setSubmitting(false)
     setOfferTarget(null)
@@ -205,8 +257,8 @@ export default function RequestFeed({ requests, myOffers, currentUserId }: Props
         {(['all', 'mine', 'offers'] as const).map((t) => {
           const labels = { all: 'All Open', mine: 'My Requests', offers: 'My Offers' }
           const counts = {
-            all: requests.filter((r) => r.requester_id !== currentUserId).length + requests.filter((r) => r.requester_id === currentUserId).length,
-            mine: requests.filter((r) => r.requester_id === currentUserId).length,
+            all: requests.length,
+            mine: localMyRequests.length,
             offers: myOffers.length,
           }
           return (
@@ -292,6 +344,13 @@ export default function RequestFeed({ requests, myOffers, currentUserId }: Props
                 hasOffered={hasOffered}
                 onOffer={() => openOfferModal(req)}
                 onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title })}
+                inlineOffers={
+                  tab === 'mine' && isOwn && 'request_offers' in req
+                    ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending')
+                    : []
+                }
+                onOfferAccepted={(offerId) => handleOfferAccepted(req.id, offerId)}
+                onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
               />
             )
           })}
@@ -376,6 +435,9 @@ function RequestCard({
   hasOffered,
   onOffer,
   onViewOffers,
+  inlineOffers = [],
+  onOfferAccepted,
+  onOfferDeclined,
 }: {
   req: FeedRequest
   profile: ProfileInfo | null
@@ -383,6 +445,9 @@ function RequestCard({
   hasOffered: boolean
   onOffer: () => void
   onViewOffers: () => void
+  inlineOffers?: OfferOnCard[]
+  onOfferAccepted?: (offerId: string) => void
+  onOfferDeclined?: (offerId: string) => void
 }) {
   return (
     <div className="group relative overflow-hidden rounded-xl border border-[#1e2d4a] bg-[#0d1526] transition-all duration-200 hover:border-blue-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40">
@@ -426,6 +491,24 @@ function RequestCard({
           )}
         </div>
 
+        {/* Inline pending offers — shown in My Requests tab for the requester */}
+        {inlineOffers.length > 0 && (
+          <div className="mb-4 space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+              {inlineOffers.length} pending offer{inlineOffers.length !== 1 ? 's' : ''}
+            </p>
+            {inlineOffers.map(offer => (
+              <InlineOfferRow
+                key={offer.id}
+                offer={offer}
+                requestId={req.id}
+                onAccepted={() => onOfferAccepted?.(offer.id)}
+                onDeclined={() => onOfferDeclined?.(offer.id)}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-[#1e2d4a] pt-3">
           <div className="flex items-center gap-2">
@@ -463,6 +546,101 @@ function RequestCard({
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Inline offer row (accept/decline on card) ───────────────────────────────
+
+function InlineOfferRow({
+  offer,
+  requestId,
+  onAccepted,
+  onDeclined,
+}: {
+  offer: OfferOnCard
+  requestId: string
+  onAccepted: () => void
+  onDeclined: () => void
+}) {
+  const [acting, setActing] = useState(false)
+  const [rowError, setRowError] = useState<string | null>(null)
+  const profile = normalizeProfile(offer.profiles)
+
+  async function accept() {
+    setActing(true)
+    setRowError(null)
+    const supabase = createClient()
+    const { error: e1 } = await supabase.from('request_offers').update({ status: 'accepted' }).eq('id', offer.id)
+    if (e1) { setRowError(e1.message); setActing(false); return }
+    const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
+    if (e2) { setRowError(e2.message); setActing(false); return }
+    await supabase.from('notifications').insert({
+      user_id: offer.helper_id,
+      type: 'offer_accepted',
+      message: 'Your offer was accepted!',
+      related_request_id: requestId,
+    })
+    setActing(false)
+    onAccepted()
+  }
+
+  async function decline() {
+    setActing(true)
+    setRowError(null)
+    const supabase = createClient()
+    const { error } = await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offer.id)
+    if (error) { setRowError(error.message); setActing(false); return }
+    await supabase.from('notifications').insert({
+      user_id: offer.helper_id,
+      type: 'offer_rejected',
+      message: 'Your offer was declined.',
+      related_request_id: requestId,
+    })
+    setActing(false)
+    onDeclined()
+  }
+
+  return (
+    <div className="rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-3 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <Avatar name={profile?.name} size="sm" />
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span className="text-xs font-medium text-white">{profile?.name ?? 'Anonymous'}</span>
+            {profile?.rating != null && (
+              <span className="text-xs text-slate-600">★ {Number(profile.rating).toFixed(1)}</span>
+            )}
+            {offer.counter_budget != null && (
+              <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
+                ${offer.counter_budget}
+              </span>
+            )}
+          </div>
+          {offer.message && (
+            <p className="mt-0.5 text-[11px] text-slate-500 line-clamp-1">{offer.message}</p>
+          )}
+        </div>
+        <div className="flex gap-1.5 flex-shrink-0">
+          <button
+            type="button"
+            onClick={accept}
+            disabled={acting}
+            className="rounded-lg bg-emerald-600/80 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+          >
+            {acting ? '…' : 'Accept'}
+          </button>
+          <button
+            type="button"
+            onClick={decline}
+            disabled={acting}
+            className="rounded-lg border border-[#1e2d4a] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
+          >
+            {acting ? '…' : 'Decline'}
+          </button>
+        </div>
+      </div>
+      {rowError && <p className="mt-1.5 text-[11px] text-red-400">{rowError}</p>}
     </div>
   )
 }
@@ -612,6 +790,17 @@ function OffersModal({
     const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
     if (e2) { setActionError(e2.message); setActing(null); return }
 
+    // Notify the helper
+    const helperOffer = offers.find(o => o.id === offerId)
+    if (helperOffer) {
+      await supabase.from('notifications').insert({
+        user_id: helperOffer.helper_id,
+        type: 'offer_accepted',
+        message: `Your offer was accepted for "${title}"`,
+        related_request_id: requestId,
+      })
+    }
+
     setOffers((prev) => prev.map((o) => o.id === offerId ? { ...o, status: 'accepted' } : o))
     setHasAccepted(true)
     setActing(null)
@@ -624,6 +813,18 @@ function OffersModal({
     const supabase = createClient()
     const { error } = await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offerId)
     if (error) { setActionError(error.message); setActing(null); return }
+
+    // Notify the helper
+    const helperOffer = offers.find(o => o.id === offerId)
+    if (helperOffer) {
+      await supabase.from('notifications').insert({
+        user_id: helperOffer.helper_id,
+        type: 'offer_rejected',
+        message: `Your offer was declined for "${title}"`,
+        related_request_id: requestId,
+      })
+    }
+
     setOffers((prev) => prev.map((o) => o.id === offerId ? { ...o, status: 'rejected' } : o))
     setActing(null)
   }

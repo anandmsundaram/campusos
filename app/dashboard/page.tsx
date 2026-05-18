@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import RequestInput from './RequestInput'
-import RequestFeed, { type MyOffer } from './RequestFeed'
+import RequestFeed, { type MyOffer, type FeedRequestWithOffers } from './RequestFeed'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -10,17 +10,27 @@ export default async function DashboardPage() {
 
   const [
     { data: requests },
+    { data: myRequestsRaw },
     { data: myOffersRaw },
     { count: activeCount },
     { count: memberCount },
     { count: matchedCount },
   ] = await Promise.all([
+    // All open requests for the main feed
     supabase
       .from('requests')
-      .select('id, title, category, urgency, location, budget, scheduled_time, created_at, requester_id, profiles(name, rating)')
+      .select('id, title, category, urgency, status, location, budget, scheduled_time, created_at, requester_id, profiles(name, rating)')
       .eq('status', 'open')
       .order('created_at', { ascending: false })
       .limit(100),
+
+    // Current user's own requests — all statuses, with pending offers + helper profiles
+    supabase
+      .from('requests')
+      .select('id, title, category, urgency, status, location, budget, scheduled_time, created_at, requester_id, profiles(name, rating), request_offers(id, helper_id, message, counter_budget, status, profiles(name, rating))')
+      .eq('requester_id', user!.id)
+      .order('created_at', { ascending: false })
+      .limit(50),
 
     supabase
       .from('request_offers')
@@ -69,6 +79,7 @@ export default async function DashboardPage() {
         <div className="mt-10">
           <RequestFeed
             requests={requests ?? []}
+            myRequests={(myRequestsRaw ?? []) as unknown as FeedRequestWithOffers[]}
             myOffers={(myOffersRaw ?? []) as unknown as MyOffer[]}
             currentUserId={user!.id}
           />
