@@ -18,6 +18,11 @@ export interface FeedRequest {
   created_at: string
   requester_id: string
   profiles: ProfileInfo | ProfileInfo[] | null
+  origin_city: string | null
+  destination_city: string | null
+  is_driver: boolean | null
+  available_seats: number | null
+  is_round_trip: boolean | null
 }
 
 export interface OfferOnCard {
@@ -286,6 +291,17 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       {/* Filter bar (only for request tabs) */}
       {tab !== 'offers' && (
         <div className="flex flex-wrap items-center gap-2 mb-5">
+          <button
+            type="button"
+            onClick={() => setCatFilter(catFilter === 'rides' ? 'all' : 'rides')}
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+              catFilter === 'rides'
+                ? 'border-blue-500/40 bg-blue-500/10 text-blue-400'
+                : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/20 hover:text-blue-400'
+            }`}
+          >
+            🚗 Rides
+          </button>
           <FilterSelect
             value={catFilter}
             onChange={setCatFilter}
@@ -449,16 +465,38 @@ function RequestCard({
   onOfferAccepted?: (offerId: string) => void
   onOfferDeclined?: (offerId: string) => void
 }) {
+  const isRide = req.category === 'rides'
+  const accentClass = isRide
+    ? (req.is_driver ? 'bg-blue-500' : 'bg-purple-500')
+    : (CATEGORY_ACCENT[req.category] ?? 'bg-slate-500')
+
   return (
     <div className="group relative overflow-hidden rounded-xl border border-[#1e2d4a] bg-[#0d1526] transition-all duration-200 hover:border-blue-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40">
       {/* Left accent bar */}
-      <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${CATEGORY_ACCENT[req.category] ?? 'bg-slate-500'}`} />
+      <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${accentClass}`} />
 
       <div className="pl-5 pr-4 pt-4 pb-4">
         {/* Top: badges */}
         <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
           <Badge text={CATEGORY_LABELS[req.category] ?? req.category} color={CATEGORY_BADGE[req.category]} />
           <Badge text={req.urgency} color={URGENCY_BADGE[req.urgency]} capitalize />
+          {isRide && req.is_driver !== null && (
+            <Badge
+              text={req.is_driver ? '🚗 Driver' : '🙋 Passenger'}
+              color={req.is_driver
+                ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
+                : 'text-purple-400 bg-purple-500/10 border-purple-500/20'}
+            />
+          )}
+          {isRide && req.is_driver && req.available_seats != null && (
+            <Badge
+              text={`${req.available_seats} seat${req.available_seats !== 1 ? 's' : ''}`}
+              color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]"
+            />
+          )}
+          {isRide && req.is_round_trip && (
+            <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
+          )}
         </div>
 
         {/* Title */}
@@ -468,12 +506,19 @@ function RequestCard({
 
         {/* Meta row */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-4">
-          {req.location && (
+          {isRide && req.origin_city && req.destination_city ? (
+            <span className="flex items-center gap-1.5">
+              <span className="text-[11px]">🚗</span>
+              <span className="font-medium text-slate-300">{req.origin_city}</span>
+              <span className="text-slate-600">→</span>
+              <span className="font-medium text-slate-300">{req.destination_city}</span>
+            </span>
+          ) : req.location ? (
             <span className="flex items-center gap-1.5">
               <span className="text-[11px]">📍</span>
               {req.location}
             </span>
-          )}
+          ) : null}
           {req.scheduled_time && (
             <span className="flex items-center gap-1.5">
               <span className="text-[11px]">🕐</span>

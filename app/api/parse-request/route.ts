@@ -18,7 +18,14 @@ Output schema (all fields optional except category and title):
   "urgency": "low" | "medium" | "high",
   "budget": number | null,
   "helper_requirements": string | null,
-  "missing_fields": string[]
+  "missing_fields": string[],
+  "origin_city": string | null,
+  "destination_city": string | null,
+  "is_driver": boolean | null,
+  "available_seats": number | null,
+  "is_round_trip": boolean,
+  "return_date": string | null,
+  "flexible_time": boolean
 }
 
 Rules:
@@ -28,22 +35,40 @@ Rules:
 - urgency: default "medium"; use "high" for words like "urgent", "ASAP", "emergency"
 - budget: numeric value in USD if mentioned, otherwise null
 - missing_fields: list field names the user did not provide that are typically needed for this category
-  - rides: always needs location, scheduled_time
+  - rides: always needs origin_city, destination_city, scheduled_time
   - moving: always needs location
   - peer_help: always needs description details (if vague, add "description" to missing_fields)
   - errands: always needs location
   - borrow: always needs item details (if vague, add "description" to missing_fields)
-- Output only the JSON object, nothing else.`
+
+Ride-specific rules (only when category is "rides"):
+- origin_city: city/area the person is departing FROM (e.g. "Dallas", "UTD campus", "Richardson")
+- destination_city: city/area the person is going TO (e.g. "DFW Airport", "Austin", "Houston")
+- is_driver: true if they say "offering a ride", "have a seat", "can take", "ride available", "driving to"; false if they say "need a ride", "looking for a ride", "can someone take me"; null if ambiguous
+- available_seats: number of seats available if they are a driver (e.g. "3 seats" → 3); null otherwise
+- is_round_trip: true if they mention "round trip", "coming back", "return trip", "both ways"
+- return_date: ISO 8601 return date if is_round_trip and date is mentioned, otherwise null
+- flexible_time: true if they say "flexible", "anytime", "whenever works"
+
+For non-ride categories, set origin_city, destination_city, is_driver, available_seats, is_round_trip, return_date, flexible_time to null/false.
+
+Output only the JSON object, nothing else.`
+
+const WHATSAPP_SYSTEM_SUFFIX = `
+
+IMPORTANT: This request was imported from WhatsApp. It may contain informal language, abbreviations, or group chat context. Extract the core request details and ignore unrelated conversation.`
 
 export async function POST(request: NextRequest) {
   console.log('[parse-request] POST handler entered')
 
   // 1. Parse request body
   let text: string
+  let source: string | undefined
   try {
     const body = await request.json()
     console.log('[parse-request] request body:', JSON.stringify(body))
     text = typeof body.text === 'string' ? body.text.trim() : ''
+    source = typeof body.source === 'string' ? body.source : undefined
   } catch (err) {
     console.error('[parse-request] failed to parse request body:', err)
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
@@ -54,7 +79,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'text is required' }, { status: 400 })
   }
 
-  console.log('[parse-request] calling Anthropic with model: claude-haiku-4-5-20251001, text:', text)
+  const systemPrompt = source === 'whatsapp'
+    ? SYSTEM_PROMPT + WHATSAPP_SYSTEM_SUFFIX
+    : SYSTEM_PROMPT
+
+  console.log('[parse-request] calling Anthropic with model: claude-haiku-4-5-20251001, source:', source ?? 'direct')
 
   // 2. Call Anthropic
   let message: Anthropic.Message
@@ -62,7 +91,7 @@ export async function POST(request: NextRequest) {
     message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{ role: 'user', content: text }],
     })
     console.log('[parse-request] Anthropic raw response:', JSON.stringify(message))

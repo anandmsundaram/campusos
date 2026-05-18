@@ -19,7 +19,7 @@ export default async function DashboardPage() {
     // All open requests for the main feed
     supabase
       .from('requests')
-      .select('id, title, category, urgency, status, location, budget, scheduled_time, created_at, requester_id, profiles(name, rating)')
+      .select('id, title, category, urgency, status, location, budget, scheduled_time, created_at, requester_id, origin_city, destination_city, is_driver, available_seats, is_round_trip, profiles(name, rating)')
       .eq('status', 'open')
       .order('created_at', { ascending: false })
       .limit(100),
@@ -27,7 +27,7 @@ export default async function DashboardPage() {
     // Current user's own requests — all statuses, with pending offers + helper profiles
     supabase
       .from('requests')
-      .select('id, title, category, urgency, status, location, budget, scheduled_time, created_at, requester_id, profiles(name, rating), request_offers(id, helper_id, message, counter_budget, status, profiles(name, rating))')
+      .select('id, title, category, urgency, status, location, budget, scheduled_time, created_at, requester_id, origin_city, destination_city, is_driver, available_seats, is_round_trip, profiles(name, rating), request_offers(id, helper_id, message, counter_budget, status, profiles(name, rating))')
       .eq('requester_id', user!.id)
       .order('created_at', { ascending: false })
       .limit(50),
