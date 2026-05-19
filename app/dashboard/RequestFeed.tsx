@@ -66,6 +66,9 @@ interface RequestInfo {
   created_at: string
   requester_id: string
   profiles: ProfileInfo | ProfileInfo[] | null
+  is_driver: boolean | null
+  available_seats: number | null
+  seats_filled: number | null
 }
 
 interface ProfileInfo {
@@ -149,6 +152,9 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
 
   const [localMyRequests, setLocalMyRequests] = useState<FeedRequestWithOffers[]>(myRequests)
 
+  // Sync local state when server refreshes (e.g., helper accepts counter → router.refresh())
+  useEffect(() => { setLocalMyRequests(myRequests) }, [myRequests])
+
   // Tab
   const [tab, setTab] = useState<'all' | 'mine' | 'offers'>('all')
 
@@ -187,9 +193,13 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   function handleOfferAccepted(requestId: string, offerId: string) {
     setLocalMyRequests(prev => prev.map(r => {
       if (r.id !== requestId) return r
+      const isMultiSeat = r.is_driver && r.available_seats != null
+      const newFilled = isMultiSeat ? (r.seats_filled ?? 0) + 1 : r.seats_filled
+      const newStatus = isMultiSeat && newFilled! < r.available_seats! ? 'open' : 'matched'
       return {
         ...r,
-        status: 'matched',
+        status: newStatus,
+        seats_filled: newFilled,
         request_offers: r.request_offers.map(o =>
           o.id === offerId ? { ...o, status: 'accepted' as const } : o
         ),
@@ -688,6 +698,9 @@ function RequestCard({
                 key={offer.id}
                 offer={offer}
                 requestId={req.id}
+                isDriver={req.is_driver}
+                availableSeats={req.available_seats}
+                seatsFilled={req.seats_filled}
                 onAccepted={() => onOfferAccepted?.(offer.id)}
                 onDeclined={() => onOfferDeclined?.(offer.id)}
                 onCountered={(id, amount) => onOfferCountered?.(id, amount)}
@@ -750,12 +763,18 @@ function RequestCard({
 function InlineOfferRow({
   offer,
   requestId,
+  isDriver,
+  availableSeats,
+  seatsFilled,
   onAccepted,
   onDeclined,
   onCountered,
 }: {
   offer: OfferOnCard
   requestId: string
+  isDriver: boolean | null
+  availableSeats: number | null
+  seatsFilled: number | null
   onAccepted: () => void
   onDeclined: () => void
   onCountered?: (offerId: string, amount: number | null) => void
@@ -772,8 +791,16 @@ function InlineOfferRow({
     const supabase = createClient()
     const { error: e1 } = await supabase.from('request_offers').update({ status: 'accepted' }).eq('id', offer.id)
     if (e1) { setRowError(e1.message); setActing(false); return }
-    const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
-    if (e2) { setRowError(e2.message); setActing(false); return }
+    const isMultiSeat = isDriver && availableSeats != null
+    if (isMultiSeat) {
+      const newFilled = (seatsFilled ?? 0) + 1
+      const newStatus = newFilled >= availableSeats! ? 'matched' : 'open'
+      const { error: e2 } = await supabase.from('requests').update({ seats_filled: newFilled, status: newStatus }).eq('id', requestId)
+      if (e2) { setRowError(e2.message); setActing(false); return }
+    } else {
+      const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
+      if (e2) { setRowError(e2.message); setActing(false); return }
+    }
     await supabase.from('notifications').insert({
       user_id: offer.helper_id,
       type: 'offer_accepted',
@@ -926,14 +953,22 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
   const [acting, setActing] = useState<string | null>(null)
   const [actError, setActError] = useState<string | null>(null)
 
-  async function acceptCounter(offerId: string, requestId: string, requesterId: string) {
+  async function acceptCounter(offerId: string, requestId: string, requesterId: string, req: RequestInfo | null) {
     setActing(offerId)
     setActError(null)
     const supabase = createClient()
     const { error: e1 } = await supabase.from('request_offers').update({ status: 'accepted' }).eq('id', offerId)
     if (e1) { setActError(e1.message); setActing(null); return }
-    const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
-    if (e2) { setActError(e2.message); setActing(null); return }
+    const isMultiSeat = req?.is_driver && req?.available_seats != null
+    if (isMultiSeat) {
+      const newFilled = (req!.seats_filled ?? 0) + 1
+      const newStatus = newFilled >= req!.available_seats! ? 'matched' : 'open'
+      const { error: e2 } = await supabase.from('requests').update({ seats_filled: newFilled, status: newStatus }).eq('id', requestId)
+      if (e2) { setActError(e2.message); setActing(null); return }
+    } else {
+      const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
+      if (e2) { setActError(e2.message); setActing(null); return }
+    }
     await supabase.from('notifications').insert({
       user_id: requesterId,
       type: 'offer_accepted',
@@ -1054,7 +1089,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                 <div className="mb-3 flex gap-2">
                   <button
                     type="button"
-                    onClick={() => acceptCounter(offer.id, req.id, req.requester_id)}
+                    onClick={() => acceptCounter(offer.id, req.id, req.requester_id, req)}
                     disabled={isActing}
                     className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
                   >
