@@ -23,6 +23,11 @@ export interface FeedRequest {
   is_driver: boolean | null
   available_seats: number | null
   is_round_trip: boolean | null
+  seats_filled: number | null
+  auto_accept: boolean | null
+  ride_started: boolean | null
+  price_type?: 'fixed' | 'split' | 'free' | null
+  is_airport_ride?: boolean | null
 }
 
 export interface OfferOnCard {
@@ -466,6 +471,8 @@ function RequestCard({
   onOfferDeclined?: (offerId: string) => void
 }) {
   const isRide = req.category === 'rides'
+  const isFull = isRide && req.is_driver === true && req.available_seats != null && (req.seats_filled ?? 0) >= req.available_seats
+  const rideStarted = isRide && (req.ride_started ?? false)
   const accentClass = isRide
     ? (req.is_driver ? 'bg-blue-500' : 'bg-purple-500')
     : (CATEGORY_ACCENT[req.category] ?? 'bg-slate-500')
@@ -489,10 +496,14 @@ function RequestCard({
             />
           )}
           {isRide && req.is_driver && req.available_seats != null && (
-            <Badge
-              text={`${req.available_seats} seat${req.available_seats !== 1 ? 's' : ''}`}
-              color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]"
-            />
+            isFull ? (
+              <Badge text="FULL" color="text-red-400 bg-red-500/10 border-red-500/20" />
+            ) : (
+              <Badge
+                text={`${req.available_seats - (req.seats_filled ?? 0)} of ${req.available_seats} seats left`}
+                color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]"
+              />
+            )
           )}
           {isRide && req.is_round_trip && (
             <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
@@ -531,7 +542,7 @@ function RequestCard({
           {req.budget != null && (
             <span className="flex items-center gap-1.5">
               <span className="text-[11px]">💵</span>
-              ${req.budget}
+              ${req.budget}{isRide && req.is_driver ? ' / seat' : ''}
             </span>
           )}
         </div>
@@ -580,6 +591,10 @@ function RequestCard({
             </button>
           ) : hasOffered ? (
             <span className="text-xs font-semibold text-emerald-400">Offer sent ✓</span>
+          ) : isFull ? (
+            <span className="text-xs font-semibold text-red-400/70">Full</span>
+          ) : rideStarted ? (
+            <span className="text-xs font-medium text-slate-500">Ride started</span>
           ) : (
             <button
               type="button"

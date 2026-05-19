@@ -20,6 +20,8 @@ interface ParsedRequest {
   is_round_trip: boolean
   return_date: string | null
   flexible_time: boolean
+  price_type: 'fixed' | 'split' | 'free' | null
+  is_airport_ride: boolean | null
 }
 
 const CATEGORY_LABELS: Record<ParsedRequest['category'], string> = {
@@ -68,7 +70,8 @@ export default function RequestInput() {
   const [status, setStatus] = useState<'idle' | 'parsing' | 'confirm' | 'saving' | 'done'>('idle')
   const [parsed, setParsed] = useState<ParsedRequest | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [showWhatsApp, setShowWhatsApp] = useState(false)
+  const [autoAccept, setAutoAccept] = useState(true)
+  const [priceType, setPriceType] = useState<'fixed' | 'split' | 'free'>('split')
 
   // Typewriter placeholder animation
   const [phIdx, setPhIdx] = useState(0)
@@ -107,6 +110,7 @@ export default function RequestInput() {
     setError(null)
     setStatus('parsing')
     setParsed(null)
+    setAutoAccept(true)
 
     const res = await fetch('/api/parse-request', {
       method: 'POST',
@@ -128,6 +132,7 @@ export default function RequestInput() {
     }
 
     setParsed(data)
+    setPriceType(data.price_type ?? 'split')
     setStatus('confirm')
   }
 
@@ -137,33 +142,49 @@ export default function RequestInput() {
     setStatus('saving')
 
     const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       setError('Session expired. Please refresh.')
       setStatus('confirm')
       return
     }
 
-    const { error: dbError } = await supabase.from('requests').insert({
+    const isDriverNonFixed = parsed.category === 'rides' && parsed.is_driver && priceType !== 'fixed'
+
+    // Build as a plain Record so we can delete keys on schema-cache retry
+    const payload: Record<string, unknown> = {
       requester_id: user.id,
       category: parsed.category,
       title: parsed.title,
-      location: parsed.location ?? undefined,
-      scheduled_time: parsed.scheduled_time ?? undefined,
       urgency: parsed.urgency,
-      budget: parsed.budget ?? undefined,
+      ...(parsed.location != null && { location: parsed.location }),
+      ...(parsed.scheduled_time != null && { scheduled_time: parsed.scheduled_time }),
+      ...(!isDriverNonFixed && parsed.budget != null && { budget: parsed.budget }),
       ...(parsed.category === 'rides' && {
-        origin_city: parsed.origin_city ?? undefined,
-        destination_city: parsed.destination_city ?? undefined,
-        is_driver: parsed.is_driver ?? undefined,
-        available_seats: parsed.available_seats ?? undefined,
+        origin_city: parsed.origin_city ?? null,
+        destination_city: parsed.destination_city ?? null,
+        is_driver: parsed.is_driver ?? null,
+        available_seats: parsed.available_seats ?? null,
         is_round_trip: parsed.is_round_trip ?? false,
-        return_date: parsed.return_date ?? undefined,
+        return_date: parsed.return_date ?? null,
         flexible_time: parsed.flexible_time ?? false,
+        // Columns from migrations 006/007 — stripped on schema cache miss:
+        auto_accept: parsed.is_driver ? autoAccept : true,
+        price_type: parsed.is_driver ? priceType : null,
+        is_airport_ride: parsed.is_airport_ride ?? false,
       }),
-    })
+    }
+
+    let { error: dbError } = await supabase.from('requests').insert(payload)
+
+    if (dbError && /schema cache|Could not find the/i.test(dbError.message)) {
+      // Schema cache is stale after a migration — retry without the new columns
+      const fallback = { ...payload }
+      delete fallback.auto_accept
+      delete fallback.price_type
+      delete fallback.is_airport_ride
+      ;({ error: dbError } = await supabase.from('requests').insert(fallback))
+    }
 
     if (dbError) {
       setError(dbError.message)
@@ -219,7 +240,6 @@ export default function RequestInput() {
               : '0 4px 24px rgba(0,0,0,0.4)',
           }}
         >
-          {/* Typewriter placeholder overlay */}
           {!text && !focused && (
             <div
               aria-hidden="true"
@@ -271,7 +291,7 @@ export default function RequestInput() {
         </div>
       </form>
 
-      {/* Category pills + WhatsApp import */}
+      {/* Category pills */}
       <div className="flex flex-wrap justify-center gap-2">
         {CATEGORIES.map(({ label, icon, value }) => (
           <button
@@ -287,22 +307,7 @@ export default function RequestInput() {
             <span>{label}</span>
           </button>
         ))}
-        <button
-          type="button"
-          onClick={() => setShowWhatsApp(true)}
-          className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-2 text-sm text-emerald-400 transition-all hover:bg-emerald-500/[0.12] hover:border-emerald-500/40"
-        >
-          <span className="text-base leading-none">💬</span>
-          <span>Import from WhatsApp</span>
-        </button>
       </div>
-
-      {showWhatsApp && (
-        <WhatsAppImportModal
-          onClose={() => setShowWhatsApp(false)}
-          onImported={() => { setShowWhatsApp(false); router.refresh() }}
-        />
-      )}
 
       {/* Error */}
       {error !== null && (
@@ -329,7 +334,6 @@ export default function RequestInput() {
             <Row label="Category" value={CATEGORY_LABELS[parsed!.category]} />
             <Row label="Title" value={parsed!.title} />
 
-            {/* Ride-specific fields */}
             {parsed!.category === 'rides' && (
               <>
                 {parsed!.origin_city && parsed!.destination_city && (
@@ -365,8 +369,63 @@ export default function RequestInput() {
                     </span>
                   </div>
                 )}
-                {parsed!.flexible_time && (
-                  <Row label="Time" value="Flexible" />
+                {parsed!.flexible_time && <Row label="Time" value="Flexible" />}
+
+                {/* Pricing — only for drivers */}
+                {parsed!.is_driver && (
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <span className="text-xs text-slate-500">Pricing</span>
+                    <div className="flex gap-2">
+                      {(['split', 'fixed', 'free'] as const).map(pt => (
+                        <button
+                          key={pt}
+                          type="button"
+                          onClick={() => setPriceType(pt)}
+                          className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
+                            priceType === pt
+                              ? 'border-blue-500/40 bg-blue-500/10 text-blue-400'
+                              : 'border-[#1e2d4a] text-slate-500 hover:text-slate-300'
+                          }`}
+                        >
+                          {pt === 'split' ? '⛽ Split gas' : pt === 'fixed' ? '💰 Fixed' : '🎁 Free'}
+                        </button>
+                      ))}
+                    </div>
+                    {priceType === 'fixed' && parsed!.budget != null && (
+                      <p className="text-[11px] text-slate-500">${parsed!.budget} / seat</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Auto-accept toggle — only for drivers */}
+                {parsed!.is_driver && (
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs text-slate-400 font-medium">
+                        {autoAccept ? 'Auto-accept passengers' : 'Manually approve each passenger'}
+                      </span>
+                      <span className="text-[11px] text-slate-600">
+                        {autoAccept
+                          ? 'Passengers are auto-confirmed until seats fill'
+                          : 'You review and approve each request'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAutoAccept(v => !v)}
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        autoAccept ? 'bg-blue-600' : 'bg-slate-700'
+                      }`}
+                      role="switch"
+                      aria-checked={autoAccept}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          autoAccept ? 'translate-x-4' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
                 )}
               </>
             )}
@@ -381,15 +440,15 @@ export default function RequestInput() {
                 })}
               />
             )}
-            {parsed!.budget != null && <Row label="Budget" value={`$${parsed!.budget}`} />}
+            {parsed!.budget != null && !(parsed!.category === 'rides' && parsed!.is_driver) && (
+              <Row label="Budget" value={`$${parsed!.budget}`} />
+            )}
             {parsed!.helper_requirements && (
               <Row label="Requirements" value={parsed!.helper_requirements} />
             )}
             <div className="flex items-center justify-between">
               <span className="text-xs text-slate-500">Urgency</span>
-              <span
-                className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${URGENCY_COLORS[parsed!.urgency]}`}
-              >
+              <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${URGENCY_COLORS[parsed!.urgency]}`}>
                 {parsed!.urgency}
               </span>
             </div>
@@ -431,150 +490,6 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-start justify-between gap-4">
       <span className="shrink-0 text-xs text-slate-500">{label}</span>
       <span className="text-right text-sm text-white">{value}</span>
-    </div>
-  )
-}
-
-function WhatsAppImportModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
-  const [waText, setWaText] = useState('')
-  const [waStatus, setWaStatus] = useState<'idle' | 'parsing' | 'confirm' | 'saving'>('idle')
-  const [waParsed, setWaParsed] = useState<ParsedRequest | null>(null)
-  const [waError, setWaError] = useState<string | null>(null)
-
-  async function handleParse(e: React.FormEvent) {
-    e.preventDefault()
-    if (!waText.trim()) return
-    setWaError(null)
-    setWaStatus('parsing')
-
-    const res = await fetch('/api/parse-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: waText, source: 'whatsapp' }),
-    })
-
-    if (!res.ok) { setWaError('Failed to parse. Try again.'); setWaStatus('idle'); return }
-    const data = await res.json()
-    if (!data.category || !data.title) { setWaError('Could not understand the request. Be more specific.'); setWaStatus('idle'); return }
-
-    setWaParsed(data)
-    setWaStatus('confirm')
-  }
-
-  async function handleConfirm() {
-    if (!waParsed) return
-    setWaStatus('saving')
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setWaError('Session expired.'); setWaStatus('confirm'); return }
-
-    const { error } = await supabase.from('requests').insert({
-      requester_id: user.id,
-      category: waParsed.category,
-      title: waParsed.title,
-      location: waParsed.location ?? undefined,
-      scheduled_time: waParsed.scheduled_time ?? undefined,
-      urgency: waParsed.urgency,
-      budget: waParsed.budget ?? undefined,
-      ...(waParsed.category === 'rides' && {
-        origin_city: waParsed.origin_city ?? undefined,
-        destination_city: waParsed.destination_city ?? undefined,
-        is_driver: waParsed.is_driver ?? undefined,
-        available_seats: waParsed.available_seats ?? undefined,
-        is_round_trip: waParsed.is_round_trip ?? false,
-        return_date: waParsed.return_date ?? undefined,
-        flexible_time: waParsed.flexible_time ?? false,
-      }),
-    })
-
-    if (error) { setWaError(error.message); setWaStatus('confirm'); return }
-    onImported()
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-2xl border border-emerald-500/20 bg-[#0a0f1e] p-6 shadow-2xl shadow-black/60">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-white/[0.06] hover:text-slate-300"
-        >
-          ✕
-        </button>
-
-        <div className="flex items-center gap-2.5 mb-1">
-          <span className="text-xl">💬</span>
-          <h3 className="text-sm font-semibold text-white">Import from WhatsApp</h3>
-        </div>
-        <p className="mb-5 text-xs text-slate-500">Paste a message from WhatsApp and we&apos;ll extract the request details.</p>
-
-        {waStatus === 'idle' || waStatus === 'parsing' ? (
-          <form onSubmit={handleParse} className="flex flex-col gap-4">
-            <textarea
-              rows={5}
-              value={waText}
-              onChange={e => setWaText(e.target.value)}
-              placeholder="e.g. hey anyone going to DFW this Friday morning? need a ride from UTD, willing to pay gas money"
-              disabled={waStatus === 'parsing'}
-              className="w-full resize-none rounded-xl border border-[#1e2d4a] bg-white/[0.03] px-4 py-3 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500/40 disabled:opacity-60"
-            />
-            {waError && <p className="text-xs text-red-400">{waError}</p>}
-            <button
-              type="submit"
-              disabled={!waText.trim() || waStatus === 'parsing'}
-              className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
-            >
-              {waStatus === 'parsing' ? 'Parsing…' : 'Parse request'}
-            </button>
-          </form>
-        ) : waParsed ? (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3 rounded-xl border border-[#1e2d4a] bg-white/[0.02] p-4">
-              <Row label="Category" value={CATEGORY_LABELS[waParsed.category]} />
-              <Row label="Title" value={waParsed.title} />
-              {waParsed.category === 'rides' && waParsed.origin_city && waParsed.destination_city && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500">Route</span>
-                  <span className="flex items-center gap-2 text-sm text-white">
-                    <span>{waParsed.origin_city}</span>
-                    <span className="text-slate-500">→</span>
-                    <span>{waParsed.destination_city}</span>
-                  </span>
-                </div>
-              )}
-              {waParsed.is_driver !== null && (
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500">Role</span>
-                  <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${waParsed.is_driver ? 'text-blue-400 bg-blue-500/10 border-blue-500/20' : 'text-purple-400 bg-purple-500/10 border-purple-500/20'}`}>
-                    {waParsed.is_driver ? '🚗 Offering a ride' : '🙋 Looking for a ride'}
-                  </span>
-                </div>
-              )}
-              {waParsed.location && !waParsed.origin_city && <Row label="Location" value={waParsed.location} />}
-              {waParsed.scheduled_time && <Row label="Time" value={new Date(waParsed.scheduled_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} />}
-              {waParsed.budget != null && <Row label="Budget" value={`$${waParsed.budget}`} />}
-            </div>
-            {waError && <p className="text-xs text-red-400">{waError}</p>}
-            <div className="flex gap-3">
-              <button
-                onClick={handleConfirm}
-                disabled={waStatus === 'saving'}
-                className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-50"
-              >
-                {waStatus === 'saving' ? 'Posting…' : 'Post request'}
-              </button>
-              <button
-                onClick={() => { setWaStatus('idle'); setWaParsed(null) }}
-                disabled={waStatus === 'saving'}
-                className="rounded-xl border border-[#1e2d4a] px-4 py-2.5 text-sm text-slate-400 hover:text-white disabled:opacity-40"
-              >
-                Edit
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </div>
     </div>
   )
 }

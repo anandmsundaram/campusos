@@ -25,7 +25,9 @@ Output schema (all fields optional except category and title):
   "available_seats": number | null,
   "is_round_trip": boolean,
   "return_date": string | null,
-  "flexible_time": boolean
+  "flexible_time": boolean,
+  "price_type": "fixed" | "split" | "free" | null,
+  "is_airport_ride": boolean
 }
 
 Rules:
@@ -33,7 +35,7 @@ Rules:
 - title: short imperative phrase, max 60 chars, e.g. "Ride to SFO on Friday 9am"
 - scheduled_time: ISO 8601 if inferable, otherwise null
 - urgency: default "medium"; use "high" for words like "urgent", "ASAP", "emergency"
-- budget: numeric value in USD if mentioned, otherwise null
+- budget: numeric value in USD if price_type is "fixed" and an amount is stated, otherwise null
 - missing_fields: list field names the user did not provide that are typically needed for this category
   - rides: always needs origin_city, destination_city, scheduled_time
   - moving: always needs location
@@ -49,8 +51,15 @@ Ride-specific rules (only when category is "rides"):
 - is_round_trip: true if they mention "round trip", "coming back", "return trip", "both ways"
 - return_date: ISO 8601 return date if is_round_trip and date is mentioned, otherwise null
 - flexible_time: true if they say "flexible", "anytime", "whenever works"
+- price_type:
+  - "fixed" if a specific dollar amount is mentioned (e.g. "$20", "20 bucks per person")
+  - "free" if the word "free" is mentioned or they say "no charge"
+  - "split" if gas split is mentioned, OR if no price is mentioned at all (default for college rides)
+  - null for non-ride categories
+- budget: set only when price_type is "fixed" with the numeric amount; null otherwise
+- is_airport_ride: true if destination or origin mentions airport keywords: "airport", "IAH", "DFW", "HOU", "AUS", "SAT", "DAL", "Bush", "Intercontinental", "Hobby", "Midway"; false otherwise
 
-For non-ride categories, set origin_city, destination_city, is_driver, available_seats, is_round_trip, return_date, flexible_time to null/false.
+For non-ride categories, set origin_city, destination_city, is_driver, available_seats, is_round_trip, return_date, flexible_time to null/false, price_type to null, is_airport_ride to false.
 
 Output only the JSON object, nothing else.`
 

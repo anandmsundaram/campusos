@@ -30,6 +30,21 @@ interface MyOffer {
   requests: RequestInfo | RequestInfo[] | null
 }
 
+interface RidePassengerEntry {
+  id: string
+  status: 'pending' | 'confirmed' | 'cancelled'
+  price_agreed: number | null
+  created_at: string
+  requests: {
+    id: string
+    title: string
+    origin_city: string | null
+    destination_city: string | null
+    scheduled_time: string | null
+    profiles: { name: string | null } | { name: string | null }[] | null
+  } | null
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
   rides: 'Rides', moving: 'Moving Help', peer_help: 'Peer Help', errands: 'Errands', borrow: 'Borrow',
 }
@@ -74,8 +89,15 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
+const RIDE_PASSENGER_STATUS: Record<string, { label: string; cls: string }> = {
+  pending:   { label: '● Pending',   cls: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
+  confirmed: { label: '✓ Confirmed', cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+  cancelled: { label: 'Cancelled',   cls: 'text-slate-500 bg-white/[0.03] border-white/10' },
+}
+
 export default function MyOffersPage() {
   const [offers, setOffers] = useState<MyOffer[]>([])
+  const [ridePassengers, setRidePassengers] = useState<RidePassengerEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -83,16 +105,25 @@ export default function MyOffersPage() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data } = await supabase
-      .from('request_offers')
-      .select(`
-        id, message, counter_budget, status, created_at,
-        requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, profiles(name, rating))
-      `)
-      .eq('helper_id', user.id)
-      .order('created_at', { ascending: false })
+    const [{ data: offersData }, { data: passengersData }] = await Promise.all([
+      supabase
+        .from('request_offers')
+        .select(`
+          id, message, counter_budget, status, created_at,
+          requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, profiles(name, rating))
+        `)
+        .eq('helper_id', user.id)
+        .order('created_at', { ascending: false }),
 
-    setOffers((data as MyOffer[]) ?? [])
+      supabase
+        .from('ride_passengers')
+        .select('id, status, price_agreed, created_at, requests(id, title, origin_city, destination_city, scheduled_time, profiles(name))')
+        .eq('passenger_id', user.id)
+        .order('created_at', { ascending: false }),
+    ])
+
+    setOffers((offersData as MyOffer[]) ?? [])
+    setRidePassengers((passengersData as unknown as RidePassengerEntry[]) ?? [])
     setLoading(false)
   }, [])
 
@@ -118,6 +149,73 @@ export default function MyOffersPage() {
             : "Requests you've offered to help with"}
         </p>
       </div>
+
+      {/* Ride bookings section */}
+      {ridePassengers.length > 0 && (
+        <div className="mb-10">
+          <h2 className="text-sm font-semibold text-slate-300 mb-4">My Ride Bookings</h2>
+          <div className="flex flex-col gap-3">
+            {ridePassengers.map(entry => {
+              const req = Array.isArray(entry.requests) ? entry.requests[0] : entry.requests
+              const driverProfile = req?.profiles ? (Array.isArray(req.profiles) ? req.profiles[0] : req.profiles) : null
+              const statusInfo = RIDE_PASSENGER_STATUS[entry.status] ?? RIDE_PASSENGER_STATUS.pending
+              const isCancelled = entry.status === 'cancelled'
+
+              return (
+                <div
+                  key={entry.id}
+                  className={`relative overflow-hidden rounded-xl border border-[#1e2d4a] bg-[#0d1526] ${isCancelled ? 'opacity-55' : ''}`}
+                >
+                  <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500" />
+                  <div className="pl-5 pr-4 pt-4 pb-4">
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+                      <span className="rounded-full border px-2.5 py-0.5 text-[11px] font-medium text-blue-400 bg-blue-500/10 border-blue-500/20">
+                        Rides
+                      </span>
+                      <span className={`ml-auto rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusInfo.cls}`}>
+                        {statusInfo.label}
+                      </span>
+                    </div>
+
+                    <p className="text-[15px] font-semibold text-white leading-snug mb-3">
+                      {req?.title ?? 'Ride request'}
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-3">
+                      {req?.origin_city && req.destination_city && (
+                        <span className="flex items-center gap-1.5">
+                          <span>🚗</span>
+                          <span className="font-medium text-slate-300">{req.origin_city}</span>
+                          <span className="text-slate-600">→</span>
+                          <span className="font-medium text-slate-300">{req.destination_city}</span>
+                        </span>
+                      )}
+                      {req?.scheduled_time && (
+                        <span>🕐 {new Date(req.scheduled_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                      )}
+                      {entry.price_agreed != null && (
+                        <span className="flex items-center gap-1.5 font-medium text-emerald-400">
+                          💵 You agreed to pay ${entry.price_agreed} / seat
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 border-t border-[#1e2d4a] pt-3">
+                      <div className="h-6 w-6 flex-shrink-0 flex items-center justify-center rounded-full bg-gradient-to-br from-blue-500/30 to-blue-700/30 text-[11px] font-semibold text-blue-300">
+                        {driverProfile?.name ? driverProfile.name[0].toUpperCase() : '?'}
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        Driver: <span className="text-slate-300">{driverProfile?.name ?? 'Anonymous'}</span>
+                      </span>
+                      <span className="ml-auto text-xs text-slate-600">{timeAgo(entry.created_at)}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {offers.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1e2d4a] bg-[#0d1526] py-20 text-center">

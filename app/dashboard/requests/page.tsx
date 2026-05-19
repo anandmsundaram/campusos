@@ -302,12 +302,34 @@ export default function MyRequestsPage() {
 
     setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'completed' } : r))
 
-    // Find the accepted helper
+    // Rides: notify all confirmed passengers, no review modal
+    if (req.category === 'rides') {
+      const { data: passengers } = await supabase
+        .from('ride_passengers')
+        .select('passenger_id')
+        .eq('request_id', req.id)
+        .eq('status', 'confirmed')
+
+      if (passengers && passengers.length > 0) {
+        for (const p of passengers) {
+          await supabase.from('notifications').insert({
+            user_id: p.passenger_id,
+            type: 'task_completed',
+            message: `Ride "${req.title}" has been completed. Safe travels!`,
+            related_request_id: req.id,
+          })
+        }
+      }
+
+      setActing(null)
+      return
+    }
+
+    // Non-rides: notify the accepted helper and open review modal
     const acceptedOffer = req.request_offers.find(o => o.status === 'accepted')
     const helperProfile = acceptedOffer ? normalizeProfile(acceptedOffer.profiles) : null
 
     if (acceptedOffer) {
-      // Notify the helper
       await supabase.from('notifications').insert({
         user_id: acceptedOffer.helper_id,
         type: 'task_completed',
@@ -315,7 +337,6 @@ export default function MyRequestsPage() {
         related_request_id: req.id,
       })
 
-      // Prompt requester to leave a review
       setReviewTarget({
         requestId: req.id,
         requestTitle: req.title,
