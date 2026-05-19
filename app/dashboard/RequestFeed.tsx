@@ -209,8 +209,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const filteredRequests = useMemo(() => {
     let items: FeedRequest[] = tab === 'mine'
       ? activeMyRequests
-      // All Open: hide rides (and any scheduled request) whose scheduled_time is in the past
-      : requests.filter(r => !r.scheduled_time || new Date(r.scheduled_time) >= now)
+      : requests
 
     if (catFilter !== 'all') items = items.filter((r) => r.category === catFilter)
     if (urgencyFilter !== 'all') items = items.filter((r) => r.urgency === urgencyFilter)
@@ -222,7 +221,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     }
 
     return items
-  }, [tab, requests, activeMyRequests, catFilter, urgencyFilter, sortBy, now])
+  }, [tab, requests, activeMyRequests, catFilter, urgencyFilter, sortBy])
 
   const filteredPastRequests = useMemo(() => {
     let items: FeedRequest[] = pastMyRequests
