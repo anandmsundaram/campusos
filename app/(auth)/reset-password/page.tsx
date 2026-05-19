@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 
 function PasswordRequirement({ met, text }: { met: boolean; text: string }) {
   return (
@@ -20,6 +21,14 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [sessionReady, setSessionReady] = useState<boolean | null>(null) // null = checking
+
+  // Verify a recovery session exists before showing the form
+  useEffect(() => {
+    createClient().auth.getSession().then(({ data: { session } }) => {
+      setSessionReady(!!session)
+    })
+  }, [])
 
   const hasMinLength = password.length >= 10
   const hasSpecial = /[!@#$%^&*()\-_=+\[\]{};':"\\|,.<>/?`~]/.test(password)
@@ -55,6 +64,35 @@ export default function ResetPasswordPage() {
 
     setSuccess(true)
     setTimeout(() => router.push('/dashboard'), 2500)
+  }
+
+  // Still checking session
+  if (sessionReady === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#070d1f]">
+        <p className="text-xs text-slate-500">Verifying link…</p>
+      </div>
+    )
+  }
+
+  // Session missing — link expired or already used
+  if (!sessionReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#070d1f] px-4">
+        <div className="w-full max-w-sm rounded-2xl border border-white/[0.08] bg-white/[0.03] p-8 text-center shadow-2xl shadow-black/40">
+          <p className="text-sm font-medium text-white mb-1">Link expired or already used</p>
+          <p className="text-xs text-slate-400 mb-5 leading-relaxed">
+            Password reset links are single-use and expire after 1 hour.
+          </p>
+          <Link
+            href="/forgot-password"
+            className="inline-block rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-500 transition-colors"
+          >
+            Request a new link
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   if (success) {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
@@ -8,10 +9,12 @@ import { createClient } from '@/lib/supabase/client'
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(searchParams.get('error'))
   const [loading, setLoading] = useState(false)
+  const isInvalidCredentials = !!error && /invalid login credentials|invalid email or password/i.test(error)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -91,9 +94,17 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">
-                {error}
-              </p>
+              <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">
+                <p>{error}</p>
+                {isInvalidCredentials && (
+                  <p className="mt-1.5">
+                    Forgot your password?{' '}
+                    <Link href="/forgot-password" className="font-medium text-blue-400 hover:text-blue-300 transition-colors underline">
+                      Reset it here
+                    </Link>
+                  </p>
+                )}
+              </div>
             )}
 
             <button
