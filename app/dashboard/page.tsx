@@ -102,7 +102,7 @@ export default async function DashboardPage() {
   // ── My requests ────────────────────────────────────────────────────────────
   const { data: myRequestsRaw, error: myReqError } = await supabase
     .from('requests')
-    .select(`${FULL_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, status, profiles(name, rating))`)
+    .select(`${FULL_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, seats_requested, status, profiles(name, rating))`)
     .eq('requester_id', user!.id)
     .order('created_at', { ascending: false })
     .limit(50)
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
   if (isSchemaErr(myReqError?.message)) {
     const { data: fallback } = await supabase
       .from('requests')
-      .select(`${BASE_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, status, profiles(name, rating))`)
+      .select(`${BASE_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, seats_requested, status, profiles(name, rating))`)
       .eq('requester_id', user!.id)
       .order('created_at', { ascending: false })
       .limit(50)

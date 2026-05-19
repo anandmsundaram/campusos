@@ -38,6 +38,7 @@ export interface OfferOnCard {
   status: 'pending' | 'countered' | 'accepted' | 'rejected'
   profiles: ProfileInfo | ProfileInfo[] | null
   requester_counter: number | null
+  seats_requested: number | null
 }
 
 export interface FeedRequestWithOffers extends FeedRequest {
@@ -84,6 +85,7 @@ interface OfferRow {
   status: 'pending' | 'countered' | 'accepted' | 'rejected'
   profiles: ProfileInfo | ProfileInfo[] | null
   requester_counter: number | null
+  seats_requested: number | null
 }
 
 interface OfferTarget {
@@ -92,11 +94,16 @@ interface OfferTarget {
   budget: number | null
   category: string
   isDriver: boolean | null
+  availableSeats: number | null
+  seatsFilled: number | null
 }
 
 interface OffersTarget {
   requestId: string
   title: string
+  isDriver: boolean | null
+  availableSeats: number | null
+  seatsFilled: number | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -167,6 +174,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const [offerTarget, setOfferTarget] = useState<OfferTarget | null>(null)
   const [offerMessage, setOfferMessage] = useState('')
   const [counterBudget, setCounterBudget] = useState('')
+  const [seatsRequested, setSeatsRequested] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [offeredIds, setOfferedIds] = useState<Set<string>>(new Set())
@@ -190,11 +198,11 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const [offersTarget, setOffersTarget] = useState<OffersTarget | null>(null)
 
   // Accept/decline handlers update local state immediately
-  function handleOfferAccepted(requestId: string, offerId: string) {
+  function handleOfferAccepted(requestId: string, offerId: string, seatsToFill = 1) {
     setLocalMyRequests(prev => prev.map(r => {
       if (r.id !== requestId) return r
       const isMultiSeat = r.is_driver && r.available_seats != null
-      const newFilled = isMultiSeat ? (r.seats_filled ?? 0) + 1 : r.seats_filled
+      const newFilled = isMultiSeat ? (r.seats_filled ?? 0) + seatsToFill : r.seats_filled
       const newStatus = isMultiSeat && newFilled! < r.available_seats! ? 'open' : 'matched'
       return {
         ...r,
@@ -257,9 +265,10 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   }, [pastMyRequests, catFilter, urgencyFilter])
 
   function openOfferModal(req: FeedRequest) {
-    setOfferTarget({ requestId: req.id, title: req.title, budget: req.budget, category: req.category, isDriver: req.is_driver ?? null })
+    setOfferTarget({ requestId: req.id, title: req.title, budget: req.budget, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })
     setOfferMessage('')
     setCounterBudget('')
+    setSeatsRequested(1)
     setSubmitError(null)
   }
 
@@ -268,6 +277,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     setOfferTarget(null)
     setOfferMessage('')
     setCounterBudget('')
+    setSeatsRequested(1)
     setSubmitError(null)
   }
 
@@ -280,11 +290,13 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     const parsedBudget = counterBudget !== '' ? parseFloat(counterBudget) : null
     const supabase = createClient()
 
+    const isDriveRequest = offerTarget.category === 'rides' && offerTarget.isDriver === true
     const { error } = await supabase.from('request_offers').insert({
       request_id: offerTarget.requestId,
       helper_id: currentUserId,
       message: offerMessage.trim() || null,
       counter_budget: parsedBudget,
+      seats_requested: isDriveRequest ? seatsRequested : 1,
       status: 'pending',
     })
 
@@ -315,6 +327,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     setOfferTarget(null)
     setOfferMessage('')
     setCounterBudget('')
+    setSeatsRequested(1)
   }
 
   return (
@@ -423,13 +436,13 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                         isOwn={isOwn}
                         hasOffered={offeredIds.has(req.id)}
                         onOffer={() => openOfferModal(req)}
-                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title })}
+                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
                         inlineOffers={
                           isOwn && 'request_offers' in req
                             ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending' || o.status === 'countered')
                             : []
                         }
-                        onOfferAccepted={(offerId) => handleOfferAccepted(req.id, offerId)}
+                        onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
                         onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
                         onOfferCountered={(offerId, amount) => handleOfferCountered(req.id, offerId, amount)}
                       />
@@ -454,7 +467,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                         isOwn
                         hasOffered={false}
                         onOffer={() => {}}
-                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title })}
+                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
                         inlineOffers={[]}
                         isPast
                       />
@@ -480,8 +493,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 isOwn={isOwn}
                 hasOffered={offeredIds.has(req.id)}
                 onOffer={() => openOfferModal(req)}
-                onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title })}
-                onOfferAccepted={(offerId) => handleOfferAccepted(req.id, offerId)}
+                onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
+                onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
                 onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
               />
             )
@@ -500,6 +513,9 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
           ? 'e.g. I have a car and can pick you up…'
           : 'e.g. I\'m free Saturday morning and have a large car…'
         const priceLabelShown = !driverPostingSeats // driver sets the price; passenger just requests
+        const seatsRemaining = driverPostingSeats && offerTarget.availableSeats != null
+          ? offerTarget.availableSeats - (offerTarget.seatsFilled ?? 0)
+          : null
         return (
           <Modal onBackdropClick={closeOfferModal}>
             <ModalClose onClick={closeOfferModal} disabled={submitting} />
@@ -509,6 +525,19 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
             </p>
 
             <form onSubmit={handleSubmitOffer} className="mt-5 flex flex-col gap-4">
+              {driverPostingSeats && seatsRemaining != null && seatsRemaining > 0 && (
+                <ModalField label="Seats needed">
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={() => setSeatsRequested(s => Math.max(1, s - 1))} disabled={submitting || seatsRequested <= 1}
+                      className="h-8 w-8 rounded-lg border border-[#1e2d4a] text-slate-400 hover:border-blue-500/40 hover:text-white disabled:opacity-40 flex items-center justify-center text-lg leading-none">−</button>
+                    <span className="text-sm font-semibold text-white w-4 text-center">{seatsRequested}</span>
+                    <button type="button" onClick={() => setSeatsRequested(s => Math.min(seatsRemaining, s + 1))} disabled={submitting || seatsRequested >= seatsRemaining}
+                      className="h-8 w-8 rounded-lg border border-[#1e2d4a] text-slate-400 hover:border-blue-500/40 hover:text-white disabled:opacity-40 flex items-center justify-center text-lg leading-none">+</button>
+                    <span className="text-xs text-slate-500">{seatsRemaining} available</span>
+                  </div>
+                </ModalField>
+              )}
+
               <ModalField label="Message" optional>
                 <textarea
                   rows={3}
@@ -558,6 +587,9 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
         <OffersModal
           requestId={offersTarget.requestId}
           title={offersTarget.title}
+          isDriver={offersTarget.isDriver}
+          availableSeats={offersTarget.availableSeats}
+          seatsFilled={offersTarget.seatsFilled}
           onClose={() => setOffersTarget(null)}
           onAccepted={() => { setOffersTarget(null); router.refresh() }}
         />
@@ -593,7 +625,7 @@ function RequestCard({
   onOffer: () => void
   onViewOffers: () => void
   inlineOffers?: OfferOnCard[]
-  onOfferAccepted?: (offerId: string) => void
+  onOfferAccepted?: (offerId: string, seatsToFill?: number) => void
   onOfferDeclined?: (offerId: string) => void
   onOfferCountered?: (offerId: string, amount: number | null) => void
   isPast?: boolean
@@ -701,7 +733,7 @@ function RequestCard({
                 isDriver={req.is_driver}
                 availableSeats={req.available_seats}
                 seatsFilled={req.seats_filled}
-                onAccepted={() => onOfferAccepted?.(offer.id)}
+                onAccepted={() => onOfferAccepted?.(offer.id, offer.seats_requested ?? 1)}
                 onDeclined={() => onOfferDeclined?.(offer.id)}
                 onCountered={(id, amount) => onOfferCountered?.(id, amount)}
               />
@@ -793,7 +825,8 @@ function InlineOfferRow({
     if (e1) { setRowError(e1.message); setActing(false); return }
     const isMultiSeat = isDriver && availableSeats != null
     if (isMultiSeat) {
-      const newFilled = (seatsFilled ?? 0) + 1
+      const seatsToFill = offer.seats_requested ?? 1
+      const newFilled = (seatsFilled ?? 0) + seatsToFill
       const newStatus = newFilled >= availableSeats! ? 'matched' : 'open'
       const { error: e2 } = await supabase.from('requests').update({ seats_filled: newFilled, status: newStatus }).eq('id', requestId)
       if (e2) { setRowError(e2.message); setActing(false); return }
@@ -1129,20 +1162,31 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
 function OffersModal({
   requestId,
   title,
+  isDriver,
+  availableSeats,
+  seatsFilled,
   onClose,
   onAccepted,
 }: {
   requestId: string
   title: string
+  isDriver: boolean | null
+  availableSeats: number | null
+  seatsFilled: number | null
   onClose: () => void
   onAccepted: () => void
 }) {
+  const router = useRouter()
   const [offers, setOffers] = useState<OfferRow[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [acting, setActing] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
-  const [hasAccepted, setHasAccepted] = useState(false)
+  const [localSeatsFilled, setLocalSeatsFilled] = useState(seatsFilled ?? 0)
+
+  const hasAccepted = offers.some(o => o.status === 'accepted')
+  const isMultiSeat = isDriver && availableSeats != null
+  const allSeatsFilled = isMultiSeat && localSeatsFilled >= availableSeats!
 
   const fetchOffers = useCallback(async () => {
     setLoading(true)
@@ -1150,7 +1194,7 @@ function OffersModal({
     const supabase = createClient()
     const { data, error } = await supabase
       .from('request_offers')
-      .select('id, helper_id, message, counter_budget, status, profiles(name, rating)')
+      .select('id, helper_id, message, counter_budget, requester_counter, seats_requested, status, profiles(name, rating)')
       .eq('request_id', requestId)
       .order('created_at', { ascending: true })
 
@@ -1158,7 +1202,6 @@ function OffersModal({
       setFetchError(error.message)
     } else {
       setOffers((data ?? []) as OfferRow[])
-      setHasAccepted((data ?? []).some((o) => o.status === 'accepted'))
     }
     setLoading(false)
   }, [requestId])
@@ -1173,11 +1216,19 @@ function OffersModal({
     const { error: e1 } = await supabase.from('request_offers').update({ status: 'accepted' }).eq('id', offerId)
     if (e1) { setActionError(e1.message); setActing(null); return }
 
-    const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
-    if (e2) { setActionError(e2.message); setActing(null); return }
-
-    // Notify the helper
     const helperOffer = offers.find(o => o.id === offerId)
+    const seatsToFill = helperOffer?.seats_requested ?? 1
+    if (isMultiSeat) {
+      const newFilled = localSeatsFilled + seatsToFill
+      const newStatus = newFilled >= availableSeats! ? 'matched' : 'open'
+      const { error: e2 } = await supabase.from('requests').update({ seats_filled: newFilled, status: newStatus }).eq('id', requestId)
+      if (e2) { setActionError(e2.message); setActing(null); return }
+      setLocalSeatsFilled(newFilled)
+    } else {
+      const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
+      if (e2) { setActionError(e2.message); setActing(null); return }
+    }
+
     if (helperOffer) {
       await supabase.from('notifications').insert({
         user_id: helperOffer.helper_id,
@@ -1187,10 +1238,10 @@ function OffersModal({
       })
     }
 
-    setOffers((prev) => prev.map((o) => o.id === offerId ? { ...o, status: 'accepted' } : o))
-    setHasAccepted(true)
+    setOffers((prev) => prev.map((o) => o.id === offerId ? { ...o, status: 'accepted' as const } : o))
     setActing(null)
-    onAccepted()
+    if (!isMultiSeat) onAccepted()
+    else router.refresh()
   }
 
   async function handleDecline(offerId: string) {
@@ -1260,7 +1311,7 @@ function OffersModal({
             key={offer.id}
             offer={offer}
             acting={acting}
-            canAccept={!hasAccepted}
+            canAccept={isMultiSeat ? !allSeatsFilled : !hasAccepted}
             onAccept={handleAccept}
             onDecline={handleDecline}
             onCounter={handleCounter}
@@ -1331,7 +1382,7 @@ function OfferRowCard({
         </div>
         {offer.status === 'accepted' && (
           <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-            Accepted
+            Accepted{(offer.requester_counter ?? offer.counter_budget) != null ? ` · $${offer.requester_counter ?? offer.counter_budget}` : ''}
           </span>
         )}
         {offer.status === 'rejected' && (
@@ -1346,6 +1397,9 @@ function OfferRowCard({
         )}
       </div>
 
+      {offer.seats_requested != null && offer.seats_requested > 1 && (
+        <p className="mt-1.5 text-[11px] text-slate-500">{offer.seats_requested} seats requested</p>
+      )}
       {offer.message && (
         <p className="mt-2.5 text-xs text-slate-400 leading-relaxed">{offer.message}</p>
       )}
@@ -1501,7 +1555,7 @@ function FilterSelect({
 function Modal({ children, onBackdropClick }: { children: React.ReactNode; onBackdropClick: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onBackdropClick} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={onBackdropClick} />
       <div className="relative w-full max-w-md rounded-2xl border border-[#1e2d4a] bg-[#0a0f1e] p-6 shadow-2xl shadow-black/60">
         {children}
       </div>
