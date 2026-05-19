@@ -224,7 +224,7 @@ export default async function DashboardPage() {
         {/* Stats bar */}
         <div className="mt-10 grid grid-cols-2 gap-3">
           <StatCard label="Active Requests" value={activeCount ?? 0} icon="🟢" />
-          <StatCard label="Tasks Matched" value={matchedCount ?? 0} icon="✅" />
+          <StatCard label="Completed Tasks" value={matchedCount ?? 0} icon="✅" />
         </div>
 
         {/* My Next Ride widget — only rendered when a ride exists */}
