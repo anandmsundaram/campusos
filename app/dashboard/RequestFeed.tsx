@@ -183,10 +183,10 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const now = useMemo(() => new Date(), [])
 
   const myOffersByRequestId = useMemo(() => {
-    const map = new Map<string, 'pending' | 'countered' | 'accepted' | 'rejected'>()
+    const map = new Map<string, MyOffer>()
     for (const o of myOffers) {
       const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
-      if (req) map.set(req.id, o.status)
+      if (req) map.set(req.id, o)
     }
     return map
   }, [myOffers])
@@ -505,7 +505,9 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 profile={profile}
                 isOwn={isOwn}
                 hasOffered={offeredIds.has(req.id)}
-                myOfferStatus={myOffersByRequestId.get(req.id) ?? null}
+                myOfferStatus={myOffersByRequestId.get(req.id)?.status ?? null}
+                myOfferCounter={myOffersByRequestId.get(req.id)?.requester_counter ?? null}
+                onGoToOffers={() => setTab('offers')}
                 onOffer={() => openOfferModal(req)}
                 onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
                 onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
@@ -625,8 +627,10 @@ function RequestCard({
   isOwn,
   hasOffered,
   myOfferStatus = null,
+  myOfferCounter = null,
   onOffer,
   onViewOffers,
+  onGoToOffers,
   inlineOffers = [],
   onOfferAccepted,
   onOfferDeclined,
@@ -638,8 +642,10 @@ function RequestCard({
   isOwn: boolean
   hasOffered: boolean
   myOfferStatus?: 'pending' | 'countered' | 'accepted' | 'rejected' | null
+  myOfferCounter?: number | null
   onOffer: () => void
   onViewOffers: () => void
+  onGoToOffers?: () => void
   inlineOffers?: OfferOnCard[]
   onOfferAccepted?: (offerId: string, seatsToFill?: number) => void
   onOfferDeclined?: (offerId: string) => void
@@ -785,16 +791,24 @@ function RequestCard({
               View offers
             </button>
           ) : (hasOffered || myOfferStatus) ? (
-            <span className={`text-xs font-semibold ${
-              myOfferStatus === 'countered' ? 'text-orange-400'
-              : myOfferStatus === 'rejected' ? 'text-slate-500'
-              : 'text-emerald-400'
-            }`}>
-              {myOfferStatus === 'countered' ? '↩ Counter received'
-               : myOfferStatus === 'accepted' ? '✓ Accepted'
-               : myOfferStatus === 'rejected' ? 'Declined'
-               : 'Offer sent ✓'}
-            </span>
+            myOfferStatus === 'countered' ? (
+              <button
+                type="button"
+                onClick={onGoToOffers}
+                className="flex items-center gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/[0.08] px-3 py-1.5 text-xs font-semibold text-orange-400 transition-all hover:bg-orange-500/15 active:scale-95"
+              >
+                ↩ Counter{myOfferCounter != null ? ` $${myOfferCounter}` : ''} — tap to respond
+              </button>
+            ) : (
+              <span className={`text-xs font-semibold ${
+                myOfferStatus === 'rejected' ? 'text-slate-500'
+                : 'text-emerald-400'
+              }`}>
+                {myOfferStatus === 'accepted' ? '✓ Accepted'
+                 : myOfferStatus === 'rejected' ? 'Declined'
+                 : 'Offer sent ✓'}
+              </span>
+            )
           ) : isFull ? (
             <span className="text-xs font-semibold text-red-400/70">Full</span>
           ) : rideStarted ? (
