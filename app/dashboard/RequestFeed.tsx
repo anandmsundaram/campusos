@@ -35,8 +35,9 @@ export interface OfferOnCard {
   helper_id: string
   message: string | null
   counter_budget: number | null
-  status: 'pending' | 'accepted' | 'rejected'
+  status: 'pending' | 'countered' | 'accepted' | 'rejected'
   profiles: ProfileInfo | ProfileInfo[] | null
+  requester_counter: number | null
 }
 
 export interface FeedRequestWithOffers extends FeedRequest {
@@ -47,9 +48,10 @@ export interface MyOffer {
   id: string
   message: string | null
   counter_budget: number | null
-  status: 'pending' | 'accepted' | 'rejected'
+  status: 'pending' | 'countered' | 'accepted' | 'rejected'
   created_at: string
   requests: RequestInfo | RequestInfo[] | null
+  requester_counter: number | null
 }
 
 interface RequestInfo {
@@ -76,8 +78,9 @@ interface OfferRow {
   helper_id: string
   message: string | null
   counter_budget: number | null
-  status: 'pending' | 'accepted' | 'rejected'
+  status: 'pending' | 'countered' | 'accepted' | 'rejected'
   profiles: ProfileInfo | ProfileInfo[] | null
+  requester_counter: number | null
 }
 
 interface OfferTarget {
@@ -127,6 +130,7 @@ const URGENCY_BADGE: Record<string, string> = {
 
 const OFFER_STATUS_BADGE: Record<string, string> = {
   pending: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
+  countered: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
   accepted: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
   rejected: 'text-slate-400 bg-white/[0.03] border-white/10',
 }
@@ -200,6 +204,18 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
         ...r,
         request_offers: r.request_offers.map(o =>
           o.id === offerId ? { ...o, status: 'rejected' as const } : o
+        ),
+      }
+    }))
+  }
+
+  function handleOfferCountered(requestId: string, offerId: string, amount: number | null) {
+    setLocalMyRequests(prev => prev.map(r => {
+      if (r.id !== requestId) return r
+      return {
+        ...r,
+        request_offers: r.request_offers.map(o =>
+          o.id === offerId ? { ...o, status: 'countered' as const, requester_counter: amount } : o
         ),
       }
     }))
@@ -377,7 +393,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
 
       {/* Content */}
       {tab === 'offers' ? (
-        <MyOffersTab offers={myOffers} />
+        <MyOffersTab offers={myOffers} currentUserId={currentUserId} />
       ) : tab === 'mine' ? (
         <>
           {filteredRequests.length === 0 && filteredPastRequests.length === 0 ? (
@@ -400,11 +416,12 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                         onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title })}
                         inlineOffers={
                           isOwn && 'request_offers' in req
-                            ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending')
+                            ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending' || o.status === 'countered')
                             : []
                         }
                         onOfferAccepted={(offerId) => handleOfferAccepted(req.id, offerId)}
                         onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
+                        onOfferCountered={(offerId, amount) => handleOfferCountered(req.id, offerId, amount)}
                       />
                     )
                   })}
@@ -556,6 +573,7 @@ function RequestCard({
   inlineOffers = [],
   onOfferAccepted,
   onOfferDeclined,
+  onOfferCountered,
   isPast = false,
 }: {
   req: FeedRequest
@@ -567,6 +585,7 @@ function RequestCard({
   inlineOffers?: OfferOnCard[]
   onOfferAccepted?: (offerId: string) => void
   onOfferDeclined?: (offerId: string) => void
+  onOfferCountered?: (offerId: string, amount: number | null) => void
   isPast?: boolean
 }) {
   const isRide = req.category === 'rides'
@@ -671,6 +690,7 @@ function RequestCard({
                 requestId={req.id}
                 onAccepted={() => onOfferAccepted?.(offer.id)}
                 onDeclined={() => onOfferDeclined?.(offer.id)}
+                onCountered={(id, amount) => onOfferCountered?.(id, amount)}
               />
             ))}
           </div>
@@ -732,14 +752,18 @@ function InlineOfferRow({
   requestId,
   onAccepted,
   onDeclined,
+  onCountered,
 }: {
   offer: OfferOnCard
   requestId: string
   onAccepted: () => void
   onDeclined: () => void
+  onCountered?: (offerId: string, amount: number | null) => void
 }) {
   const [acting, setActing] = useState(false)
   const [rowError, setRowError] = useState<string | null>(null)
+  const [showCounter, setShowCounter] = useState(false)
+  const [counterAmt, setCounterAmt] = useState('')
   const profile = normalizeProfile(offer.profiles)
 
   async function accept() {
@@ -776,6 +800,28 @@ function InlineOfferRow({
     onDeclined()
   }
 
+  async function submitCounter() {
+    setActing(true)
+    setRowError(null)
+    const supabase = createClient()
+    const amt = counterAmt !== '' ? parseFloat(counterAmt) : null
+    const { error } = await supabase.from('request_offers')
+      .update({ status: 'countered', requester_counter: amt })
+      .eq('id', offer.id)
+    if (error) { setRowError(error.message); setActing(false); return }
+    await supabase.from('notifications').insert({
+      user_id: offer.helper_id,
+      type: 'counter_offer',
+      message: `Counter-offer received${amt != null ? ` — $${amt}` : ''}`,
+      related_request_id: requestId,
+    })
+    setActing(false)
+    setShowCounter(false)
+    onCountered?.(offer.id, amt)
+  }
+
+  const isCountered = offer.status === 'countered'
+
   return (
     <div className="rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-3 py-2.5">
       <div className="flex items-center gap-2.5">
@@ -791,30 +837,82 @@ function InlineOfferRow({
                 ${offer.counter_budget}
               </span>
             )}
+            {isCountered && offer.requester_counter != null && (
+              <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[10px] font-medium text-orange-400">
+                Counter: ${offer.requester_counter}
+              </span>
+            )}
           </div>
           {offer.message && (
             <p className="mt-0.5 text-[11px] text-slate-500 line-clamp-1">{offer.message}</p>
           )}
         </div>
-        <div className="flex gap-1.5 flex-shrink-0">
+        {isCountered ? (
+          <span className="text-[11px] text-orange-400 flex-shrink-0">Counter sent ✓</span>
+        ) : (
+          <div className="flex gap-1.5 flex-shrink-0">
+            <button
+              type="button"
+              onClick={accept}
+              disabled={acting}
+              className="rounded-lg bg-emerald-600/80 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+            >
+              {acting ? '…' : 'Accept'}
+            </button>
+            <button
+              type="button"
+              onClick={decline}
+              disabled={acting}
+              className="rounded-lg border border-[#1e2d4a] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
+            >
+              {acting ? '…' : 'Decline'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowCounter(v => !v)}
+              disabled={acting}
+              className="rounded-lg border border-[#1e2d4a] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
+            >
+              Counter
+            </button>
+          </div>
+        )}
+      </div>
+
+      {showCounter && !isCountered && (
+        <div className="mt-2.5 flex items-center gap-2">
+          <div className="relative flex-1">
+            <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={counterAmt}
+              onChange={e => setCounterAmt(e.target.value)}
+              placeholder="Your price"
+              disabled={acting}
+              className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] pl-6 pr-3 py-1.5 text-xs text-white placeholder:text-slate-600 outline-none focus:border-orange-500/40 disabled:opacity-50"
+            />
+          </div>
           <button
             type="button"
-            onClick={accept}
+            onClick={submitCounter}
             disabled={acting}
-            className="rounded-lg bg-emerald-600/80 px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+            className="rounded-lg bg-orange-600/80 px-2.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-orange-500 disabled:opacity-40"
           >
-            {acting ? '…' : 'Accept'}
+            {acting ? '…' : 'Send'}
           </button>
           <button
             type="button"
-            onClick={decline}
+            onClick={() => { setShowCounter(false); setCounterAmt('') }}
             disabled={acting}
-            className="rounded-lg border border-[#1e2d4a] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
+            className="rounded-lg border border-[#1e2d4a] px-2.5 py-1.5 text-[11px] text-slate-500 hover:text-slate-300 disabled:opacity-40"
           >
-            {acting ? '…' : 'Decline'}
+            Cancel
           </button>
         </div>
-      </div>
+      )}
+
       {rowError && <p className="mt-1.5 text-[11px] text-red-400">{rowError}</p>}
     </div>
   )
@@ -822,7 +920,47 @@ function InlineOfferRow({
 
 // ─── My Offers tab ────────────────────────────────────────────────────────────
 
-function MyOffersTab({ offers }: { offers: MyOffer[] }) {
+function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer[]; currentUserId: string }) {
+  const router = useRouter()
+  const [offers, setOffers] = useState<MyOffer[]>(initialOffers)
+  const [acting, setActing] = useState<string | null>(null)
+  const [actError, setActError] = useState<string | null>(null)
+
+  async function acceptCounter(offerId: string, requestId: string, requesterId: string) {
+    setActing(offerId)
+    setActError(null)
+    const supabase = createClient()
+    const { error: e1 } = await supabase.from('request_offers').update({ status: 'accepted' }).eq('id', offerId)
+    if (e1) { setActError(e1.message); setActing(null); return }
+    const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
+    if (e2) { setActError(e2.message); setActing(null); return }
+    await supabase.from('notifications').insert({
+      user_id: requesterId,
+      type: 'offer_accepted',
+      message: 'Your counter-offer was accepted!',
+      related_request_id: requestId,
+    })
+    setOffers(prev => prev.map(o => o.id === offerId ? { ...o, status: 'accepted' as const } : o))
+    setActing(null)
+    router.refresh()
+  }
+
+  async function declineCounter(offerId: string, requestId: string, requesterId: string) {
+    setActing(offerId)
+    setActError(null)
+    const supabase = createClient()
+    const { error } = await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offerId)
+    if (error) { setActError(error.message); setActing(null); return }
+    await supabase.from('notifications').insert({
+      user_id: requesterId,
+      type: 'offer_rejected',
+      message: 'Your counter-offer was declined.',
+      related_request_id: requestId,
+    })
+    setOffers(prev => prev.map(o => o.id === offerId ? { ...o, status: 'rejected' as const } : o))
+    setActing(null)
+  }
+
   if (offers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-[#1e2d4a] bg-[#0d1526]/60 py-16 text-center">
@@ -836,10 +974,19 @@ function MyOffersTab({ offers }: { offers: MyOffer[] }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {actError && <p className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-4 py-2.5 text-xs text-red-400">{actError}</p>}
       {offers.map((offer) => {
         const req = Array.isArray(offer.requests) ? offer.requests[0] : offer.requests
         if (!req) return null
         const profile = normalizeProfile(req.profiles)
+        const isCountered = offer.status === 'countered'
+        const isActing = acting === offer.id
+
+        const statusLabel =
+          offer.status === 'pending' ? '● Pending'
+          : offer.status === 'countered' ? '↩ Counter received'
+          : offer.status === 'accepted' ? '✓ Accepted'
+          : 'Declined'
 
         return (
           <div
@@ -849,26 +996,24 @@ function MyOffersTab({ offers }: { offers: MyOffer[] }) {
                 ? 'border-emerald-500/20'
                 : offer.status === 'rejected'
                 ? 'border-[#1e2d4a] opacity-60'
+                : isCountered
+                ? 'border-orange-500/20'
                 : 'border-[#1e2d4a]'
             }`}
           >
-            {/* Left accent bar */}
             <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${CATEGORY_ACCENT[req.category] ?? 'bg-slate-500'}`} />
 
             <div className="pl-5 pr-4 pt-4 pb-4">
-              {/* Badges row */}
               <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
                 <Badge text={CATEGORY_LABELS[req.category] ?? req.category} color={CATEGORY_BADGE[req.category]} />
                 <Badge text={req.urgency} color={URGENCY_BADGE[req.urgency]} capitalize />
-                <span className={`ml-auto rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${OFFER_STATUS_BADGE[offer.status]}`}>
-                  {offer.status === 'pending' ? '● Pending' : offer.status === 'accepted' ? '✓ Accepted' : 'Declined'}
+                <span className={`ml-auto rounded-full border px-2.5 py-0.5 text-xs font-semibold ${OFFER_STATUS_BADGE[offer.status]}`}>
+                  {statusLabel}
                 </span>
               </div>
 
-              {/* Title */}
               <p className="text-[15px] font-semibold text-white leading-snug mb-3">{req.title}</p>
 
-              {/* Request meta */}
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-3">
                 {req.location && <span className="flex items-center gap-1.5"><span>📍</span>{req.location}</span>}
                 {req.scheduled_time && (
@@ -880,7 +1025,7 @@ function MyOffersTab({ offers }: { offers: MyOffer[] }) {
                 {req.budget != null && <span className="flex items-center gap-1.5"><span>💵</span>${req.budget}</span>}
               </div>
 
-              {/* Your offer details */}
+              {/* Your original offer */}
               {(offer.message || offer.counter_budget != null) && (
                 <div className="mb-3 rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-3 py-2.5 space-y-1.5">
                   {offer.message && (
@@ -888,13 +1033,44 @@ function MyOffersTab({ offers }: { offers: MyOffer[] }) {
                   )}
                   {offer.counter_budget != null && (
                     <span className="inline-flex rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">
-                      Offered: ${offer.counter_budget}
+                      Your offer: ${offer.counter_budget}
                     </span>
                   )}
                 </div>
               )}
 
-              {/* Footer */}
+              {/* Requester's counter */}
+              {isCountered && offer.requester_counter != null && (
+                <div className="mb-3 rounded-lg border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2.5">
+                  <p className="text-[11px] font-medium text-orange-400 mb-1">Counter-offer from requester</p>
+                  <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-300">
+                    ${offer.requester_counter}
+                  </span>
+                </div>
+              )}
+
+              {/* Accept / Decline counter (helper's one-time response) */}
+              {isCountered && (
+                <div className="mb-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => acceptCounter(offer.id, req.id, req.requester_id)}
+                    disabled={isActing}
+                    className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+                  >
+                    {isActing ? '…' : 'Accept'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => declineCounter(offer.id, req.id, req.requester_id)}
+                    disabled={isActing}
+                    className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
+                  >
+                    {isActing ? '…' : 'Decline'}
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center gap-2 border-t border-[#1e2d4a] pt-3">
                 <Avatar name={profile?.name} />
                 <span className="text-xs text-slate-500">
@@ -989,7 +1165,6 @@ function OffersModal({
     const { error } = await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offerId)
     if (error) { setActionError(error.message); setActing(null); return }
 
-    // Notify the helper
     const helperOffer = offers.find(o => o.id === offerId)
     if (helperOffer) {
       await supabase.from('notifications').insert({
@@ -1004,8 +1179,33 @@ function OffersModal({
     setActing(null)
   }
 
-  const pending = offers.filter((o) => o.status === 'pending')
-  const resolved = offers.filter((o) => o.status !== 'pending')
+  async function handleCounter(offerId: string, amount: number | null) {
+    setActing(offerId)
+    setActionError(null)
+    const supabase = createClient()
+    const { error } = await supabase.from('request_offers')
+      .update({ status: 'countered', requester_counter: amount })
+      .eq('id', offerId)
+    if (error) { setActionError(error.message); setActing(null); return }
+
+    const helperOffer = offers.find(o => o.id === offerId)
+    if (helperOffer) {
+      await supabase.from('notifications').insert({
+        user_id: helperOffer.helper_id,
+        type: 'counter_offer',
+        message: `Counter-offer received for "${title}"${amount != null ? ` — $${amount}` : ''}`,
+        related_request_id: requestId,
+      })
+    }
+
+    setOffers((prev) => prev.map((o) =>
+      o.id === offerId ? { ...o, status: 'countered' as const, requester_counter: amount } : o
+    ))
+    setActing(null)
+  }
+
+  const pending = offers.filter((o) => o.status === 'pending' || o.status === 'countered')
+  const resolved = offers.filter((o) => o.status === 'accepted' || o.status === 'rejected')
 
   return (
     <Modal onBackdropClick={onClose}>
@@ -1028,6 +1228,7 @@ function OffersModal({
             canAccept={!hasAccepted}
             onAccept={handleAccept}
             onDecline={handleDecline}
+            onCounter={handleCounter}
           />
         ))}
 
@@ -1062,21 +1263,27 @@ function OfferRowCard({
   canAccept,
   onAccept,
   onDecline,
+  onCounter,
 }: {
   offer: OfferRow
   acting: string | null
   canAccept: boolean
   onAccept: (id: string) => void
   onDecline: (id: string) => void
+  onCounter?: (id: string, amount: number | null) => void
 }) {
+  const [showCounter, setShowCounter] = useState(false)
+  const [counterAmt, setCounterAmt] = useState('')
   const profile = normalizeProfile(offer.profiles)
   const isActing = acting === offer.id
   const isPending = offer.status === 'pending'
+  const isCountered = offer.status === 'countered'
+  const isResolved = offer.status === 'accepted' || offer.status === 'rejected'
 
   return (
     <div
       className={`rounded-xl border p-4 transition-opacity ${
-        isPending ? 'border-[#1e2d4a] bg-white/[0.02]' : 'border-[#1e2d4a]/50 opacity-55'
+        isResolved ? 'border-[#1e2d4a]/50 opacity-55' : 'border-[#1e2d4a] bg-white/[0.02]'
       }`}
     >
       <div className="flex items-center gap-2.5">
@@ -1097,6 +1304,11 @@ function OfferRowCard({
             Declined
           </span>
         )}
+        {isCountered && (
+          <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold text-orange-400">
+            Counter sent
+          </span>
+        )}
       </div>
 
       {offer.message && (
@@ -1109,9 +1321,16 @@ function OfferRowCard({
           </span>
         </div>
       )}
+      {isCountered && offer.requester_counter != null && (
+        <div className="mt-2">
+          <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-400">
+            Your counter: ${offer.requester_counter}
+          </span>
+        </div>
+      )}
 
       {isPending && (
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => onAccept(offer.id)}
@@ -1127,6 +1346,50 @@ function OfferRowCard({
             className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-white disabled:opacity-40"
           >
             {isActing ? '…' : 'Decline'}
+          </button>
+          {onCounter && (
+            <button
+              type="button"
+              onClick={() => setShowCounter(v => !v)}
+              disabled={isActing}
+              className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
+            >
+              Counter
+            </button>
+          )}
+        </div>
+      )}
+
+      {showCounter && isPending && (
+        <div className="mt-3 flex items-center gap-2">
+          <div className="relative flex-1">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={counterAmt}
+              onChange={e => setCounterAmt(e.target.value)}
+              placeholder="Your price"
+              disabled={isActing}
+              className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] pl-7 pr-3 py-1.5 text-xs text-white placeholder:text-slate-600 outline-none focus:border-orange-500/40 disabled:opacity-50"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => { onCounter?.(offer.id, counterAmt !== '' ? parseFloat(counterAmt) : null); setShowCounter(false) }}
+            disabled={isActing}
+            className="rounded-lg bg-orange-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-orange-500 disabled:opacity-40"
+          >
+            {isActing ? '…' : 'Send'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setShowCounter(false); setCounterAmt('') }}
+            disabled={isActing}
+            className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-40"
+          >
+            Cancel
           </button>
         </div>
       )}

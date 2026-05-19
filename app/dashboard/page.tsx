@@ -102,7 +102,7 @@ export default async function DashboardPage() {
   // ── My requests ────────────────────────────────────────────────────────────
   const { data: myRequestsRaw, error: myReqError } = await supabase
     .from('requests')
-    .select(`${FULL_SELECT}, request_offers(id, helper_id, message, counter_budget, status, profiles(name, rating))`)
+    .select(`${FULL_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, status, profiles(name, rating))`)
     .eq('requester_id', user!.id)
     .order('created_at', { ascending: false })
     .limit(50)
@@ -113,7 +113,7 @@ export default async function DashboardPage() {
   if (isSchemaErr(myReqError?.message)) {
     const { data: fallback } = await supabase
       .from('requests')
-      .select(`${BASE_SELECT}, request_offers(id, helper_id, message, counter_budget, status, profiles(name, rating))`)
+      .select(`${BASE_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, status, profiles(name, rating))`)
       .eq('requester_id', user!.id)
       .order('created_at', { ascending: false })
       .limit(50)
@@ -130,7 +130,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase
       .from('request_offers')
-      .select('id, message, counter_budget, status, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, profiles(name, rating))')
+      .select('id, message, counter_budget, requester_counter, status, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, profiles(name, rating))')
       .eq('helper_id', user!.id)
       .order('created_at', { ascending: false }),
     supabase.from('requests').select('*', { count: 'exact', head: true }).eq('status', 'open'),
