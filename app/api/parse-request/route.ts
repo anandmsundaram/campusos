@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
   }
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Chicago' })
-  const DATE_CONTEXT = `\n\nToday is ${today} (US Central Time). Use this to resolve relative dates like "this Saturday", "tomorrow", "next week", etc. into correct ISO 8601 timestamps.`
+  const DATE_CONTEXT = `\n\nToday is ${today} (US Central Time). Current UTC offset: CDT (UTC−5) from March–November, CST (UTC−6) November–March. Use this to resolve relative dates like "this Saturday", "tomorrow", "next week". IMPORTANT: When outputting scheduled_time, include the UTC offset in the ISO 8601 value. For CDT times, write e.g. "2026-05-23T18:00:00-05:00" for 6pm CDT. Never output bare "Z" UTC timestamps for user-specified local times — always include the -05:00 or -06:00 offset so JavaScript can display the time correctly in the user's timezone.`
   const systemPrompt = (source === 'whatsapp'
     ? SYSTEM_PROMPT + WHATSAPP_SYSTEM_SUFFIX
     : SYSTEM_PROMPT) + DATE_CONTEXT

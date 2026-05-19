@@ -369,7 +369,14 @@ export default function RequestInput() {
                     </span>
                   </div>
                 )}
-                {parsed!.flexible_time && <Row label="Time" value="Flexible" />}
+                {parsed!.flexible_time && (
+                  <Row
+                    label="Time"
+                    value={parsed!.scheduled_time
+                      ? `${new Date(parsed!.scheduled_time).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })} · Flexible`
+                      : 'Flexible'}
+                  />
+                )}
 
                 {/* Pricing — only for drivers */}
                 {parsed!.is_driver && (

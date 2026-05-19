@@ -20,6 +20,7 @@ const NOTIF_ICONS: Record<string, string> = {
   offer_received: '🤝',
   offer_accepted: '✅',
   offer_rejected: '❌',
+  counter_offer: '↩',
   new_message: '💬',
   task_completed: '🎉',
 }

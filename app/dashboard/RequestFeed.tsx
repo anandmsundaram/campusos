@@ -23,6 +23,7 @@ export interface FeedRequest {
   is_driver: boolean | null
   available_seats: number | null
   is_round_trip: boolean | null
+  flexible_time?: boolean | null
   seats_filled: number | null
   auto_accept: boolean | null
   ride_started: boolean | null
@@ -180,6 +181,15 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const [offeredIds, setOfferedIds] = useState<Set<string>>(new Set())
 
   const now = useMemo(() => new Date(), [])
+
+  const myOffersByRequestId = useMemo(() => {
+    const map = new Map<string, 'pending' | 'countered' | 'accepted' | 'rejected'>()
+    for (const o of myOffers) {
+      const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
+      if (req) map.set(req.id, o.status)
+    }
+    return map
+  }, [myOffers])
 
   // Active = open or matched; Past = completed or expired (scheduled_time passed but still open)
   const activeMyRequests = useMemo(
@@ -492,6 +502,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 profile={profile}
                 isOwn={isOwn}
                 hasOffered={offeredIds.has(req.id)}
+                myOfferStatus={myOffersByRequestId.get(req.id) ?? null}
                 onOffer={() => openOfferModal(req)}
                 onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
                 onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
@@ -610,6 +621,7 @@ function RequestCard({
   profile,
   isOwn,
   hasOffered,
+  myOfferStatus = null,
   onOffer,
   onViewOffers,
   inlineOffers = [],
@@ -622,6 +634,7 @@ function RequestCard({
   profile: ProfileInfo | null
   isOwn: boolean
   hasOffered: boolean
+  myOfferStatus?: 'pending' | 'countered' | 'accepted' | 'rejected' | null
   onOffer: () => void
   onViewOffers: () => void
   inlineOffers?: OfferOnCard[]
@@ -705,10 +718,9 @@ function RequestCard({
           {req.scheduled_time && (
             <span className="flex items-center gap-1.5">
               <span className="text-[11px]">🕐</span>
-              {new Date(req.scheduled_time).toLocaleString(undefined, {
-                dateStyle: 'medium',
-                timeStyle: 'short',
-              })}
+              {req.flexible_time
+                ? `${new Date(req.scheduled_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · Flexible`
+                : new Date(req.scheduled_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
             </span>
           )}
           {req.budget != null && (
@@ -769,8 +781,17 @@ function RequestCard({
             >
               View offers
             </button>
-          ) : hasOffered ? (
-            <span className="text-xs font-semibold text-emerald-400">Offer sent ✓</span>
+          ) : (hasOffered || myOfferStatus) ? (
+            <span className={`text-xs font-semibold ${
+              myOfferStatus === 'countered' ? 'text-orange-400'
+              : myOfferStatus === 'rejected' ? 'text-slate-500'
+              : 'text-emerald-400'
+            }`}>
+              {myOfferStatus === 'countered' ? '↩ Counter received'
+               : myOfferStatus === 'accepted' ? '✓ Accepted'
+               : myOfferStatus === 'rejected' ? 'Declined'
+               : 'Offer sent ✓'}
+            </span>
           ) : isFull ? (
             <span className="text-xs font-semibold text-red-400/70">Full</span>
           ) : rideStarted ? (
@@ -840,6 +861,15 @@ function InlineOfferRow({
       message: 'Your offer was accepted!',
       related_request_id: requestId,
     })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase.from('messages').insert({
+        sender_id: user.id,
+        receiver_id: offer.helper_id,
+        request_id: requestId,
+        content: '✓ Offer accepted! Chat here to coordinate.',
+      })
+    }
     setActing(false)
     onAccepted()
   }
@@ -1008,6 +1038,12 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
       message: 'Your counter-offer was accepted!',
       related_request_id: requestId,
     })
+    await supabase.from('messages').insert({
+      sender_id: currentUserId,
+      receiver_id: requesterId,
+      request_id: requestId,
+      content: '✓ Counter accepted! Chat here to coordinate.',
+    })
     setOffers(prev => prev.map(o => o.id === offerId ? { ...o, status: 'accepted' as const } : o))
     setActing(null)
     router.refresh()
@@ -1050,10 +1086,12 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
         const isCountered = offer.status === 'countered'
         const isActing = acting === offer.id
 
+        const agreedPrice = offer.requester_counter ?? offer.counter_budget
         const statusLabel =
           offer.status === 'pending' ? '● Pending'
           : offer.status === 'countered' ? '↩ Counter received'
-          : offer.status === 'accepted' ? '✓ Accepted'
+          : offer.status === 'accepted'
+            ? `✓ Accepted${agreedPrice != null ? ` · $${agreedPrice}` : ''}`
           : 'Declined'
 
         return (
@@ -1236,6 +1274,15 @@ function OffersModal({
         message: `Your offer was accepted for "${title}"`,
         related_request_id: requestId,
       })
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('messages').insert({
+          sender_id: user.id,
+          receiver_id: helperOffer.helper_id,
+          request_id: requestId,
+          content: '✓ Offer accepted! Chat here to coordinate.',
+        })
+      }
     }
 
     setOffers((prev) => prev.map((o) => o.id === offerId ? { ...o, status: 'accepted' as const } : o))
@@ -1418,7 +1465,7 @@ function OfferRowCard({
         </div>
       )}
 
-      {isPending && (
+      {isPending && !showCounter && (
         <div className="mt-3 flex gap-2 flex-wrap">
           <button
             type="button"
@@ -1439,7 +1486,7 @@ function OfferRowCard({
           {onCounter && (
             <button
               type="button"
-              onClick={() => setShowCounter(v => !v)}
+              onClick={() => setShowCounter(true)}
               disabled={isActing}
               className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
             >
@@ -1555,7 +1602,7 @@ function FilterSelect({
 function Modal({ children, onBackdropClick }: { children: React.ReactNode; onBackdropClick: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={onBackdropClick} />
+      <div className="absolute inset-0 bg-black/40" onClick={onBackdropClick} />
       <div className="relative w-full max-w-md rounded-2xl border border-[#1e2d4a] bg-[#0a0f1e] p-6 shadow-2xl shadow-black/60">
         {children}
       </div>
