@@ -84,6 +84,8 @@ interface OfferTarget {
   requestId: string
   title: string
   budget: number | null
+  category: string
+  isDriver: boolean | null
 }
 
 interface OffersTarget {
@@ -159,6 +161,21 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [offeredIds, setOfferedIds] = useState<Set<string>>(new Set())
 
+  const now = useMemo(() => new Date(), [])
+
+  // Active = open or matched; Past = completed or expired (scheduled_time passed but still open)
+  const activeMyRequests = useMemo(
+    () => localMyRequests.filter(r => r.status === 'open' || r.status === 'matched'),
+    [localMyRequests]
+  )
+  const pastMyRequests = useMemo(
+    () => localMyRequests.filter(r =>
+      r.status === 'completed' ||
+      (r.status === 'open' && !!r.scheduled_time && new Date(r.scheduled_time) < now)
+    ),
+    [localMyRequests, now]
+  )
+
   // View-offers modal (requester side)
   const [offersTarget, setOffersTarget] = useState<OffersTarget | null>(null)
 
@@ -190,7 +207,10 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
 
   // Derived request lists
   const filteredRequests = useMemo(() => {
-    let items: FeedRequest[] = tab === 'mine' ? localMyRequests : requests
+    let items: FeedRequest[] = tab === 'mine'
+      ? activeMyRequests
+      // All Open: hide rides (and any scheduled request) whose scheduled_time is in the past
+      : requests.filter(r => !r.scheduled_time || new Date(r.scheduled_time) >= now)
 
     if (catFilter !== 'all') items = items.filter((r) => r.category === catFilter)
     if (urgencyFilter !== 'all') items = items.filter((r) => r.urgency === urgencyFilter)
@@ -202,10 +222,17 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     }
 
     return items
-  }, [tab, requests, localMyRequests, catFilter, urgencyFilter, sortBy])
+  }, [tab, requests, activeMyRequests, catFilter, urgencyFilter, sortBy, now])
+
+  const filteredPastRequests = useMemo(() => {
+    let items: FeedRequest[] = pastMyRequests
+    if (catFilter !== 'all') items = items.filter(r => r.category === catFilter)
+    if (urgencyFilter !== 'all') items = items.filter(r => r.urgency === urgencyFilter)
+    return items
+  }, [pastMyRequests, catFilter, urgencyFilter])
 
   function openOfferModal(req: FeedRequest) {
-    setOfferTarget({ requestId: req.id, title: req.title, budget: req.budget })
+    setOfferTarget({ requestId: req.id, title: req.title, budget: req.budget, category: req.category, isDriver: req.is_driver ?? null })
     setOfferMessage('')
     setCounterBudget('')
     setSubmitError(null)
@@ -242,13 +269,18 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       return
     }
 
-    // Notify the requester
+    // Notify the requester with ride-aware message
     const reqData = [...requests, ...localMyRequests].find(r => r.id === offerTarget.requestId)
     if (reqData?.requester_id) {
+      const notifMsg = offerTarget.category === 'rides' && offerTarget.isDriver
+        ? `New seat request for your ride "${offerTarget.title}"`
+        : offerTarget.category === 'rides'
+        ? `Someone offered a ride for "${offerTarget.title}"`
+        : `You received a new offer on "${offerTarget.title}"`
       await supabase.from('notifications').insert({
         user_id: reqData.requester_id,
         type: 'offer_received',
-        message: `You received a new offer on "${offerTarget.title}"`,
+        message: notifMsg,
         related_request_id: offerTarget.requestId,
       })
     }
@@ -268,7 +300,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
           const labels = { all: 'All Open', mine: 'My Requests', offers: 'My Offers' }
           const counts = {
             all: requests.length,
-            mine: localMyRequests.length,
+            mine: activeMyRequests.length,
             offers: myOffers.length,
           }
           return (
@@ -347,29 +379,82 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       {/* Content */}
       {tab === 'offers' ? (
         <MyOffersTab offers={myOffers} />
+      ) : tab === 'mine' ? (
+        <>
+          {filteredRequests.length === 0 && filteredPastRequests.length === 0 ? (
+            <EmptyState tab="mine" />
+          ) : (
+            <>
+              {filteredRequests.length > 0 && (
+                <div className="flex flex-col gap-3">
+                  {filteredRequests.map((req) => {
+                    const profile = normalizeProfile(req.profiles)
+                    const isOwn = req.requester_id === currentUserId
+                    return (
+                      <RequestCard
+                        key={req.id}
+                        req={req}
+                        profile={profile}
+                        isOwn={isOwn}
+                        hasOffered={offeredIds.has(req.id)}
+                        onOffer={() => openOfferModal(req)}
+                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title })}
+                        inlineOffers={
+                          isOwn && 'request_offers' in req
+                            ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending')
+                            : []
+                        }
+                        onOfferAccepted={(offerId) => handleOfferAccepted(req.id, offerId)}
+                        onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+
+              {filteredPastRequests.length > 0 && (
+                <>
+                  <div className="flex items-center gap-3 mt-6 mb-3">
+                    <div className="flex-1 border-t border-[#1e2d4a]" />
+                    <span className="text-[11px] text-slate-600 uppercase tracking-wider">Past</span>
+                    <div className="flex-1 border-t border-[#1e2d4a]" />
+                  </div>
+                  <div className="flex flex-col gap-3 opacity-60">
+                    {filteredPastRequests.map((req) => (
+                      <RequestCard
+                        key={req.id}
+                        req={req}
+                        profile={normalizeProfile(req.profiles)}
+                        isOwn
+                        hasOffered={false}
+                        onOffer={() => {}}
+                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title })}
+                        inlineOffers={[]}
+                        isPast
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </>
       ) : filteredRequests.length === 0 ? (
-        <EmptyState tab={tab} />
+        <EmptyState tab="all" />
       ) : (
         <div className="flex flex-col gap-3">
           {filteredRequests.map((req) => {
             const profile = normalizeProfile(req.profiles)
             const isOwn = req.requester_id === currentUserId
-            const hasOffered = offeredIds.has(req.id)
-
             return (
               <RequestCard
                 key={req.id}
                 req={req}
                 profile={profile}
                 isOwn={isOwn}
-                hasOffered={hasOffered}
+                hasOffered={offeredIds.has(req.id)}
                 onOffer={() => openOfferModal(req)}
                 onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title })}
-                inlineOffers={
-                  tab === 'mine' && isOwn && 'request_offers' in req
-                    ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending')
-                    : []
-                }
                 onOfferAccepted={(offerId) => handleOfferAccepted(req.id, offerId)}
                 onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
               />
@@ -378,56 +463,69 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
         </div>
       )}
 
-      {/* "I can help" modal */}
-      {offerTarget && (
-        <Modal onBackdropClick={closeOfferModal}>
-          <ModalClose onClick={closeOfferModal} disabled={submitting} />
-          <h3 className="pr-8 text-sm font-semibold text-white">Offer to help</h3>
-          <p className="mt-1 pr-8 text-xs text-slate-500 leading-relaxed">
-            &ldquo;{offerTarget.title}&rdquo;
-          </p>
+      {/* Offer / seat-request / ride-offer modal */}
+      {offerTarget && (() => {
+        const driverPostingSeats = offerTarget.category === 'rides' && offerTarget.isDriver === true
+        const passengerNeedsRide = offerTarget.category === 'rides' && offerTarget.isDriver === false
+        const modalTitle = driverPostingSeats ? 'Request a seat' : passengerNeedsRide ? 'Offer a ride' : 'Offer to help'
+        const msgPlaceholder = driverPostingSeats
+          ? 'e.g. I need 1 seat, happy to split gas…'
+          : passengerNeedsRide
+          ? 'e.g. I have a car and can pick you up…'
+          : 'e.g. I\'m free Saturday morning and have a large car…'
+        const priceLabelShown = !driverPostingSeats // driver sets the price; passenger just requests
+        return (
+          <Modal onBackdropClick={closeOfferModal}>
+            <ModalClose onClick={closeOfferModal} disabled={submitting} />
+            <h3 className="pr-8 text-sm font-semibold text-white">{modalTitle}</h3>
+            <p className="mt-1 pr-8 text-xs text-slate-500 leading-relaxed">
+              &ldquo;{offerTarget.title}&rdquo;
+            </p>
 
-          <form onSubmit={handleSubmitOffer} className="mt-5 flex flex-col gap-4">
-            <ModalField label="Message to requester" optional>
-              <textarea
-                rows={3}
-                value={offerMessage}
-                onChange={(e) => setOfferMessage(e.target.value)}
-                placeholder="e.g. I'm free Saturday morning and have a large car…"
-                disabled={submitting}
-                className={textareaClass}
-              />
-            </ModalField>
-
-            <ModalField label="Propose a different price" optional>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={counterBudget}
-                  onChange={(e) => setCounterBudget(e.target.value)}
-                  placeholder={offerTarget.budget != null ? String(offerTarget.budget) : '0.00'}
+            <form onSubmit={handleSubmitOffer} className="mt-5 flex flex-col gap-4">
+              <ModalField label="Message" optional>
+                <textarea
+                  rows={3}
+                  value={offerMessage}
+                  onChange={(e) => setOfferMessage(e.target.value)}
+                  placeholder={msgPlaceholder}
                   disabled={submitting}
-                  className={`${inputClass} pl-7`}
+                  className={textareaClass}
                 />
+              </ModalField>
+
+              {priceLabelShown && (
+                <ModalField label={passengerNeedsRide ? 'Price offered per seat' : 'Propose a different price'} optional>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={counterBudget}
+                      onChange={(e) => setCounterBudget(e.target.value)}
+                      placeholder={offerTarget.budget != null ? String(offerTarget.budget) : '0.00'}
+                      disabled={submitting}
+                      className={`${inputClass} pl-7`}
+                    />
+                  </div>
+                </ModalField>
+              )}
+
+              {submitError && <ErrorBox>{submitError}</ErrorBox>}
+
+              <div className="flex gap-3">
+                <button type="submit" disabled={submitting} className={primaryBtn}>
+                  {submitting ? 'Sending…' : modalTitle}
+                </button>
+                <button type="button" onClick={closeOfferModal} disabled={submitting} className={secondaryBtn}>
+                  Cancel
+                </button>
               </div>
-            </ModalField>
-
-            {submitError && <ErrorBox>{submitError}</ErrorBox>}
-
-            <div className="flex gap-3">
-              <button type="submit" disabled={submitting} className={primaryBtn}>
-                {submitting ? 'Sending…' : 'Send offer'}
-              </button>
-              <button type="button" onClick={closeOfferModal} disabled={submitting} className={secondaryBtn}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
+            </form>
+          </Modal>
+        )
+      })()}
 
       {/* View-offers modal (requester side) */}
       {offersTarget && (
@@ -459,6 +557,7 @@ function RequestCard({
   inlineOffers = [],
   onOfferAccepted,
   onOfferDeclined,
+  isPast = false,
 }: {
   req: FeedRequest
   profile: ProfileInfo | null
@@ -469,10 +568,17 @@ function RequestCard({
   inlineOffers?: OfferOnCard[]
   onOfferAccepted?: (offerId: string) => void
   onOfferDeclined?: (offerId: string) => void
+  isPast?: boolean
 }) {
   const isRide = req.category === 'rides'
   const isFull = isRide && req.is_driver === true && req.available_seats != null && (req.seats_filled ?? 0) >= req.available_seats
   const rideStarted = isRide && (req.ride_started ?? false)
+  const isExpired = isPast && req.status === 'open'
+
+  // Context-aware action label
+  const ctaLabel = isRide
+    ? (req.is_driver ? 'Request a seat' : 'Offer a ride')
+    : 'I can help'
   const accentClass = isRide
     ? (req.is_driver ? 'bg-blue-500' : 'bg-purple-500')
     : (CATEGORY_ACCENT[req.category] ?? 'bg-slate-500')
@@ -507,6 +613,12 @@ function RequestCard({
           )}
           {isRide && req.is_round_trip && (
             <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
+          )}
+          {isExpired && (
+            <Badge text="Expired" color="text-slate-500 bg-white/[0.02] border-[#1e2d4a]" />
+          )}
+          {req.status === 'completed' && (
+            <Badge text="Completed" color="text-emerald-400 bg-emerald-500/10 border-emerald-500/20" />
           )}
         </div>
 
@@ -581,7 +693,11 @@ function RequestCard({
             <span className="text-xs text-slate-600">{timeAgo(req.created_at)}</span>
           </div>
 
-          {isOwn ? (
+          {isPast ? (
+            req.status === 'completed'
+              ? <span className="text-xs font-semibold text-emerald-400">Completed ✓</span>
+              : <span className="text-xs text-slate-500">Expired</span>
+          ) : isOwn ? (
             <button
               type="button"
               onClick={onViewOffers}
@@ -601,7 +717,7 @@ function RequestCard({
               onClick={onOffer}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-blue-500 active:scale-95"
             >
-              I can help
+              {ctaLabel}
             </button>
           )}
         </div>
