@@ -191,10 +191,13 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     return map
   }, [myOffers])
 
-  // Active = open or matched; Past = completed or expired (scheduled_time passed but still open)
+  // Active = open (not yet past scheduled time) or matched; Past = completed or expired
   const activeMyRequests = useMemo(
-    () => localMyRequests.filter(r => r.status === 'open' || r.status === 'matched'),
-    [localMyRequests]
+    () => localMyRequests.filter(r =>
+      (r.status === 'open' && (!r.scheduled_time || new Date(r.scheduled_time) >= now)) ||
+      r.status === 'matched'
+    ),
+    [localMyRequests, now]
   )
   const pastMyRequests = useMemo(
     () => localMyRequests.filter(r =>
