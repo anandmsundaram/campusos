@@ -88,9 +88,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'text is required' }, { status: 400 })
   }
 
-  const systemPrompt = source === 'whatsapp'
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Chicago' })
+  const DATE_CONTEXT = `\n\nToday is ${today} (US Central Time). Use this to resolve relative dates like "this Saturday", "tomorrow", "next week", etc. into correct ISO 8601 timestamps.`
+  const systemPrompt = (source === 'whatsapp'
     ? SYSTEM_PROMPT + WHATSAPP_SYSTEM_SUFFIX
-    : SYSTEM_PROMPT
+    : SYSTEM_PROMPT) + DATE_CONTEXT
 
   console.log('[parse-request] calling Anthropic with model: claude-haiku-4-5-20251001, source:', source ?? 'direct')
 
