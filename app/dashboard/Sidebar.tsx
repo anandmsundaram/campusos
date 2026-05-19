@@ -183,6 +183,7 @@ function NotificationBell({ userId }: { userId: string }) {
 
 export default function Sidebar({ userName, userEmail, userId, logout }: Props) {
   const pathname = usePathname()
+  const [mobileProfileOpen, setMobileProfileOpen] = useState(false)
 
   const initials = userName
     ? userName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
@@ -261,21 +262,87 @@ export default function Sidebar({ userName, userEmail, userId, logout }: Props) 
 
       {/* ── Mobile bottom nav ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#060b17]/95 backdrop-blur-md border-t border-[#1e2d4a] flex items-stretch h-16">
-        {NAV.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
-              isActive(item.href) ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'
-            }`}
-          >
-            <NavIcon name={item.icon} active={isActive(item.href)} />
-            <span className="text-[9px] leading-none font-medium">
-              {item.label.split(' ')[0]}
-            </span>
-          </Link>
-        ))}
+        {NAV.map((item) => {
+          if (item.icon === 'user') {
+            return (
+              <button
+                key={item.href}
+                type="button"
+                onClick={() => setMobileProfileOpen(true)}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+                  isActive(item.href) ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'
+                }`}
+              >
+                <NavIcon name={item.icon} active={isActive(item.href)} />
+                <span className="text-[9px] leading-none font-medium">Profile</span>
+              </button>
+            )
+          }
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+                isActive(item.href) ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'
+              }`}
+            >
+              <NavIcon name={item.icon} active={isActive(item.href)} />
+              <span className="text-[9px] leading-none font-medium">
+                {item.label.split(' ')[0]}
+              </span>
+            </Link>
+          )
+        })}
       </nav>
+
+      {/* ── Mobile profile sheet ── */}
+      {mobileProfileOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setMobileProfileOpen(false)}
+          />
+          {/* Sheet */}
+          <div className="relative rounded-t-2xl border-t border-[#1e2d4a] bg-[#060b17] px-5 pb-10 pt-5">
+            {/* Handle */}
+            <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-white/10" />
+
+            {/* User info */}
+            <div className="flex items-center gap-3 mb-5">
+              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-sm font-semibold text-white flex-shrink-0">
+                {initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{userName ?? 'User'}</p>
+                <p className="text-xs text-slate-500 truncate">{userEmail}</p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col gap-1">
+              <Link
+                href="/dashboard/profile"
+                onClick={() => setMobileProfileOpen(false)}
+                className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-slate-300 hover:bg-white/[0.05] transition-colors"
+              >
+                <NavIcon name="user" active={false} />
+                View profile
+              </Link>
+
+              <form action={logout}>
+                <button
+                  type="submit"
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-red-400 hover:bg-red-500/[0.08] transition-colors"
+                >
+                  <LogoutIcon />
+                  Sign out
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
