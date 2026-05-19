@@ -130,7 +130,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase
       .from('request_offers')
-      .select('id, message, counter_budget, requester_counter, status, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, profiles(name, rating))')
+      .select('id, message, counter_budget, requester_counter, seats_requested, status, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, profiles(name, rating))')
       .eq('helper_id', user!.id)
       .order('created_at', { ascending: false }),
     supabase.from('requests').select('*', { count: 'exact', head: true }).eq('status', 'open'),

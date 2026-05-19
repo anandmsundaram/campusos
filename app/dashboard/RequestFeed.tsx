@@ -54,6 +54,7 @@ export interface MyOffer {
   created_at: string
   requests: RequestInfo | RequestInfo[] | null
   requester_counter: number | null
+  seats_requested: number | null
 }
 
 interface RequestInfo {
@@ -1041,7 +1042,9 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
     if (e1) { setActError(e1.message); setActing(null); return }
     const isMultiSeat = req?.is_driver && req?.available_seats != null
     if (isMultiSeat) {
-      const newFilled = (req!.seats_filled ?? 0) + 1
+      const offerRow = offers.find(o => o.id === offerId)
+      const seatsToFill = offerRow?.seats_requested ?? 1
+      const newFilled = (req!.seats_filled ?? 0) + seatsToFill
       const newStatus = newFilled >= req!.available_seats! ? 'matched' : 'open'
       const { error: e2 } = await supabase.from('requests').update({ seats_filled: newFilled, status: newStatus }).eq('id', requestId)
       if (e2) { setActError(e2.message); setActing(null); return }
