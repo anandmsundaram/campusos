@@ -7,6 +7,14 @@ import { createClient } from '@/lib/supabase/client'
 
 const YEARS = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'Graduate', 'PhD'] as const
 
+const SPECIAL_CHAR_RE = /[!@#$%^&*()\-_=+\[\]{};':"\\|,.<>/?`~]/
+
+function validatePassword(password: string): string | null {
+  if (password.length < 10) return 'Password must be at least 10 characters.'
+  if (!SPECIAL_CHAR_RE.test(password)) return 'Password must contain at least one special character.'
+  return null
+}
+
 const EDU_BYPASSES = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com'])
 
 function isEduEmail(email: string) {
@@ -29,6 +37,8 @@ export default function SignupPage() {
   const [emailTouched, setEmailTouched] = useState(false)
 
   const eduError = emailTouched && form.email.length > 0 && !isEduEmail(form.email)
+  const pwdHasLength = form.password.length >= 10
+  const pwdHasSpecial = SPECIAL_CHAR_RE.test(form.password)
 
   function set(field: keyof typeof form) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -41,6 +51,12 @@ export default function SignupPage() {
 
     if (!isEduEmail(form.email)) {
       setError('Only .edu email addresses are allowed.')
+      return
+    }
+
+    const pwdError = validatePassword(form.password)
+    if (pwdError) {
+      setError(pwdError)
       return
     }
 
@@ -142,12 +158,24 @@ export default function SignupPage() {
                 type="password"
                 autoComplete="new-password"
                 required
-                minLength={8}
+                minLength={10}
                 value={form.password}
                 onChange={set('password')}
-                placeholder="Min. 8 characters"
+                placeholder="Min. 10 characters + special char"
                 className={inputClass}
               />
+              {form.password.length > 0 && (
+                <ul className="mt-0.5 space-y-0.5 pl-0.5">
+                  {[
+                    { met: pwdHasLength, text: 'At least 10 characters' },
+                    { met: pwdHasSpecial, text: 'At least one special character (!@#$…)' },
+                  ].map(({ met, text }) => (
+                    <li key={text} className={`flex items-center gap-1.5 text-[11px] transition-colors ${met ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      <span>{met ? '✓' : '○'}</span>{text}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="flex flex-col gap-1.5">
