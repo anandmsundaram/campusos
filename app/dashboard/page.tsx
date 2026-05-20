@@ -131,7 +131,7 @@ export default async function DashboardPage() {
   // ── My requests ────────────────────────────────────────────────────────────
   const { data: myRequestsRaw, error: myReqError } = await supabase
     .from('requests')
-    .select(`${FULL_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, seats_requested, status, profiles(name, rating))`)
+    .select(`${FULL_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles(name, rating))`)
     .eq('requester_id', user!.id)
     .order('created_at', { ascending: false })
     .limit(50)
@@ -142,7 +142,7 @@ export default async function DashboardPage() {
   if (isSchemaErr(myReqError?.message)) {
     const { data: fallback } = await supabase
       .from('requests')
-      .select(`${BASE_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, seats_requested, status, profiles(name, rating))`)
+      .select(`${BASE_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles(name, rating))`)
       .eq('requester_id', user!.id)
       .order('created_at', { ascending: false })
       .limit(50)
@@ -152,16 +152,14 @@ export default async function DashboardPage() {
   // ── Remaining parallel queries ─────────────────────────────────────────────
   const [
     { data: myOffersRaw },
-    { count: activeCount },
     { data: driverRideRaw },
     { data: passengerRidesRaw },
   ] = await Promise.all([
     supabase
       .from('request_offers')
-      .select('id, message, counter_budget, requester_counter, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, profiles(name, rating))')
+      .select('id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, profiles(name, rating))')
       .eq('helper_id', user!.id)
       .order('created_at', { ascending: false }),
-    supabase.from('requests').select('*', { count: 'exact', head: true }).eq('status', 'open'),
     // Next ride as driver — only migration-005 columns to avoid schema cache risk
     supabase
       .from('requests')
@@ -235,39 +233,66 @@ export default async function DashboardPage() {
   })()
 
   // ── Financial summary (derived from already-fetched data) ─────────────────
+  // Who earns vs pays:
+  //   Driver (requester, is_driver=true)  → EARNS from passengers
+  //   Passenger (offer on is_driver=true) → PAYS the driver
+  //   Task requester                      → PAYS the helper
+  //   Helper/driver (offer on non-driver) → EARNS from requester
   interface FinOffer {
     status: string
     counter_budget: number | null
     requester_counter: number | null
+    final_agreed_price?: number | null
     seats_requested: number | null
-    requests: { status: string; budget: number | null } | { status: string; budget: number | null }[] | null
+    requests: { status: string; budget: number | null; is_driver?: boolean | null } | { status: string; budget: number | null; is_driver?: boolean | null }[] | null
   }
   interface FinReq {
     status: string
     budget: number | null
-    request_offers?: { status: string; counter_budget: number | null; requester_counter: number | null; seats_requested: number | null }[]
+    is_driver?: boolean | null
+    request_offers?: { status: string; counter_budget: number | null; requester_counter: number | null; final_agreed_price?: number | null; seats_requested: number | null }[]
   }
 
   let inPlay = 0, earned = 0, owed = 0
 
+  // Offers I made on OTHERS' requests (I am the helper or the passenger)
   for (const o of (myOffersRaw ?? []) as FinOffer[]) {
     if (o.status !== 'accepted') continue
     const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
     if (!req) continue
-    const price = (o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
-    const seats = o.seats_requested ?? 1
-    if (req.status === 'completed') earned += price * seats
-    else inPlay += price * seats
-  }
+    const price = (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
+    const total = price * (o.seats_requested ?? 1)
 
-  for (const r of myReqData as FinReq[]) {
-    if (r.status !== 'open' && r.status !== 'matched') continue
-    for (const o of r.request_offers ?? []) {
-      if (o.status !== 'accepted') continue
-      const price = (o.requester_counter ?? o.counter_budget ?? r.budget) ?? 0
-      owed += price * (o.seats_requested ?? 1)
+    if (req.is_driver === true) {
+      // I booked seats as a PASSENGER → I owe the driver; only count unsettled
+      if (req.status !== 'completed') owed += total
+    } else {
+      // I am the HELPER (task or driving for a ride-seeker) → I earn
+      if (req.status === 'completed') earned += total
+      else inPlay += total
     }
   }
+
+  // My OWN requests (I am the requester/driver/poster)
+  for (const r of myReqData as FinReq[]) {
+    for (const o of r.request_offers ?? []) {
+      if (o.status !== 'accepted') continue
+      const price = (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? r.budget) ?? 0
+      const total = price * (o.seats_requested ?? 1)
+
+      if (r.is_driver === true) {
+        // I am the DRIVER — passengers pay me
+        if (r.status === 'completed') earned += total
+        else inPlay += total
+      } else {
+        // I am a task requester or passenger seeking a driver — I pay helpers
+        if (r.status !== 'completed') owed += total
+      }
+    }
+  }
+
+  // Active = MY own open/matched requests (not a global count)
+  const active = (myReqData as FinReq[]).filter(r => r.status === 'open' || r.status === 'matched').length
 
   return (
     <div className="relative min-h-screen">
@@ -285,7 +310,7 @@ export default async function DashboardPage() {
 
         {/* Finance strip */}
         <div className="mt-10">
-          <FinanceStrip inPlay={inPlay} earned={earned} owed={owed} active={activeCount ?? 0} />
+          <FinanceStrip inPlay={inPlay} earned={earned} owed={owed} active={active} />
         </div>
 
         {/* My Next Ride widget — only rendered when a ride exists */}

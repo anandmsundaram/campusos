@@ -39,6 +39,7 @@ export interface OfferOnCard {
   status: 'pending' | 'countered' | 'accepted' | 'rejected'
   profiles: ProfileInfo | ProfileInfo[] | null
   requester_counter: number | null
+  final_agreed_price: number | null
   seats_requested: number | null
 }
 
@@ -55,6 +56,7 @@ export interface MyOffer {
   created_at: string
   requests: RequestInfo | RequestInfo[] | null
   requester_counter: number | null
+  final_agreed_price: number | null
   seats_requested: number | null
 }
 
@@ -88,6 +90,7 @@ interface OfferRow {
   status: 'pending' | 'countered' | 'accepted' | 'rejected'
   profiles: ProfileInfo | ProfileInfo[] | null
   requester_counter: number | null
+  final_agreed_price: number | null
   seats_requested: number | null
 }
 
@@ -545,7 +548,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 hasOffered={offeredIds.has(req.id)}
                 myOfferStatus={myOffersByRequestId.get(req.id)?.status ?? null}
                 myOfferCounter={myOffersByRequestId.get(req.id)?.requester_counter ?? null}
-                myOfferAgreedPrice={(() => { const o = myOffersByRequestId.get(req.id); return o ? (o.requester_counter ?? o.counter_budget) : null })()}
+                myOfferAgreedPrice={(() => { const o = myOffersByRequestId.get(req.id); return o ? (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget) : null })()}
                 myOfferSeats={myOffersByRequestId.get(req.id)?.seats_requested ?? 1}
                 onGoToOffers={() => setTab('offers')}
                 onOffer={() => openOfferModal(req)}
@@ -821,7 +824,7 @@ function RequestCard({
         {/* Passengers section — driver's own card with accepted bookings */}
         {isOwn && isRide && req.is_driver && acceptedOffers && acceptedOffers.length > 0 && (() => {
           const totalLocked = acceptedOffers.reduce((sum, o) => {
-            const p = (o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
+            const p = (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
             return sum + p * (o.seats_requested ?? 1)
           }, 0)
           const seatsOpen = (req.available_seats ?? 0) - acceptedOffers.reduce((s, o) => s + (o.seats_requested ?? 1), 0)
@@ -841,7 +844,7 @@ function RequestCard({
               <div className="space-y-1.5">
                 {acceptedOffers.map(o => {
                   const pax = normalizeProfile(o.profiles)
-                  const agreedPrice = o.requester_counter ?? o.counter_budget
+                  const agreedPrice = o.final_agreed_price ?? o.requester_counter ?? o.counter_budget
                   const seatCount = o.seats_requested ?? 1
                   return (
                     <div key={o.id} className="flex items-center gap-2 rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-3 py-2">
@@ -993,18 +996,16 @@ function InlineOfferRow({
     setActing(true)
     setRowError(null)
     const supabase = createClient()
-    const { error: e1 } = await supabase.from('request_offers').update({ status: 'accepted' }).eq('id', offer.id)
-    if (e1) { setRowError(e1.message); setActing(false); return }
-    const isMultiSeat = isDriver && availableSeats != null
-    if (isMultiSeat) {
-      const seatsToFill = offer.seats_requested ?? 1
-      const newFilled = (seatsFilled ?? 0) + seatsToFill
-      const newStatus = newFilled >= availableSeats! ? 'matched' : 'open'
-      const { error: e2 } = await supabase.from('requests').update({ seats_filled: newFilled, status: newStatus }).eq('id', requestId)
-      if (e2) { setRowError(e2.message); setActing(false); return }
-    } else {
-      const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
-      if (e2) { setRowError(e2.message); setActing(false); return }
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setRowError('Not authenticated'); setActing(false); return }
+    const { data: result, error } = await supabase.rpc('accept_offer_atomic', {
+      p_offer_id: offer.id,
+      p_accepted_by: user.id,
+    })
+    if (error || !result?.ok) {
+      setRowError(error?.message ?? result?.error ?? 'Failed to accept offer')
+      setActing(false)
+      return
     }
     await supabase.from('notifications').insert({
       user_id: offer.helper_id,
@@ -1012,15 +1013,12 @@ function InlineOfferRow({
       message: 'Your offer was accepted!',
       related_request_id: requestId,
     })
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await supabase.from('messages').insert({
-        sender_id: user.id,
-        receiver_id: offer.helper_id,
-        request_id: requestId,
-        content: '✓ Offer accepted! Chat here to coordinate.',
-      })
-    }
+    await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: offer.helper_id,
+      request_id: requestId,
+      content: '✓ Offer accepted! Chat here to coordinate.',
+    })
     setActing(false)
     onAccepted()
   }
@@ -1188,23 +1186,18 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
     router.refresh()
   }
 
-  async function acceptCounter(offerId: string, requestId: string, requesterId: string, req: RequestInfo | null) {
+  async function acceptCounter(offerId: string, requestId: string, requesterId: string) {
     setActing(offerId)
     setActError(null)
     const supabase = createClient()
-    const { error: e1 } = await supabase.from('request_offers').update({ status: 'accepted' }).eq('id', offerId)
-    if (e1) { setActError(e1.message); setActing(null); return }
-    const isMultiSeat = req?.is_driver && req?.available_seats != null
-    if (isMultiSeat) {
-      const offerRow = offers.find(o => o.id === offerId)
-      const seatsToFill = offerRow?.seats_requested ?? 1
-      const newFilled = (req!.seats_filled ?? 0) + seatsToFill
-      const newStatus = newFilled >= req!.available_seats! ? 'matched' : 'open'
-      const { error: e2 } = await supabase.from('requests').update({ seats_filled: newFilled, status: newStatus }).eq('id', requestId)
-      if (e2) { setActError(e2.message); setActing(null); return }
-    } else {
-      const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
-      if (e2) { setActError(e2.message); setActing(null); return }
+    const { data: result, error } = await supabase.rpc('accept_offer_atomic', {
+      p_offer_id: offerId,
+      p_accepted_by: currentUserId,
+    })
+    if (error || !result?.ok) {
+      setActError(error?.message ?? result?.error ?? 'Failed to accept counter-offer')
+      setActing(null)
+      return
     }
     await supabase.from('notifications').insert({
       user_id: requesterId,
@@ -1260,7 +1253,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
         const isCountered = offer.status === 'countered'
         const isActing = acting === offer.id
 
-        const agreedPrice = offer.requester_counter ?? offer.counter_budget
+        const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
         const seats = offer.seats_requested ?? 1
         const statusLabel =
           offer.status === 'pending' ? '● Pending'
@@ -1335,7 +1328,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                 <div className="mb-3 flex gap-2">
                   <button
                     type="button"
-                    onClick={() => acceptCounter(offer.id, req.id, req.requester_id, req)}
+                    onClick={() => acceptCounter(offer.id, req.id, req.requester_id)}
                     disabled={isActing}
                     className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
                   >
@@ -1428,7 +1421,7 @@ function OffersModal({
     const supabase = createClient()
     const { data, error } = await supabase
       .from('request_offers')
-      .select('id, helper_id, message, counter_budget, requester_counter, seats_requested, status, profiles(name, rating)')
+      .select('id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles(name, rating)')
       .eq('request_id', requestId)
       .order('created_at', { ascending: true })
 
@@ -1446,23 +1439,20 @@ function OffersModal({
     setActing(offerId)
     setActionError(null)
     const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setActionError('Not authenticated'); setActing(null); return }
 
-    const { error: e1 } = await supabase.from('request_offers').update({ status: 'accepted' }).eq('id', offerId)
-    if (e1) { setActionError(e1.message); setActing(null); return }
-
-    const helperOffer = offers.find(o => o.id === offerId)
-    const seatsToFill = helperOffer?.seats_requested ?? 1
-    if (isMultiSeat) {
-      const newFilled = localSeatsFilled + seatsToFill
-      const newStatus = newFilled >= availableSeats! ? 'matched' : 'open'
-      const { error: e2 } = await supabase.from('requests').update({ seats_filled: newFilled, status: newStatus }).eq('id', requestId)
-      if (e2) { setActionError(e2.message); setActing(null); return }
-      setLocalSeatsFilled(newFilled)
-    } else {
-      const { error: e2 } = await supabase.from('requests').update({ status: 'matched' }).eq('id', requestId)
-      if (e2) { setActionError(e2.message); setActing(null); return }
+    const { data: result, error } = await supabase.rpc('accept_offer_atomic', {
+      p_offer_id: offerId,
+      p_accepted_by: user.id,
+    })
+    if (error || !result?.ok) {
+      setActionError(error?.message ?? result?.error ?? 'Failed to accept offer')
+      setActing(null)
+      return
     }
 
+    const helperOffer = offers.find(o => o.id === offerId)
     if (helperOffer) {
       await supabase.from('notifications').insert({
         user_id: helperOffer.helper_id,
@@ -1470,17 +1460,18 @@ function OffersModal({
         message: `Your offer was accepted for "${title}"`,
         related_request_id: requestId,
       })
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        await supabase.from('messages').insert({
-          sender_id: user.id,
-          receiver_id: helperOffer.helper_id,
-          request_id: requestId,
-          content: '✓ Offer accepted! Chat here to coordinate.',
-        })
-      }
+      await supabase.from('messages').insert({
+        sender_id: user.id,
+        receiver_id: helperOffer.helper_id,
+        request_id: requestId,
+        content: '✓ Offer accepted! Chat here to coordinate.',
+      })
     }
 
+    // Sync local seat count from authoritative DB response
+    if (isMultiSeat && result.seats_filled != null) {
+      setLocalSeatsFilled(result.seats_filled as number)
+    }
     setOffers((prev) => prev.map((o) => o.id === offerId ? { ...o, status: 'accepted' as const } : o))
     setActing(null)
     if (!isMultiSeat) onAccepted()
@@ -1625,7 +1616,7 @@ function OfferRowCard({
         </div>
         {offer.status === 'accepted' && (
           <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
-            Accepted{(offer.requester_counter ?? offer.counter_budget) != null ? ` · $${offer.requester_counter ?? offer.counter_budget}` : ''}
+            Accepted{(offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget) != null ? ` · $${offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget}` : ''}
           </span>
         )}
         {offer.status === 'rejected' && (
