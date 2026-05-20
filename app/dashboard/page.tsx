@@ -124,7 +124,6 @@ export default async function DashboardPage() {
   const [
     { data: myOffersRaw },
     { count: activeCount },
-    { count: matchedCount },
     { data: driverRideRaw },
     { data: passengerRidesRaw },
   ] = await Promise.all([
@@ -134,7 +133,6 @@ export default async function DashboardPage() {
       .eq('helper_id', user!.id)
       .order('created_at', { ascending: false }),
     supabase.from('requests').select('*', { count: 'exact', head: true }).eq('status', 'open'),
-    supabase.from('requests').select('*', { count: 'exact', head: true }).in('status', ['matched', 'completed']),
     // Next ride as driver — only migration-005 columns to avoid schema cache risk
     supabase
       .from('requests')
@@ -207,6 +205,41 @@ export default async function DashboardPage() {
     return null
   })()
 
+  // ── Financial summary (derived from already-fetched data) ─────────────────
+  interface FinOffer {
+    status: string
+    counter_budget: number | null
+    requester_counter: number | null
+    seats_requested: number | null
+    requests: { status: string; budget: number | null } | { status: string; budget: number | null }[] | null
+  }
+  interface FinReq {
+    status: string
+    budget: number | null
+    request_offers?: { status: string; counter_budget: number | null; requester_counter: number | null; seats_requested: number | null }[]
+  }
+
+  let inPlay = 0, earned = 0, owed = 0
+
+  for (const o of (myOffersRaw ?? []) as FinOffer[]) {
+    if (o.status !== 'accepted') continue
+    const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
+    if (!req) continue
+    const price = (o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
+    const seats = o.seats_requested ?? 1
+    if (req.status === 'completed') earned += price * seats
+    else inPlay += price * seats
+  }
+
+  for (const r of myReqData as FinReq[]) {
+    if (r.status !== 'open' && r.status !== 'matched') continue
+    for (const o of r.request_offers ?? []) {
+      if (o.status !== 'accepted') continue
+      const price = (o.requester_counter ?? o.counter_budget ?? r.budget) ?? 0
+      owed += price * (o.seats_requested ?? 1)
+    }
+  }
+
   return (
     <div className="relative min-h-screen">
       {/* Ambient glow */}
@@ -221,10 +254,9 @@ export default async function DashboardPage() {
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-12">
         <RequestInput />
 
-        {/* Stats bar */}
-        <div className="mt-10 grid grid-cols-2 gap-3">
-          <StatCard label="Active Requests" value={activeCount ?? 0} icon="🟢" />
-          <StatCard label="Completed Tasks" value={matchedCount ?? 0} icon="✅" />
+        {/* Finance strip */}
+        <div className="mt-10">
+          <FinanceStrip inPlay={inPlay} earned={earned} owed={owed} active={activeCount ?? 0} />
         </div>
 
         {/* My Next Ride widget — only rendered when a ride exists */}
@@ -248,16 +280,40 @@ export default async function DashboardPage() {
   )
 }
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
+// ─── Finance strip ────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, icon }: { label: string; value: number; icon: string }) {
+function fmtDollars(n: number) {
+  if (n === 0) return '$0'
+  return n % 1 === 0 ? `$${n.toLocaleString()}` : `$${n.toFixed(2)}`
+}
+
+function FinanceStrip({ inPlay, earned, owed, active }: {
+  inPlay: number; earned: number; owed: number; active: number
+}) {
   return (
-    <div className="group rounded-xl border border-[#1e2d4a] bg-[#0d1526] px-4 py-4 transition-colors hover:border-blue-500/20">
-      <div className="flex items-center justify-between">
-        <p className="text-2xl font-bold text-white tabular-nums">{value.toLocaleString()}</p>
-        <span className="text-lg opacity-60">{icon}</span>
-      </div>
-      <p className="mt-1.5 text-xs text-slate-500 leading-tight">{label}</p>
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <FinStat label="In Play" sub="pending earnings" value={fmtDollars(inPlay)} dim={inPlay === 0} accent="emerald" />
+      <FinStat label="Earned" sub="as helper" value={fmtDollars(earned)} dim={earned === 0} accent="blue" />
+      <FinStat label="To Pay" sub="you committed" value={fmtDollars(owed)} dim={owed === 0} accent="orange" />
+      <FinStat label="Active" sub="open requests" value={active.toLocaleString()} dim={active === 0} accent="slate" />
+    </div>
+  )
+}
+
+function FinStat({ label, sub, value, dim, accent }: {
+  label: string; sub: string; value: string; dim: boolean; accent: 'emerald' | 'blue' | 'orange' | 'slate'
+}) {
+  const valueColor = dim ? 'text-slate-600' : {
+    emerald: 'text-emerald-400',
+    blue: 'text-blue-400',
+    orange: 'text-orange-400',
+    slate: 'text-white',
+  }[accent]
+  return (
+    <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] px-4 py-3">
+      <p className={`text-xl font-bold tabular-nums ${valueColor}`}>{value}</p>
+      <p className="mt-0.5 text-[11px] font-medium text-slate-400 leading-tight">{label}</p>
+      <p className="text-[10px] text-slate-600 leading-tight">{sub}</p>
     </div>
   )
 }

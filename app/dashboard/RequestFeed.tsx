@@ -456,6 +456,11 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                             ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending' || o.status === 'countered')
                             : []
                         }
+                        acceptedOffers={
+                          isOwn && 'request_offers' in req
+                            ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'accepted')
+                            : undefined
+                        }
                         onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
                         onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
                         onOfferCountered={(offerId, amount) => handleOfferCountered(req.id, offerId, amount)}
@@ -508,6 +513,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 hasOffered={offeredIds.has(req.id)}
                 myOfferStatus={myOffersByRequestId.get(req.id)?.status ?? null}
                 myOfferCounter={myOffersByRequestId.get(req.id)?.requester_counter ?? null}
+                myOfferAgreedPrice={(() => { const o = myOffersByRequestId.get(req.id); return o ? (o.requester_counter ?? o.counter_budget) : null })()}
+                myOfferSeats={myOffersByRequestId.get(req.id)?.seats_requested ?? 1}
                 onGoToOffers={() => setTab('offers')}
                 onOffer={() => openOfferModal(req)}
                 onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
@@ -629,6 +636,9 @@ function RequestCard({
   hasOffered,
   myOfferStatus = null,
   myOfferCounter = null,
+  myOfferAgreedPrice = null,
+  myOfferSeats = 1,
+  acceptedOffers,
   onOffer,
   onViewOffers,
   onGoToOffers,
@@ -644,6 +654,9 @@ function RequestCard({
   hasOffered: boolean
   myOfferStatus?: 'pending' | 'countered' | 'accepted' | 'rejected' | null
   myOfferCounter?: number | null
+  myOfferAgreedPrice?: number | null
+  myOfferSeats?: number
+  acceptedOffers?: OfferOnCard[]
   onOffer: () => void
   onViewOffers: () => void
   onGoToOffers?: () => void
@@ -741,6 +754,29 @@ function RequestCard({
           )}
         </div>
 
+        {/* Earnings summary — driver's own card with accepted seat bookings */}
+        {isOwn && isRide && req.is_driver && acceptedOffers && acceptedOffers.length > 0 && (() => {
+          const totalLocked = acceptedOffers.reduce((sum, o) => {
+            const p = (o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
+            return sum + p * (o.seats_requested ?? 1)
+          }, 0)
+          const seatsSold = acceptedOffers.reduce((sum, o) => sum + (o.seats_requested ?? 1), 0)
+          const seatsOpen = (req.available_seats ?? 0) - seatsSold
+          return (
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-500/10 bg-emerald-500/[0.05] px-3 py-2 text-xs">
+              <span className="font-semibold text-emerald-400">${totalLocked} locked in</span>
+              <span className="text-slate-700">·</span>
+              <span className="text-slate-500">{seatsSold} seat{seatsSold !== 1 ? 's' : ''} sold</span>
+              {seatsOpen > 0 && (
+                <>
+                  <span className="text-slate-700">·</span>
+                  <span className="text-slate-500">{seatsOpen} open @ ${req.budget}</span>
+                </>
+              )}
+            </div>
+          )
+        })()}
+
         {/* Inline pending offers — shown in My Requests tab for the requester */}
         {inlineOffers.length > 0 && (
           <div className="mb-4 space-y-2">
@@ -805,9 +841,10 @@ function RequestCard({
                 myOfferStatus === 'rejected' ? 'text-slate-500'
                 : 'text-emerald-400'
               }`}>
-                {myOfferStatus === 'accepted' ? '✓ Accepted'
-                 : myOfferStatus === 'rejected' ? 'Declined'
-                 : 'Offer sent ✓'}
+                {myOfferStatus === 'accepted'
+                  ? `✓ Accepted${myOfferAgreedPrice != null ? ` · ${myOfferSeats > 1 ? `${myOfferSeats}× ` : ''}$${myOfferAgreedPrice}` : ''}`
+                  : myOfferStatus === 'rejected' ? 'Declined'
+                  : 'Offer sent ✓'}
               </span>
             )
           ) : isFull ? (
