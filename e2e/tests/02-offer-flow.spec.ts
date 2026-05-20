@@ -76,9 +76,7 @@ test.describe('Passenger offer flow', () => {
       await goToMyOffers(pax1Page)
 
       // The offer card in My Offers tab should show accepted status
-      const offerCard = pax1Page.locator('[data-testid="my-offer-card"]').filter({
-        has: pax1Page.locator(`[data-offer-status="accepted"]`),
-      })
+      const offerCard = pax1Page.locator('[data-testid="my-offer-card"][data-offer-status="accepted"]')
       await expect(offerCard.first()).toBeVisible({ timeout: 10_000 })
     } finally {
       await cleanupRunData(runId)

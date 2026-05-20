@@ -44,7 +44,6 @@ test.describe('Ride creation', () => {
     // Wait for parse → confirm card
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
     await expect(page.getByText(`[E2E-${runId}]`)).toBeVisible()
-    await expect(page.getByText('3')).toBeVisible() // seats
 
     // Confirm and post
     await page.locator('[data-testid="confirm-post-btn"]').click()

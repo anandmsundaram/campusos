@@ -237,3 +237,47 @@ export async function cleanupAllE2EData(): Promise<void> {
     .like('title', '[E2E-%')
   if (error) console.warn('[e2e/db] global cleanup warning:', error.message)
 }
+
+// ─── Authenticated client for RPC tests ──────────────────────────────────────
+// complete_request_safe and cancel_request_safe use auth.uid() internally.
+// The service-role admin client has no JWT, so auth.uid() returns NULL and
+// those functions return "Not authenticated". Use authenticatedClient() instead
+// when a test needs to exercise the RPCs themselves (not just set up state).
+
+/**
+ * Sign in as the given user with the anon key and return the authenticated client.
+ * Each call creates a fresh session — no caching.
+ */
+export async function authenticatedClient(email: string, password: string): Promise<SupabaseClient> {
+  const url = process.env.E2E_SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey = process.env.E2E_SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anonKey) throw new Error('Missing E2E_SUPABASE_URL or E2E_SUPABASE_ANON_KEY')
+  const client = createClient(url, anonKey, { auth: { autoRefreshToken: false, persistSession: false } })
+  const { error } = await client.auth.signInWithPassword({ email, password })
+  if (error) throw new Error(`Test sign-in failed for ${email}: ${error.message}`)
+  return client
+}
+
+// ─── Direct DB state helpers ──────────────────────────────────────────────────
+// Bypass RPC auth for tests that only need state set up, not the RPC itself.
+
+/** Directly mark a request as completed without going through the RPC. */
+export async function completeRequestDirect(requestId: string): Promise<void> {
+  const { error } = await adminClient()
+    .from('requests')
+    .update({ status: 'completed' })
+    .eq('id', requestId)
+  if (error) throw error
+}
+
+/** Directly mark a request as cancelled without going through the RPC. */
+export async function cancelRequestDirect(
+  requestId: string,
+  reason = 'cancelled_by_requester',
+): Promise<void> {
+  const { error } = await adminClient()
+    .from('requests')
+    .update({ status: 'cancelled', cancellation_reason: reason })
+    .eq('id', requestId)
+  if (error) throw error
+}

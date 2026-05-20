@@ -271,7 +271,7 @@ export default function MyRequestsPage() {
       .from('requests')
       .select(`
         id, title, category, urgency, status, location, budget, scheduled_time, created_at,
-        request_offers(id, helper_id, status, counter_budget, message, profiles(name, rating))
+        request_offers(id, helper_id, status, counter_budget, message, profiles!helper_id(name, rating))
       `)
       .eq('requester_id', user.id)
       .order('created_at', { ascending: false })

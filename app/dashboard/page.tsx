@@ -4,7 +4,7 @@ import RequestInput from './RequestInput'
 import RequestFeed, { type FeedRequest, type MyOffer, type FeedRequestWithOffers } from './RequestFeed'
 
 function isSchemaErr(msg?: string | null) {
-  return !!msg && /schema cache|Could not find the/i.test(msg)
+  return !!msg && /schema cache|Could not find the|more than one relationship/i.test(msg)
 }
 
 // ─── Types for next-ride widget ───────────────────────────────────────────────
@@ -131,7 +131,7 @@ export default async function DashboardPage() {
   // ── My requests ────────────────────────────────────────────────────────────
   const { data: myRequestsRaw, error: myReqError } = await supabase
     .from('requests')
-    .select(`${FULL_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles(name, rating))`)
+    .select(`${FULL_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles!helper_id(name, rating))`)
     .eq('requester_id', user!.id)
     .order('created_at', { ascending: false })
     .limit(50)
@@ -142,7 +142,7 @@ export default async function DashboardPage() {
   if (isSchemaErr(myReqError?.message)) {
     const { data: fallback } = await supabase
       .from('requests')
-      .select(`${BASE_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles(name, rating))`)
+      .select(`${BASE_SELECT}, request_offers(id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles!helper_id(name, rating))`)
       .eq('requester_id', user!.id)
       .order('created_at', { ascending: false })
       .limit(50)
@@ -157,7 +157,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase
       .from('request_offers')
-      .select('id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, profiles(name, rating))')
+      .select('id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, profiles!requester_id(name, rating))')
       .eq('helper_id', user!.id)
       .order('created_at', { ascending: false }),
     // Next ride as driver — only migration-005 columns to avoid schema cache risk
@@ -174,7 +174,7 @@ export default async function DashboardPage() {
     // Next ride as confirmed passenger — only migration-005 columns
     supabase
       .from('ride_passengers')
-      .select('price_agreed, requests(title, origin_city, destination_city, scheduled_time, available_seats, profiles(name))')
+      .select('price_agreed, requests(title, origin_city, destination_city, scheduled_time, available_seats, profiles!requester_id(name))')
       .eq('passenger_id', user!.id)
       .eq('status', 'confirmed')
       .limit(20),

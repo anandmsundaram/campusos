@@ -110,14 +110,14 @@ export default function MyOffersPage() {
         .from('request_offers')
         .select(`
           id, message, counter_budget, status, created_at,
-          requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, profiles(name, rating))
+          requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, profiles!requester_id(name, rating))
         `)
         .eq('helper_id', user.id)
         .order('created_at', { ascending: false }),
 
       supabase
         .from('ride_passengers')
-        .select('id, status, price_agreed, created_at, requests(id, title, origin_city, destination_city, scheduled_time, profiles(name))')
+        .select('id, status, price_agreed, created_at, requests(id, title, origin_city, destination_city, scheduled_time, profiles!requester_id(name))')
         .eq('passenger_id', user.id)
         .order('created_at', { ascending: false }),
     ])

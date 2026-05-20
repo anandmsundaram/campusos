@@ -16,6 +16,7 @@ import {
   driverCreds,
   pax1Creds,
   cleanupRunData,
+  authenticatedClient,
 } from '../helpers/db'
 
 test.describe('Completion flow', () => {
@@ -23,13 +24,15 @@ test.describe('Completion flow', () => {
     const driverId = await getUserId(driverCreds().email)
     const pax1Id = await getUserId(pax1Creds().email)
 
-    // Seed: ride that happened 2 hours ago (past the 1h grace window)
+    // Seed: ride 30 min in the past — past scheduled_time but within the 1h auto-complete
+    // grace window. Use 2 available seats so accepting 1 keeps status='open' (not 'matched'),
+    // which puts the card in the Past section without triggering auto-complete on page load.
     const requestId = await seedDriverRide({
       requesterId: driverId,
       runId,
-      availableSeats: 1,
+      availableSeats: 2,
       budget: 20,
-      scheduledOffsetSeconds: -7200, // 2h in the past
+      scheduledOffsetSeconds: -1800, // 30 min in the past — within grace window
     })
 
     const offerId = await seedOffer({ requestId, helperId: pax1Id, seatsRequested: 1 })
@@ -76,8 +79,8 @@ test.describe('Completion flow', () => {
     await seedAcceptOffer(offerId, requestId, 1)
 
     try {
-      const { adminClient } = await import('../helpers/db')
-      const db = adminClient()
+      // complete_request_safe uses auth.uid() — must sign in as the requester
+      const db = await authenticatedClient(driverCreds().email, driverCreds().password)
 
       // First completion
       const { data: r1 } = await db.rpc('complete_request_safe', { p_request_id: requestId })
@@ -87,8 +90,9 @@ test.describe('Completion flow', () => {
       const { data: r2 } = await db.rpc('complete_request_safe', { p_request_id: requestId })
       expect(r2?.ok).toBe(true)
 
-      // DB state
-      const { data: req } = await db.from('requests').select('status').eq('id', requestId).single()
+      // DB state (admin client is fine for reads)
+      const { adminClient: adminCl } = await import('../helpers/db')
+      const { data: req } = await adminCl().from('requests').select('status').eq('id', requestId).single()
       expect(req?.status).toBe('completed')
     } finally {
       await cleanupRunData(`${runId}-idem`)

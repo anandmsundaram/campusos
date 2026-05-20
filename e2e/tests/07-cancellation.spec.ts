@@ -21,13 +21,13 @@ import {
   driverCreds,
   pax1Creds,
   cleanupRunData,
+  authenticatedClient,
+  cancelRequestDirect,
 } from '../helpers/db'
 
 test.describe('Cancellation flow', () => {
   test('cancel_request_safe transitions status and RPC blocks subsequent completion', async ({ runId }) => {
     const driverId = await getUserId(driverCreds().email)
-    const { adminClient } = await import('../helpers/db')
-    const db = adminClient()
 
     const requestId = await seedDriverRide({
       requesterId: driverId,
@@ -37,15 +37,22 @@ test.describe('Cancellation flow', () => {
     })
 
     try {
-      // Cancel it
+      // cancel_request_safe uses auth.uid() — sign in as the requester
+      const db = await authenticatedClient(driverCreds().email, driverCreds().password)
+
       const { data: cancelResult } = await db.rpc('cancel_request_safe', {
         p_request_id: requestId,
         p_reason: 'cancelled_by_requester',
       })
       expect(cancelResult?.ok).toBe(true)
 
-      // DB state
-      const { data: req } = await db.from('requests').select('status, cancellation_reason').eq('id', requestId).single()
+      // DB state (admin client is fine for reads)
+      const { adminClient } = await import('../helpers/db')
+      const { data: req } = await adminClient()
+        .from('requests')
+        .select('status, cancellation_reason')
+        .eq('id', requestId)
+        .single()
       expect(req?.status).toBe('cancelled')
       expect(req?.cancellation_reason).toBe('cancelled_by_requester')
 
@@ -81,13 +88,8 @@ test.describe('Cancellation flow', () => {
       // Capture In Play before cancel
       const inPlayBefore = parseDollar(await getFinanceValue(driverPage, 'in-play'))
 
-      // Cancel via RPC (no UI button exists)
-      const { adminClient } = await import('../helpers/db')
-      const db = adminClient()
-      await db.rpc('cancel_request_safe', {
-        p_request_id: requestId,
-        p_reason: 'cancelled_by_requester',
-      })
+      // Cancel directly (no UI button exists; this test verifies the UI response, not the RPC)
+      await cancelRequestDirect(requestId)
 
       // Reload dashboard to get updated finance strip
       await driverPage.goto('/dashboard')
@@ -103,12 +105,11 @@ test.describe('Cancellation flow', () => {
 
   test('cancel_request_safe is idempotent', async ({ runId }) => {
     const driverId = await getUserId(driverCreds().email)
-    const { adminClient } = await import('../helpers/db')
-    const db = adminClient()
-
     const requestId = await seedDriverRide({ requesterId: driverId, runId: `${runId}-idem2`, budget: 20 })
 
     try {
+      // cancel_request_safe uses auth.uid() — sign in as the requester
+      const db = await authenticatedClient(driverCreds().email, driverCreds().password)
       await db.rpc('cancel_request_safe', { p_request_id: requestId, p_reason: 'cancelled_by_requester' })
       const { data: r2 } = await db.rpc('cancel_request_safe', { p_request_id: requestId, p_reason: 'cancelled_by_requester' })
       expect(r2?.ok).toBe(true)

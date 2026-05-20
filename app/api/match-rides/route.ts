@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   // Build query — case-insensitive city match, open status
   let query = supabase
     .from('requests')
-    .select('id, title, category, urgency, status, location, budget, scheduled_time, created_at, requester_id, origin_city, destination_city, is_driver, available_seats, is_round_trip, flexible_time, profiles(name, rating)')
+    .select('id, title, category, urgency, status, location, budget, scheduled_time, created_at, requester_id, origin_city, destination_city, is_driver, available_seats, is_round_trip, flexible_time, profiles!requester_id(name, rating)')
     .eq('category', 'rides')
     .eq('status', 'open')
     .neq('requester_id', user.id)

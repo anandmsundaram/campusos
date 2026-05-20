@@ -19,7 +19,8 @@ import {
   driverCreds,
   pax1Creds,
   cleanupRunData,
-  adminClient,
+  completeRequestDirect,
+  cancelRequestDirect,
 } from '../helpers/db'
 
 test.describe('Finance calculations', () => {
@@ -70,8 +71,8 @@ test.describe('Finance calculations', () => {
     const offerId = await seedOffer({ requestId, helperId: pax1Id, seatsRequested: 1 })
     await seedAcceptOffer(offerId, requestId, 1)
 
-    // Complete it directly
-    await adminClient().rpc('complete_request_safe', { p_request_id: requestId })
+    // Complete it directly (bypasses RPC auth — this test checks the UI, not the RPC)
+    await completeRequestDirect(requestId)
 
     try {
       await driverPage.goto('/dashboard')
@@ -129,10 +130,8 @@ test.describe('Finance calculations', () => {
     await goToDashboard(driverPage)
     const inPlayBefore = parseDollar(await getFinanceValue(driverPage, 'in-play'))
 
-    await adminClient().rpc('cancel_request_safe', {
-      p_request_id: requestId,
-      p_reason: 'cancelled_by_requester',
-    })
+    // Cancel directly (bypasses RPC auth — this test checks the UI, not the RPC)
+    await cancelRequestDirect(requestId)
 
     try {
       await driverPage.goto('/dashboard')

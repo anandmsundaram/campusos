@@ -67,9 +67,7 @@ test.describe('Counter-offer flow', () => {
       await goToDashboard(pax1Page)
       await goToMyOffers(pax1Page)
 
-      const offerCard = pax1Page.locator('[data-testid="my-offer-card"]').filter({
-        has: pax1Page.locator('[data-offer-status="countered"]'),
-      })
+      const offerCard = pax1Page.locator('[data-testid="my-offer-card"][data-offer-status="countered"]')
       await expect(offerCard.first()).toBeVisible({ timeout: 10_000 })
 
       // The counter amount should be visible
@@ -88,12 +86,16 @@ test.describe('Counter-offer flow', () => {
       const acceptedCard = pax1Page.locator('[data-testid="my-offer-card"][data-offer-status="accepted"]')
       await expect(acceptedCard.getByText(/\$25/)).toBeVisible()
 
-      // Driver side: accepted badge shows $25
+      // Driver side: open the offers modal and verify accepted badge shows $25
       await goToDashboard(driverPage)
       await goToMyRequests(driverPage)
 
       const driverCardAfter = requestCard(driverPage, requestId)
-      await expect(driverCardAfter.locator('[data-testid="offer-accepted-badge"]')).toContainText('$25', { timeout: 10_000 })
+      await expect(driverCardAfter).toBeVisible({ timeout: 10_000 })
+      await driverCardAfter.locator('[data-testid="view-offers-btn"]').click()
+      const modal = driverPage.getByRole('dialog')
+      await expect(modal).toBeVisible()
+      await expect(modal.locator('[data-testid="offer-accepted-badge"]')).toContainText('$25', { timeout: 10_000 })
     } finally {
       await cleanupRunData(runId)
     }

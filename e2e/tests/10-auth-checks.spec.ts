@@ -9,7 +9,7 @@
  */
 
 import { test, expect, goToDashboard, goToMyRequests, requestCard } from '../helpers/fixtures'
-import { seedDriverRide, seedOffer, getUserId, driverCreds, pax1Creds, cleanupRunData } from '../helpers/db'
+import { seedDriverRide, seedOffer, getUserId, driverCreds, pax1Creds, pax2Creds, cleanupRunData } from '../helpers/db'
 
 test.describe('Authorization checks', () => {
   test('driver cannot offer on their own ride — CTA is hidden', async ({ driverPage, runId }) => {

@@ -1441,7 +1441,7 @@ function OffersModal({
     const supabase = createClient()
     const { data, error } = await supabase
       .from('request_offers')
-      .select('id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles(name, rating)')
+      .select('id, helper_id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, profiles!helper_id(name, rating)')
       .eq('request_id', requestId)
       .order('created_at', { ascending: true })
 
