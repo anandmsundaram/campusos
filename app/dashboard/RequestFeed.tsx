@@ -760,21 +760,33 @@ function RequestCard({
           )}
         </div>
 
-        {/* Title */}
-        <p className="text-[15px] font-semibold text-white leading-snug mb-3">
-          {req.title}
-        </p>
+        {/* Title / Route heading */}
+        {isRide && req.origin_city && req.destination_city ? (
+          <div className="mb-3">
+            <p className="text-base font-bold text-white leading-tight">
+              {req.origin_city}
+              <span className="mx-2 font-normal text-slate-500">→</span>
+              {req.destination_city}
+            </p>
+            {req.title && (
+              <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">{req.title}</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-[15px] font-semibold text-white leading-snug mb-3">{req.title}</p>
+        )}
 
         {/* Meta row */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-4">
-          {isRide && req.origin_city && req.destination_city ? (
+          {/* Non-ride location */}
+          {!isRide && req.origin_city && req.destination_city ? (
             <span className="flex items-center gap-1.5">
               <span className="text-[11px]">🚗</span>
               <span className="font-medium text-slate-300">{req.origin_city}</span>
               <span className="text-slate-600">→</span>
               <span className="font-medium text-slate-300">{req.destination_city}</span>
             </span>
-          ) : req.location ? (
+          ) : !isRide && req.location ? (
             <span className="flex items-center gap-1.5">
               <span className="text-[11px]">📍</span>
               {req.location}
@@ -794,27 +806,58 @@ function RequestCard({
               ${req.budget}{isRide && req.is_driver ? ' / seat' : ''}
             </span>
           )}
+          {/* Driver info — shown to non-owners browsing ride cards */}
+          {isRide && !isOwn && profile && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-[11px]">👤</span>
+              <span className="text-slate-300">{profile.name ?? 'Anonymous'}</span>
+              {profile.rating != null && (
+                <span className="text-slate-600">★ {Number(profile.rating).toFixed(1)}</span>
+              )}
+            </span>
+          )}
         </div>
 
-        {/* Earnings summary — driver's own card with accepted seat bookings */}
+        {/* Passengers section — driver's own card with accepted bookings */}
         {isOwn && isRide && req.is_driver && acceptedOffers && acceptedOffers.length > 0 && (() => {
           const totalLocked = acceptedOffers.reduce((sum, o) => {
             const p = (o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
             return sum + p * (o.seats_requested ?? 1)
           }, 0)
-          const seatsSold = acceptedOffers.reduce((sum, o) => sum + (o.seats_requested ?? 1), 0)
-          const seatsOpen = (req.available_seats ?? 0) - seatsSold
+          const seatsOpen = (req.available_seats ?? 0) - acceptedOffers.reduce((s, o) => s + (o.seats_requested ?? 1), 0)
           return (
-            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-emerald-500/10 bg-emerald-500/[0.05] px-3 py-2 text-xs">
-              <span className="font-semibold text-emerald-400">${totalLocked} locked in</span>
-              <span className="text-slate-700">·</span>
-              <span className="text-slate-500">{seatsSold} seat{seatsSold !== 1 ? 's' : ''} sold</span>
-              {seatsOpen > 0 && (
-                <>
-                  <span className="text-slate-700">·</span>
-                  <span className="text-slate-500">{seatsOpen} open @ ${req.budget}</span>
-                </>
-              )}
+            <div className="mb-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+                  Passengers
+                </p>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="font-semibold text-emerald-400">${totalLocked} locked in</span>
+                  {seatsOpen > 0 && (
+                    <span className="text-slate-500">{seatsOpen} open @ ${req.budget}</span>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {acceptedOffers.map(o => {
+                  const pax = normalizeProfile(o.profiles)
+                  const agreedPrice = o.requester_counter ?? o.counter_budget
+                  const seatCount = o.seats_requested ?? 1
+                  return (
+                    <div key={o.id} className="flex items-center gap-2 rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-3 py-2">
+                      <Avatar name={pax?.name} size="sm" />
+                      <span className="text-xs font-medium text-slate-300">{pax?.name ?? 'Anonymous'}</span>
+                      {pax?.rating != null && (
+                        <span className="text-xs text-slate-600">★ {Number(pax.rating).toFixed(1)}</span>
+                      )}
+                      <span className="ml-auto text-xs text-slate-400">
+                        {seatCount} seat{seatCount !== 1 ? 's' : ''}
+                        {agreedPrice != null ? ` · $${agreedPrice}` : ''}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )
         })()}
