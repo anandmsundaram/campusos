@@ -329,17 +329,15 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     const supabase = createClient()
 
     const isDriveRequest = offerTarget.category === 'rides' && offerTarget.isDriver === true
-    const { error } = await supabase.from('request_offers').insert({
-      request_id: offerTarget.requestId,
-      helper_id: currentUserId,
-      message: offerMessage.trim() || null,
-      counter_budget: parsedBudget,
-      seats_requested: isDriveRequest ? seatsRequested : 1,
-      status: 'pending',
+    const { data: result, error } = await supabase.rpc('submit_offer_safe', {
+      p_request_id: offerTarget.requestId,
+      p_message: offerMessage.trim() || null,
+      p_counter_budget: parsedBudget,
+      p_seats_requested: isDriveRequest ? seatsRequested : 1,
     })
 
-    if (error) {
-      setSubmitError(error.message)
+    if (error || !result?.ok) {
+      setSubmitError(error?.message ?? result?.error ?? 'Failed to submit offer')
       setSubmitting(false)
       return
     }
@@ -1027,6 +1025,8 @@ function InlineOfferRow({
     setActing(true)
     setRowError(null)
     const supabase = createClient()
+    const { data: check } = await supabase.rpc('validate_offer_action', { p_request_id: requestId })
+    if (!check?.ok) { setRowError(check?.error ?? 'This request is no longer active'); setActing(false); return }
     const { error } = await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offer.id)
     if (error) { setRowError(error.message); setActing(false); return }
     await supabase.from('notifications').insert({
@@ -1043,6 +1043,8 @@ function InlineOfferRow({
     setActing(true)
     setRowError(null)
     const supabase = createClient()
+    const { data: check } = await supabase.rpc('validate_offer_action', { p_request_id: requestId })
+    if (!check?.ok) { setRowError(check?.error ?? 'This request is no longer active'); setActing(false); return }
     const amt = counterAmt !== '' ? parseFloat(counterAmt) : null
     const { error } = await supabase.from('request_offers')
       .update({ status: 'countered', requester_counter: amt })
@@ -1220,6 +1222,8 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
     setActing(offerId)
     setActError(null)
     const supabase = createClient()
+    const { data: check } = await supabase.rpc('validate_offer_action', { p_request_id: requestId })
+    if (!check?.ok) { setActError(check?.error ?? 'This request is no longer active'); setActing(null); return }
     const { error } = await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offerId)
     if (error) { setActError(error.message); setActing(null); return }
     await supabase.from('notifications').insert({
@@ -1482,6 +1486,8 @@ function OffersModal({
     setActing(offerId)
     setActionError(null)
     const supabase = createClient()
+    const { data: check } = await supabase.rpc('validate_offer_action', { p_request_id: requestId })
+    if (!check?.ok) { setActionError(check?.error ?? 'This request is no longer active'); setActing(null); return }
     const { error } = await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offerId)
     if (error) { setActionError(error.message); setActing(null); return }
 
@@ -1503,6 +1509,8 @@ function OffersModal({
     setActing(offerId)
     setActionError(null)
     const supabase = createClient()
+    const { data: check } = await supabase.rpc('validate_offer_action', { p_request_id: requestId })
+    if (!check?.ok) { setActionError(check?.error ?? 'This request is no longer active'); setActing(null); return }
     const { error } = await supabase.from('request_offers')
       .update({ status: 'countered', requester_counter: amount })
       .eq('id', offerId)
