@@ -172,6 +172,26 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const [urgencyFilter, setUrgencyFilter] = useState('all')
   const [sortBy, setSortBy] = useState('newest')
 
+  // Ride completion state
+  const [completingId, setCompletingId] = useState<string | null>(null)
+
+  async function handleCompleteRide(requestId: string, helperIds: string[]) {
+    setCompletingId(requestId)
+    const supabase = createClient()
+    const { error } = await supabase.from('requests').update({ status: 'completed' }).eq('id', requestId)
+    if (error) { setCompletingId(null); return }
+    await Promise.all(helperIds.map(uid =>
+      supabase.from('notifications').insert({
+        user_id: uid,
+        type: 'task_completed',
+        message: 'The ride has been marked as complete. Thanks for riding!',
+        related_request_id: requestId,
+      })
+    ))
+    setCompletingId(null)
+    router.refresh()
+  }
+
   // Offer submission state ("I can help" modal)
   const [offerTarget, setOfferTarget] = useState<OfferTarget | null>(null)
   const [offerMessage, setOfferMessage] = useState('')
@@ -492,8 +512,13 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                           onOffer={() => {}}
                           onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
                           inlineOffers={[]}
-                          acceptedOffers={acceptedOffersForCard}
+                            acceptedOffers={acceptedOffersForCard}
                           isPast
+                          onComplete={acceptedOffersForCard && acceptedOffersForCard.length > 0
+                            ? () => handleCompleteRide(req.id, acceptedOffersForCard.map(o => o.helper_id))
+                            : undefined
+                          }
+                          completing={completingId === req.id}
                         />
                       )
                     })}
@@ -652,6 +677,8 @@ function RequestCard({
   onOfferAccepted,
   onOfferDeclined,
   onOfferCountered,
+  onComplete,
+  completing = false,
   isPast = false,
 }: {
   req: FeedRequest
@@ -670,6 +697,8 @@ function RequestCard({
   onOfferAccepted?: (offerId: string, seatsToFill?: number) => void
   onOfferDeclined?: (offerId: string) => void
   onOfferCountered?: (offerId: string, amount: number | null) => void
+  onComplete?: () => void
+  completing?: boolean
   isPast?: boolean
 }) {
   const isRide = req.category === 'rides'
@@ -719,8 +748,8 @@ function RequestCard({
           {isRide && req.is_round_trip && (
             <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
           )}
-          {isPastRide && (
-            <Badge text="Ride done" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
+          {isPastRide && req.status !== 'completed' && (
+            <Badge text="Pending completion" color="text-yellow-400 bg-yellow-500/10 border-yellow-500/20" />
           )}
           {isExpired && (
             <Badge text="Expired" color="text-slate-500 bg-white/[0.02] border-[#1e2d4a]" />
@@ -830,8 +859,17 @@ function RequestCard({
           {isPast ? (
             req.status === 'completed'
               ? <span className="text-xs font-semibold text-emerald-400">Completed ✓</span>
-              : isPastRide
-              ? <span className="text-xs text-slate-400">Ride done</span>
+              : isPastRide && onComplete
+              ? (
+                <button
+                  type="button"
+                  onClick={onComplete}
+                  disabled={completing}
+                  className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+                >
+                  {completing ? '…' : 'Mark complete'}
+                </button>
+              )
               : <span className="text-xs text-slate-500">Expired</span>
           ) : isOwn ? (
             <button
