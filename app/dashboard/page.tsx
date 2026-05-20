@@ -363,9 +363,15 @@ function FinStat({ label, sub, value, dim, accent }: {
     orange: 'text-orange-400',
     slate: 'text-white',
   }[accent]
+  const testId = {
+    'In Play': 'fin-in-play',
+    'Earned': 'fin-earned',
+    'To Pay': 'fin-to-pay',
+    'Active': 'fin-active',
+  }[label]
   return (
     <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] px-4 py-3">
-      <p className={`text-xl font-bold tabular-nums ${valueColor}`}>{value}</p>
+      <p data-testid={testId} className={`text-xl font-bold tabular-nums ${valueColor}`}>{value}</p>
       <p className="mt-0.5 text-[11px] font-medium text-slate-400 leading-tight">{label}</p>
       <p className="text-[10px] text-slate-600 leading-tight">{sub}</p>
     </div>

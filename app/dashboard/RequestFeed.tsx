@@ -611,6 +611,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                   <div className="relative">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
                     <input
+                      data-testid="offer-price-input"
                       type="number"
                       min="0"
                       step="0.01"
@@ -624,10 +625,10 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 </ModalField>
               )}
 
-              {submitError && <ErrorBox>{submitError}</ErrorBox>}
+              {submitError && <ErrorBox data-testid="offer-modal-error">{submitError}</ErrorBox>}
 
               <div className="flex gap-3">
-                <button type="submit" disabled={submitting} className={primaryBtn}>
+                <button data-testid="offer-submit-btn" type="submit" disabled={submitting} className={primaryBtn}>
                   {submitting ? 'Sending…' : modalTitle}
                 </button>
                 <button type="button" onClick={closeOfferModal} disabled={submitting} className={secondaryBtn}>
@@ -720,7 +721,7 @@ function RequestCard({
     : (CATEGORY_ACCENT[req.category] ?? 'bg-slate-500')
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-[#1e2d4a] bg-[#0d1526] transition-all duration-200 hover:border-blue-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40">
+    <div data-testid="request-card" data-request-id={req.id} className="group relative overflow-hidden rounded-xl border border-[#1e2d4a] bg-[#0d1526] transition-all duration-200 hover:border-blue-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40">
       {/* Left accent bar */}
       <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${accentClass}`} />
 
@@ -741,10 +742,12 @@ function RequestCard({
             isFull ? (
               <Badge text="FULL" color="text-red-400 bg-red-500/10 border-red-500/20" />
             ) : (
-              <Badge
-                text={`${req.available_seats - (req.seats_filled ?? 0)} of ${req.available_seats} seats left`}
-                color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]"
-              />
+              <span data-testid="seats-badge">
+                <Badge
+                  text={`${req.available_seats - (req.seats_filled ?? 0)} of ${req.available_seats} seats left`}
+                  color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]"
+                />
+              </span>
             )
           )}
           {isRide && req.is_round_trip && (
@@ -907,6 +910,7 @@ function RequestCard({
               : isPastRide && onComplete
               ? (
                 <button
+                  data-testid="mark-complete-btn"
                   type="button"
                   onClick={onComplete}
                   disabled={completing}
@@ -918,6 +922,7 @@ function RequestCard({
               : <span className="text-xs text-slate-500">Expired</span>
           ) : isOwn ? (
             <button
+              data-testid="view-offers-btn"
               type="button"
               onClick={onViewOffers}
               className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-all hover:border-white/20 hover:text-slate-200"
@@ -950,6 +955,7 @@ function RequestCard({
             <span className="text-xs font-medium text-slate-500">Ride started</span>
           ) : (
             <button
+              data-testid="offer-cta-btn"
               type="button"
               onClick={onOffer}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-blue-500 active:scale-95"
@@ -1093,6 +1099,7 @@ function InlineOfferRow({
         ) : (
           <div className="flex gap-1.5 flex-shrink-0">
             <button
+              data-testid="accept-inline-btn"
               type="button"
               onClick={accept}
               disabled={acting}
@@ -1101,6 +1108,7 @@ function InlineOfferRow({
               {acting ? '…' : 'Accept'}
             </button>
             <button
+              data-testid="decline-inline-btn"
               type="button"
               onClick={decline}
               disabled={acting}
@@ -1109,6 +1117,7 @@ function InlineOfferRow({
               {acting ? '…' : 'Decline'}
             </button>
             <button
+              data-testid="counter-inline-btn"
               type="button"
               onClick={() => setShowCounter(v => !v)}
               disabled={acting}
@@ -1125,6 +1134,7 @@ function InlineOfferRow({
           <div className="relative flex-1">
             <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
             <input
+              data-testid="counter-inline-input"
               type="number"
               min="0"
               step="0.01"
@@ -1136,6 +1146,7 @@ function InlineOfferRow({
             />
           </div>
           <button
+            data-testid="counter-inline-send"
             type="button"
             onClick={submitCounter}
             disabled={acting}
@@ -1154,7 +1165,7 @@ function InlineOfferRow({
         </div>
       )}
 
-      {rowError && <p className="mt-1.5 text-[11px] text-red-400">{rowError}</p>}
+      {rowError && <p data-testid="inline-offer-error" className="mt-1.5 text-[11px] text-red-400">{rowError}</p>}
     </div>
   )
 }
@@ -1269,6 +1280,9 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
         return (
           <div
             key={offer.id}
+            data-testid="my-offer-card"
+            data-offer-id={offer.id}
+            data-offer-status={offer.status}
             className={`relative overflow-hidden rounded-xl border bg-[#0d1526] transition-all ${
               offer.status === 'accepted'
                 ? 'border-emerald-500/20'
@@ -1331,6 +1345,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
               {isCountered && (
                 <div className="mb-3 flex gap-2">
                   <button
+                    data-testid="accept-counter-btn"
                     type="button"
                     onClick={() => acceptCounter(offer.id, req.id, req.requester_id)}
                     disabled={isActing}
@@ -1339,6 +1354,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                     {isActing ? '…' : 'Accept'}
                   </button>
                   <button
+                    data-testid="decline-counter-btn"
                     type="button"
                     onClick={() => declineCounter(offer.id, req.id, req.requester_id)}
                     disabled={isActing}
@@ -1579,7 +1595,7 @@ function OffersModal({
           />
         ))}
 
-        {actionError && <ErrorBox>{actionError}</ErrorBox>}
+        {actionError && <ErrorBox data-testid="modal-action-error">{actionError}</ErrorBox>}
       </div>
     </Modal>
   )
@@ -1623,7 +1639,7 @@ function OfferRowCard({
           )}
         </div>
         {offer.status === 'accepted' && (
-          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
+          <span data-testid="offer-accepted-badge" className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400">
             Accepted{(offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget) != null ? ` · $${offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget}` : ''}
           </span>
         )}
@@ -1663,6 +1679,7 @@ function OfferRowCard({
       {isPending && !showCounter && (
         <div className="mt-3 flex gap-2 flex-wrap">
           <button
+            data-testid="modal-accept-btn"
             type="button"
             onClick={() => onAccept(offer.id)}
             disabled={isActing || !canAccept}
@@ -1671,6 +1688,7 @@ function OfferRowCard({
             {isActing ? '…' : 'Accept'}
           </button>
           <button
+            data-testid="modal-decline-btn"
             type="button"
             onClick={() => onDecline(offer.id)}
             disabled={isActing}
@@ -1680,6 +1698,7 @@ function OfferRowCard({
           </button>
           {onCounter && (
             <button
+              data-testid="modal-counter-btn"
               type="button"
               onClick={() => setShowCounter(true)}
               disabled={isActing}
@@ -1696,6 +1715,7 @@ function OfferRowCard({
           <div className="relative flex-1">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
             <input
+              data-testid="modal-counter-input"
               type="number"
               min="0"
               step="0.01"
@@ -1707,6 +1727,7 @@ function OfferRowCard({
             />
           </div>
           <button
+            data-testid="modal-counter-send"
             type="button"
             onClick={() => { onCounter?.(offer.id, counterAmt !== '' ? parseFloat(counterAmt) : null); setShowCounter(false) }}
             disabled={isActing}
@@ -1831,9 +1852,9 @@ function ModalField({ label, optional, children }: { label: string; optional?: b
   )
 }
 
-function ErrorBox({ children }: { children: React.ReactNode }) {
+function ErrorBox({ children, 'data-testid': testId }: { children: React.ReactNode; 'data-testid'?: string }) {
   return (
-    <p className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-4 py-2.5 text-xs text-red-400">
+    <p data-testid={testId} className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-4 py-2.5 text-xs text-red-400">
       {children}
     </p>
   )
