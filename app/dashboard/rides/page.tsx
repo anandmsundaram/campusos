@@ -372,7 +372,11 @@ export default function RidesPage() {
     setActing(ride.id)
     const supabase = createClient()
 
-    await supabase.from('requests').update({ status: 'cancelled' }).eq('id', ride.id)
+    const { data: result } = await supabase.rpc('cancel_request_safe', {
+      p_request_id: ride.id,
+      p_reason: 'cancelled_by_requester',
+    })
+    if (!result?.ok) { setActing(null); return }
     for (const p of passengersByRide.get(ride.id) ?? []) {
       await supabase.from('notifications').insert({
         user_id: p.passenger_id, type: 'offer_rejected',

@@ -286,8 +286,11 @@ export default function MyRequestsPage() {
     setActing(requestId)
     setActionError(null)
     const supabase = createClient()
-    const { error } = await supabase.from('requests').update({ status: 'cancelled' }).eq('id', requestId)
-    if (error) { setActionError(error.message) } else {
+    const { data: result, error } = await supabase.rpc('cancel_request_safe', {
+      p_request_id: requestId,
+      p_reason: 'cancelled_by_requester',
+    })
+    if (error || !result?.ok) { setActionError(error?.message ?? result?.error ?? 'Failed to cancel') } else {
       setRequests(prev => prev.map(r => r.id === requestId ? { ...r, status: 'cancelled' } : r))
     }
     setActing(null)
@@ -297,8 +300,8 @@ export default function MyRequestsPage() {
     setActing(req.id)
     setActionError(null)
     const supabase = createClient()
-    const { error } = await supabase.from('requests').update({ status: 'completed' }).eq('id', req.id)
-    if (error) { setActionError(error.message); setActing(null); return }
+    const { data: result, error } = await supabase.rpc('complete_request_safe', { p_request_id: req.id })
+    if (error || !result?.ok) { setActionError(error?.message ?? result?.error ?? 'Failed to complete'); setActing(null); return }
 
     setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'completed' } : r))
 

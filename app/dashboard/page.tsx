@@ -264,12 +264,12 @@ export default async function DashboardPage() {
     const total = price * (o.seats_requested ?? 1)
 
     if (req.is_driver === true) {
-      // I booked seats as a PASSENGER → I owe the driver; only count unsettled
-      if (req.status !== 'completed') owed += total
+      // I booked seats as a PASSENGER → I owe the driver; only count active rides
+      if (req.status === 'open' || req.status === 'matched') owed += total
     } else {
       // I am the HELPER (task or driving for a ride-seeker) → I earn
       if (req.status === 'completed') earned += total
-      else inPlay += total
+      else if (req.status === 'open' || req.status === 'matched') inPlay += total
     }
   }
 
@@ -283,10 +283,10 @@ export default async function DashboardPage() {
       if (r.is_driver === true) {
         // I am the DRIVER — passengers pay me
         if (r.status === 'completed') earned += total
-        else inPlay += total
+        else if (r.status === 'open' || r.status === 'matched') inPlay += total
       } else {
-        // I am a task requester or passenger seeking a driver — I pay helpers
-        if (r.status !== 'completed') owed += total
+        // I am a task requester — I pay helpers
+        if (r.status === 'open' || r.status === 'matched') owed += total
       }
     }
   }

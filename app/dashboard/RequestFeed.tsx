@@ -182,8 +182,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   async function handleCompleteRide(requestId: string, helperIds: string[]) {
     setCompletingId(requestId)
     const supabase = createClient()
-    const { error } = await supabase.from('requests').update({ status: 'completed' }).eq('id', requestId)
-    if (error) { setCompletingId(null); return }
+    const { data: result, error } = await supabase.rpc('complete_request_safe', { p_request_id: requestId })
+    if (error || !result?.ok) { setCompletingId(null); return }
     await Promise.all(helperIds.map(uid =>
       supabase.from('notifications').insert({
         user_id: uid,
@@ -1175,8 +1175,8 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
     await supabase.from('request_offers')
       .update({ confirmed_completion: true, confirmed_at: new Date().toISOString() })
       .eq('id', offerId)
-    const { error } = await supabase.from('requests').update({ status: 'completed' }).eq('id', requestId)
-    if (error) { setActError(error.message); setActing(null); return }
+    const { data: result, error } = await supabase.rpc('complete_request_safe', { p_request_id: requestId })
+    if (error || !result?.ok) { setActError(error?.message ?? result?.error ?? 'Failed to mark complete'); setActing(null); return }
     await supabase.from('notifications').insert({
       user_id: requesterId,
       type: 'task_completed',
