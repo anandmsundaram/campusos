@@ -478,19 +478,25 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                     <div className="flex-1 border-t border-[#1e2d4a]" />
                   </div>
                   <div className="flex flex-col gap-3 opacity-60">
-                    {filteredPastRequests.map((req) => (
-                      <RequestCard
-                        key={req.id}
-                        req={req}
-                        profile={normalizeProfile(req.profiles)}
-                        isOwn
-                        hasOffered={false}
-                        onOffer={() => {}}
-                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
-                        inlineOffers={[]}
-                        isPast
-                      />
-                    ))}
+                    {filteredPastRequests.map((req) => {
+                      const acceptedOffersForCard = 'request_offers' in req
+                        ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'accepted')
+                        : undefined
+                      return (
+                        <RequestCard
+                          key={req.id}
+                          req={req}
+                          profile={normalizeProfile(req.profiles)}
+                          isOwn
+                          hasOffered={false}
+                          onOffer={() => {}}
+                          onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
+                          inlineOffers={[]}
+                          acceptedOffers={acceptedOffersForCard}
+                          isPast
+                        />
+                      )
+                    })}
                   </div>
                 </>
               )}
@@ -669,7 +675,10 @@ function RequestCard({
   const isRide = req.category === 'rides'
   const isFull = isRide && req.is_driver === true && req.available_seats != null && (req.seats_filled ?? 0) >= req.available_seats
   const rideStarted = isRide && (req.ride_started ?? false)
-  const isExpired = isPast && req.status === 'open'
+  const hasSeatsSold = isRide && req.is_driver === true &&
+    ((req.seats_filled ?? 0) > 0 || (acceptedOffers && acceptedOffers.length > 0))
+  const isExpired = isPast && req.status === 'open' && !hasSeatsSold
+  const isPastRide = isPast && !!hasSeatsSold
 
   // Context-aware action label
   const ctaLabel = isRide
@@ -709,6 +718,9 @@ function RequestCard({
           )}
           {isRide && req.is_round_trip && (
             <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
+          )}
+          {isPastRide && (
+            <Badge text="Ride done" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
           )}
           {isExpired && (
             <Badge text="Expired" color="text-slate-500 bg-white/[0.02] border-[#1e2d4a]" />
@@ -818,6 +830,8 @@ function RequestCard({
           {isPast ? (
             req.status === 'completed'
               ? <span className="text-xs font-semibold text-emerald-400">Completed ✓</span>
+              : isPastRide
+              ? <span className="text-xs text-slate-400">Ride done</span>
               : <span className="text-xs text-slate-500">Expired</span>
           ) : isOwn ? (
             <button
