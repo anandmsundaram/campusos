@@ -1144,11 +1144,12 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
         const isActing = acting === offer.id
 
         const agreedPrice = offer.requester_counter ?? offer.counter_budget
+        const seats = offer.seats_requested ?? 1
         const statusLabel =
           offer.status === 'pending' ? '● Pending'
           : offer.status === 'countered' ? '↩ Counter received'
           : offer.status === 'accepted'
-            ? `✓ Accepted${agreedPrice != null ? ` · $${agreedPrice}` : ''}`
+            ? `✓ Accepted${agreedPrice != null ? ` · ${seats > 1 ? `${seats}× ` : ''}$${agreedPrice}` : ''}`
           : 'Declined'
 
         return (
