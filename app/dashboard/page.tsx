@@ -76,15 +76,34 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const now = new Date().toISOString()
 
-  // ── Auto-complete past rides (driver side, 24 h after scheduled_time) ─────
-  const oneDayAgo = new Date(Date.now() - 86_400_000).toISOString()
+  // ── Auto-complete past rides (1 h after scheduled_time) ──────────────────
+  // Threshold: 1 h grace period after ride time, then auto-complete
+  const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString()
+
+  // Driver's own rides
   await supabase
     .from('requests')
     .update({ status: 'completed' })
     .in('status', ['open', 'matched'])
     .eq('category', 'rides')
     .eq('requester_id', user!.id)
-    .lt('scheduled_time', oneDayAgo)
+    .lt('scheduled_time', oneHourAgo)
+
+  // Rides where user is a confirmed passenger — auto-complete using helper RLS (migration 012)
+  const { data: paxOffers } = await supabase
+    .from('request_offers')
+    .select('request_id')
+    .eq('helper_id', user!.id)
+    .eq('status', 'accepted')
+  if (paxOffers && paxOffers.length > 0) {
+    await supabase
+      .from('requests')
+      .update({ status: 'completed' })
+      .in('status', ['open', 'matched'])
+      .eq('category', 'rides')
+      .in('id', paxOffers.map(o => o.request_id))
+      .lt('scheduled_time', oneHourAgo)
+  }
 
   // ── Step 1: fetch all open requests (STEP 3 from debug spec) ──────────────
   const { data: requests, error: requestsError } = await supabase
