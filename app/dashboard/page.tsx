@@ -76,6 +76,16 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const now = new Date().toISOString()
 
+  // ── Auto-complete past rides (driver side, 24 h after scheduled_time) ─────
+  const oneDayAgo = new Date(Date.now() - 86_400_000).toISOString()
+  await supabase
+    .from('requests')
+    .update({ status: 'completed' })
+    .in('status', ['open', 'matched'])
+    .eq('category', 'rides')
+    .eq('requester_id', user!.id)
+    .lt('scheduled_time', oneDayAgo)
+
   // ── Step 1: fetch all open requests (STEP 3 from debug spec) ──────────────
   const { data: requests, error: requestsError } = await supabase
     .from('requests')
@@ -129,7 +139,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase
       .from('request_offers')
-      .select('id, message, counter_budget, requester_counter, seats_requested, status, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, profiles(name, rating))')
+      .select('id, message, counter_budget, requester_counter, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, profiles(name, rating))')
       .eq('helper_id', user!.id)
       .order('created_at', { ascending: false }),
     supabase.from('requests').select('*', { count: 'exact', head: true }).eq('status', 'open'),

@@ -51,6 +51,7 @@ export interface MyOffer {
   message: string | null
   counter_budget: number | null
   status: 'pending' | 'countered' | 'accepted' | 'rejected'
+  confirmed_completion: boolean
   created_at: string
   requests: RequestInfo | RequestInfo[] | null
   requester_counter: number | null
@@ -1122,6 +1123,27 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
   const [offers, setOffers] = useState<MyOffer[]>(initialOffers)
   const [acting, setActing] = useState<string | null>(null)
   const [actError, setActError] = useState<string | null>(null)
+  const now = useMemo(() => new Date(), [])
+
+  async function markRideComplete(offerId: string, requestId: string, requesterId: string) {
+    setActing(offerId)
+    setActError(null)
+    const supabase = createClient()
+    await supabase.from('request_offers')
+      .update({ confirmed_completion: true, confirmed_at: new Date().toISOString() })
+      .eq('id', offerId)
+    const { error } = await supabase.from('requests').update({ status: 'completed' }).eq('id', requestId)
+    if (error) { setActError(error.message); setActing(null); return }
+    await supabase.from('notifications').insert({
+      user_id: requesterId,
+      type: 'task_completed',
+      message: 'A passenger confirmed the ride is complete.',
+      related_request_id: requestId,
+    })
+    setOffers(prev => prev.map(o => o.id === offerId ? { ...o, confirmed_completion: true } : o))
+    setActing(null)
+    router.refresh()
+  }
 
   async function acceptCounter(offerId: string, requestId: string, requesterId: string, req: RequestInfo | null) {
     setActing(offerId)
@@ -1284,6 +1306,27 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                   >
                     {isActing ? '…' : 'Decline'}
                   </button>
+                </div>
+              )}
+
+              {/* Passenger mark-complete — ride is past, accepted, not yet confirmed */}
+              {offer.status === 'accepted' &&
+                req.category === 'rides' && req.is_driver === true &&
+                req.scheduled_time && new Date(req.scheduled_time) < now &&
+                req.status !== 'completed' && (
+                <div className="mb-3">
+                  {offer.confirmed_completion ? (
+                    <span className="text-xs font-semibold text-emerald-400">✓ You confirmed this ride</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => markRideComplete(offer.id, req.id, req.requester_id)}
+                      disabled={isActing}
+                      className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+                    >
+                      {isActing ? '…' : 'Mark ride complete'}
+                    </button>
+                  )}
                 </div>
               )}
 
