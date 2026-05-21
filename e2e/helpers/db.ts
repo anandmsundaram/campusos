@@ -195,9 +195,10 @@ export async function seedAcceptOffer(
   let newFilled: number | null = null
 
   if (isMultiSeat) {
-    newFilled = (req.seats_filled ?? 0) + seatsRequested
-    newStatus = newFilled >= req.available_seats! ? 'matched' : 'open'
-    await db.from('requests').update({ status: newStatus, seats_filled: newFilled }).eq('id', requestId)
+    const filled: number = (req.seats_filled ?? 0) + seatsRequested
+    newFilled = filled
+    newStatus = filled >= req.available_seats! ? 'matched' : 'open'
+    await db.from('requests').update({ status: newStatus, seats_filled: filled }).eq('id', requestId)
   } else {
     await db.from('requests').update({ status: 'matched' }).eq('id', requestId)
   }
