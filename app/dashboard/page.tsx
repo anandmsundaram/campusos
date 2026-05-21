@@ -61,6 +61,7 @@ const FULL_SELECT = `
   is_round_trip, return_date, flexible_time,
   auto_accept, seats_filled, ride_started,
   price_type, is_airport_ride,
+  structured_data,
   profiles!requester_id (
     id, name, university, rating, completed_tasks, verification_status
   )

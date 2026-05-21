@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -22,6 +22,7 @@ interface ParsedRequest {
   flexible_time: boolean
   price_type: 'fixed' | 'split' | 'free' | null
   is_airport_ride: boolean | null
+  structured_data: Record<string, unknown> | null
 }
 
 const CATEGORY_LABELS: Record<ParsedRequest['category'], string> = {
@@ -61,6 +62,160 @@ const PLACEHOLDERS = [
   'Walmart run this afternoon...',
 ]
 
+// ─── Follow-up question config ────────────────────────────────────────────────
+
+type ChipOption = { value: string; label: string }
+type FollowUpQuestion =
+  | { key: string; label: string; hint?: string; type: 'chips'; options: ChipOption[] }
+  | { key: string; label: string; hint?: string; type: 'text'; placeholder: string }
+
+// Rides deliberately omitted — the confirm card already covers all ride fields well.
+const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQuestion[]>> = {
+  moving: [
+    {
+      key: 'helpers_needed',
+      label: 'How many helpers do you need?',
+      type: 'chips',
+      options: [
+        { value: '1', label: '1' },
+        { value: '2', label: '2' },
+        { value: '3', label: '3' },
+        { value: '4', label: '4+' },
+      ],
+    },
+    {
+      key: 'access_type',
+      label: 'Stairs or elevator?',
+      hint: 'Helps helpers come prepared',
+      type: 'chips',
+      options: [
+        { value: 'stairs', label: '🪜 Stairs' },
+        { value: 'elevator', label: '🛗 Elevator' },
+        { value: 'ground', label: '🏠 Ground floor' },
+      ],
+    },
+    {
+      key: 'has_heavy_items',
+      label: 'Any heavy items?',
+      hint: 'Furniture, large boxes',
+      type: 'chips',
+      options: [
+        { value: 'true', label: '🏋️ Yes' },
+        { value: 'false', label: '📦 Mostly light' },
+      ],
+    },
+  ],
+  errands: [
+    {
+      key: 'errand_type',
+      label: 'What type of errand?',
+      type: 'chips',
+      options: [
+        { value: 'grocery', label: '🛒 Groceries' },
+        { value: 'food_pickup', label: '🍕 Food pickup' },
+        { value: 'package', label: '📦 Package' },
+        { value: 'other', label: '⚡ Other' },
+      ],
+    },
+    {
+      key: 'reimbursement_type',
+      label: 'Payment arrangement?',
+      hint: 'So helpers know what to expect',
+      type: 'chips',
+      options: [
+        { value: 'paid', label: "💰 I'll pay you" },
+        { value: 'reimburse', label: '🔄 Reimburse costs' },
+        { value: 'free', label: '🤝 Favor' },
+      ],
+    },
+  ],
+  peer_help: [
+    {
+      key: 'subject',
+      label: 'Subject or course?',
+      type: 'text',
+      placeholder: 'e.g. CHEM 101, Calc II, Python…',
+    },
+    {
+      key: 'is_virtual',
+      label: 'In person or virtual?',
+      type: 'chips',
+      options: [
+        { value: 'false', label: '📍 In person' },
+        { value: 'true', label: '💻 Virtual' },
+        { value: 'either', label: '🔀 Either' },
+      ],
+    },
+  ],
+  borrow: [
+    {
+      key: 'borrow_duration',
+      label: 'How long do you need it?',
+      type: 'chips',
+      options: [
+        { value: 'a few hours', label: '⏰ Few hours' },
+        { value: '1-2 days', label: '📅 1-2 days' },
+        { value: 'a week', label: '📆 ~1 week' },
+        { value: 'longer', label: '📌 Longer' },
+      ],
+    },
+    {
+      key: 'replacement_responsibility',
+      label: 'If it breaks?',
+      type: 'chips',
+      options: [
+        { value: 'true', label: "✓ I'll replace it" },
+        { value: 'false', label: "🤝 We'll work it out" },
+      ],
+    },
+  ],
+}
+
+// ─── Label maps for confirm card summary ──────────────────────────────────────
+
+const ERRAND_TYPE_LABELS: Record<string, string> = {
+  grocery: '🛒 Groceries',
+  food_pickup: '🍕 Food pickup',
+  package: '📦 Package pickup',
+  delivery: '🚚 Delivery',
+  other: 'Errand',
+}
+const REIMBURSEMENT_LABELS: Record<string, string> = {
+  paid: "💰 They'll pay me",
+  reimburse: '🔄 Reimburse costs',
+  free: '🤝 Favor',
+}
+const ACCESS_LABELS: Record<string, string> = {
+  stairs: '🪜 Stairs',
+  elevator: '🛗 Elevator',
+  ground: '🏠 Ground floor',
+}
+const VIRTUAL_LABELS: Record<string, string> = {
+  true: '💻 Virtual',
+  false: '📍 In person',
+  either: '🔀 Either works',
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// Converts followupAnswers raw string values to typed structured_data values.
+function applyFollowupAnswers(
+  base: Record<string, unknown>,
+  answers: Record<string, string>,
+): Record<string, unknown> {
+  const merged = { ...base }
+  for (const [key, rawVal] of Object.entries(answers)) {
+    if (rawVal === '') continue
+    if (rawVal === 'true') { merged[key] = true; continue }
+    if (rawVal === 'false') { merged[key] = false; continue }
+    const n = Number(rawVal)
+    if (!isNaN(n) && isFinite(n) && rawVal.trim() !== '') { merged[key] = n; continue }
+    // String values: 'either', 'stairs', 'elevator', 'grocery', 'paid', 'a few hours', etc.
+    merged[key] = rawVal
+  }
+  return merged
+}
+
 export default function RequestInput() {
   const router = useRouter()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -72,6 +227,22 @@ export default function RequestInput() {
   const [error, setError] = useState<string | null>(null)
   const [autoAccept, setAutoAccept] = useState(true)
   const [priceType, setPriceType] = useState<'fixed' | 'split' | 'free'>('split')
+  const [followupAnswers, setFollowupAnswers] = useState<Record<string, string>>({})
+
+  // Derived: parser-extracted structured_data merged with follow-up answers (for live preview)
+  const mergedSD = useMemo<Record<string, unknown>>(() => {
+    if (!parsed) return {}
+    return applyFollowupAnswers(parsed.structured_data ?? {}, followupAnswers)
+  }, [parsed, followupAnswers])
+
+  // Follow-up questions to show: only those the parser didn't extract
+  const followupQuestionsToShow = useMemo<FollowUpQuestion[]>(() => {
+    if (!parsed) return []
+    const questions = FOLLOWUP_QUESTIONS[parsed.category] ?? []
+    const sd = parsed.structured_data
+    if (!sd) return questions
+    return questions.filter(q => sd[q.key] === null || sd[q.key] === undefined)
+  }, [parsed])
 
   // Typewriter placeholder animation
   const [phIdx, setPhIdx] = useState(0)
@@ -111,6 +282,7 @@ export default function RequestInput() {
     setStatus('parsing')
     setParsed(null)
     setAutoAccept(true)
+    setFollowupAnswers({})
 
     const res = await fetch('/api/parse-request', {
       method: 'POST',
@@ -149,9 +321,14 @@ export default function RequestInput() {
       return
     }
 
+    // Build merged structured_data from parser + follow-up answers
+    const sdBase = parsed.structured_data ?? {}
+    const sdMerged = applyFollowupAnswers(sdBase, followupAnswers)
+    const hasStructuredData = Object.values(sdMerged).some(v => v !== null && v !== undefined)
+    const structuredDataToSave = hasStructuredData ? sdMerged : null
+
     const isDriverNonFixed = parsed.category === 'rides' && parsed.is_driver && priceType !== 'fixed'
 
-    // Build as a plain Record so we can delete keys on schema-cache retry
     const payload: Record<string, unknown> = {
       requester_id: user.id,
       category: parsed.category,
@@ -160,6 +337,7 @@ export default function RequestInput() {
       ...(parsed.location != null && { location: parsed.location }),
       ...(parsed.scheduled_time != null && { scheduled_time: parsed.scheduled_time }),
       ...(!isDriverNonFixed && parsed.budget != null && { budget: parsed.budget }),
+      ...(structuredDataToSave != null && { structured_data: structuredDataToSave }),
       ...(parsed.category === 'rides' && {
         origin_city: parsed.origin_city ?? null,
         destination_city: parsed.destination_city ?? null,
@@ -168,7 +346,6 @@ export default function RequestInput() {
         is_round_trip: parsed.is_round_trip ?? false,
         return_date: parsed.return_date ?? null,
         flexible_time: parsed.flexible_time ?? false,
-        // Columns from migrations 006/007 — stripped on schema cache miss:
         auto_accept: parsed.is_driver ? autoAccept : true,
         price_type: parsed.is_driver ? priceType : null,
         is_airport_ride: parsed.is_airport_ride ?? false,
@@ -178,11 +355,11 @@ export default function RequestInput() {
     let { error: dbError } = await supabase.from('requests').insert(payload)
 
     if (dbError && /schema cache|Could not find the/i.test(dbError.message)) {
-      // Schema cache is stale after a migration — retry without the new columns
       const fallback = { ...payload }
       delete fallback.auto_accept
       delete fallback.price_type
       delete fallback.is_airport_ride
+      delete fallback.structured_data
       ;({ error: dbError } = await supabase.from('requests').insert(fallback))
     }
 
@@ -194,6 +371,7 @@ export default function RequestInput() {
 
     setParsed(null)
     setText('')
+    setFollowupAnswers({})
     setStatus('done')
     router.refresh()
     setTimeout(() => setStatus('idle'), 3000)
@@ -203,6 +381,11 @@ export default function RequestInput() {
     setError(null)
     setStatus('idle')
     setParsed(null)
+    setFollowupAnswers({})
+  }
+
+  function handleFollowupChange(key: string, value: string) {
+    setFollowupAnswers(prev => ({ ...prev, [key]: value }))
   }
 
   const showCard = (status === 'confirm' || status === 'saving') && parsed !== null
@@ -327,6 +510,58 @@ export default function RequestInput() {
       {/* Confirmation card */}
       {showCard && (
         <div className="w-full max-w-2xl rounded-2xl border border-[#1e2d4a] bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
+
+          {/* ── Follow-up questions (non-rides only, only when parser left fields null) ── */}
+          {followupQuestionsToShow.length > 0 && (
+            <div className="mb-6 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-4 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-400/70 mb-3">
+                Quick details
+              </p>
+              <div className="flex flex-col gap-4">
+                {followupQuestionsToShow.map(q => (
+                  <div key={q.key}>
+                    <p className="text-xs font-medium text-slate-300 mb-1">{q.label}</p>
+                    {q.hint && (
+                      <p className="text-[10px] text-slate-600 mb-1.5">{q.hint}</p>
+                    )}
+                    {q.type === 'chips' ? (
+                      <div className="flex flex-wrap gap-2">
+                        {q.options.map(opt => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() =>
+                              handleFollowupChange(
+                                q.key,
+                                followupAnswers[q.key] === opt.value ? '' : opt.value,
+                              )
+                            }
+                            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                              followupAnswers[q.key] === opt.value
+                                ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
+                                : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        value={followupAnswers[q.key] ?? ''}
+                        onChange={e => handleFollowupChange(q.key, e.target.value)}
+                        placeholder={q.placeholder}
+                        className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-blue-500/40"
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Parsed summary ── */}
           <p className="mb-5 text-sm font-medium text-slate-300">
             Here&apos;s what we understood — does this look right?
           </p>
@@ -335,6 +570,7 @@ export default function RequestInput() {
             <Row label="Category" value={CATEGORY_LABELS[parsed!.category]} />
             <Row label="Title" value={parsed!.title} />
 
+            {/* ── RIDES-specific rows ── */}
             {parsed!.category === 'rides' && (
               <>
                 {parsed!.origin_city && parsed!.destination_city && (
@@ -438,7 +674,79 @@ export default function RequestInput() {
               </>
             )}
 
-            {!parsed!.origin_city && parsed!.location && <Row label="Location" value={parsed!.location} />}
+            {/* ── MOVING structured rows ── */}
+            {parsed!.category === 'moving' && (
+              <>
+                {mergedSD.helpers_needed != null && (
+                  <Row label="Helpers needed" value={`${mergedSD.helpers_needed}`} />
+                )}
+                {mergedSD.access_type && (
+                  <Row label="Access" value={ACCESS_LABELS[mergedSD.access_type as string] ?? String(mergedSD.access_type)} />
+                )}
+                {mergedSD.has_heavy_items != null && (
+                  <Row label="Heavy items" value={mergedSD.has_heavy_items ? 'Yes' : 'No'} />
+                )}
+                {mergedSD.truck_needed === true && (
+                  <Row label="Truck needed" value="Yes" />
+                )}
+                {mergedSD.estimated_duration && (
+                  <Row label="Est. duration" value={mergedSD.estimated_duration as string} />
+                )}
+              </>
+            )}
+
+            {/* ── PEER HELP structured rows ── */}
+            {parsed!.category === 'peer_help' && (
+              <>
+                {mergedSD.subject && (
+                  <Row label="Subject" value={mergedSD.subject as string} />
+                )}
+                {mergedSD.is_virtual !== null && mergedSD.is_virtual !== undefined && (
+                  <Row
+                    label="Format"
+                    value={VIRTUAL_LABELS[String(mergedSD.is_virtual)] ?? String(mergedSD.is_virtual)}
+                  />
+                )}
+              </>
+            )}
+
+            {/* ── ERRANDS structured rows ── */}
+            {parsed!.category === 'errands' && (
+              <>
+                {mergedSD.errand_type && (
+                  <Row label="Errand type" value={ERRAND_TYPE_LABELS[mergedSD.errand_type as string] ?? String(mergedSD.errand_type)} />
+                )}
+                {mergedSD.store_or_place && (
+                  <Row label="Where" value={mergedSD.store_or_place as string} />
+                )}
+                {mergedSD.reimbursement_type && (
+                  <Row label="Payment" value={REIMBURSEMENT_LABELS[mergedSD.reimbursement_type as string] ?? String(mergedSD.reimbursement_type)} />
+                )}
+              </>
+            )}
+
+            {/* ── BORROW structured rows ── */}
+            {parsed!.category === 'borrow' && (
+              <>
+                {mergedSD.item && (
+                  <Row label="Item" value={mergedSD.item as string} />
+                )}
+                {mergedSD.borrow_duration && (
+                  <Row label="Duration" value={mergedSD.borrow_duration as string} />
+                )}
+                {mergedSD.replacement_responsibility != null && (
+                  <Row
+                    label="If broken"
+                    value={mergedSD.replacement_responsibility ? "I'll replace it" : "We'll discuss it"}
+                  />
+                )}
+              </>
+            )}
+
+            {/* ── Generic rows for all categories ── */}
+            {!parsed!.origin_city && parsed!.location && (
+              <Row label="Location" value={parsed!.location} />
+            )}
             {parsed!.scheduled_time && !parsed!.flexible_time && (
               <Row
                 label="Time"
@@ -462,6 +770,7 @@ export default function RequestInput() {
             </div>
           </div>
 
+          {/* Rides safety reminder */}
           {parsed!.category === 'rides' && (
             <div className="mb-4 rounded-lg border border-blue-500/15 bg-blue-500/[0.05] px-4 py-3">
               <p className="text-xs text-slate-400 leading-relaxed">
@@ -471,15 +780,6 @@ export default function RequestInput() {
                 <a href="/safety" target="_blank" rel="noopener" className="text-blue-400 hover:underline">
                   Safety tips →
                 </a>
-              </p>
-            </div>
-          )}
-
-          {parsed!.missing_fields.length > 0 && (
-            <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/[0.08] px-4 py-3">
-              <p className="text-xs text-yellow-400">
-                <span className="font-medium">Heads up:</span> we couldn&apos;t find{' '}
-                {parsed!.missing_fields.join(', ')}. You can add these later.
               </p>
             </div>
           )}

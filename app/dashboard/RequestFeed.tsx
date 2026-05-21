@@ -31,6 +31,7 @@ export interface FeedRequest {
   ride_started: boolean | null
   price_type?: 'fixed' | 'split' | 'free' | null
   is_airport_ride?: boolean | null
+  structured_data?: Record<string, unknown> | null
 }
 
 export interface OfferOnCard {
@@ -882,6 +883,9 @@ function RequestCard({
             </span>
           )}
         </div>
+
+        {/* Structured data meta chips — non-ride categories only */}
+        {!isRide && <StructuredDataMeta category={req.category} sd={req.structured_data} />}
 
         {/* Passengers section — driver's own card with accepted bookings */}
         {isOwn && isRide && req.is_driver && acceptedOffers && acceptedOffers.length > 0 && (() => {
@@ -2017,6 +2021,47 @@ function OfferToast() {
 function normalizeProfile(p: ProfileInfo | ProfileInfo[] | null | undefined): ProfileInfo | null {
   if (!p) return null
   return Array.isArray(p) ? (p[0] ?? null) : p
+}
+
+function StructuredDataMeta({ category, sd }: { category: string; sd: Record<string, unknown> | null | undefined }) {
+  if (!sd) return null
+  const chips: string[] = []
+
+  if (category === 'moving') {
+    const helpers = sd.helpers_needed
+    if (helpers != null) chips.push(`${helpers} helper${Number(helpers) !== 1 ? 's' : ''}`)
+    const access = sd.access_type
+    if (typeof access === 'string') chips.push(access.charAt(0).toUpperCase() + access.slice(1))
+  } else if (category === 'peer_help') {
+    const subject = sd.subject
+    if (typeof subject === 'string') chips.push(subject)
+    const virtual = sd.is_virtual
+    if (virtual === true) chips.push('Virtual')
+    else if (virtual === false) chips.push('In person')
+    else if (virtual === 'either') chips.push('Virtual or in person')
+  } else if (category === 'errands') {
+    const type = sd.errand_type
+    const typeLabels: Record<string, string> = { grocery: 'Grocery run', food_pickup: 'Food pickup', package: 'Package', delivery: 'Delivery', other: 'Errand' }
+    if (typeof type === 'string') chips.push(typeLabels[type] ?? type)
+    const place = sd.store_or_place
+    if (typeof place === 'string') chips.push(place)
+  } else if (category === 'borrow') {
+    const item = sd.item
+    if (typeof item === 'string') chips.push(item)
+    const dur = sd.borrow_duration
+    if (typeof dur === 'string') chips.push(dur)
+  }
+
+  if (chips.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2 mb-1">
+      {chips.slice(0, 3).map(c => (
+        <span key={c} className="rounded-full border border-[#1e2d4a] bg-white/[0.03] px-2.5 py-0.5 text-[11px] text-slate-400">
+          {c}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function timeAgo(iso: string): string {
