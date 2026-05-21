@@ -462,6 +462,19 @@ export default function RequestInput() {
             </div>
           </div>
 
+          {parsed!.category === 'rides' && (
+            <div className="mb-4 rounded-lg border border-blue-500/15 bg-blue-500/[0.05] px-4 py-3">
+              <p className="text-xs text-slate-400 leading-relaxed">
+                <span className="font-medium text-slate-300">Rides reminder:</span>{' '}
+                CampusOS connects you with other students — we don&apos;t vet drivers or provide insurance.
+                Confirm all details directly with the other student before your trip.{' '}
+                <a href="/safety" target="_blank" rel="noopener" className="text-blue-400 hover:underline">
+                  Safety tips →
+                </a>
+              </p>
+            </div>
+          )}
+
           {parsed!.missing_fields.length > 0 && (
             <div className="mb-4 rounded-lg border border-yellow-500/20 bg-yellow-500/[0.08] px-4 py-3">
               <p className="text-xs text-yellow-400">

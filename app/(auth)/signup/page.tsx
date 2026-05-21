@@ -244,6 +244,17 @@ export default function SignupPage() {
             >
               {loading ? 'Creating account…' : 'Create account'}
             </button>
+
+            <p className="text-center text-[11px] text-slate-600 leading-relaxed">
+              By creating an account you agree to our{' '}
+              <a href="/terms" target="_blank" rel="noopener" className="text-slate-500 underline underline-offset-2 hover:text-slate-300 transition-colors">
+                Terms of Service
+              </a>{' '}
+              and{' '}
+              <a href="/privacy" target="_blank" rel="noopener" className="text-slate-500 underline underline-offset-2 hover:text-slate-300 transition-colors">
+                Privacy Policy
+              </a>.
+            </p>
           </form>
         </div>
 

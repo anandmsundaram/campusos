@@ -1,6 +1,18 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
+interface ReportRow {
+  id: string
+  target_type: string
+  target_id: string
+  reason: string
+  details: string | null
+  created_at: string
+  status: string
+  reporter_id: string | null
+  profiles: { name: string | null } | { name: string | null }[] | null
+}
+
 const ADMIN_EMAILS = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com'])
 
 const FUNNEL_EVENTS = [
@@ -70,6 +82,14 @@ export default async function AdminPage() {
     supabase.from('analytics_events').select('*', { count: 'exact', head: true }).eq('event', 'request_created').gte('created_at', sevenDaysAgo),
     supabase.from('analytics_events').select('*', { count: 'exact', head: true }).eq('event', 'onboarding_card_dismissed').gte('created_at', sevenDaysAgo),
   ])
+
+  // Reports queue — Supabase returns { data: null, error } if table doesn't exist; never throws
+  const { data: recentReports } = await supabase
+    .from('reports')
+    .select('id, target_type, reason, details, created_at, status, reporter_id, profiles!reporter_id(name)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(25) as { data: ReportRow[] | null; error: unknown }
 
   const platformStats = [
     { label: 'Total Users', value: totalUsers ?? 0, icon: '👥' },
@@ -186,6 +206,78 @@ export default async function AdminPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Reports queue */}
+      <div className="mt-10">
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-sm font-semibold text-white">Pending Reports</h2>
+          {(recentReports?.length ?? 0) > 0 && (
+            <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-400">
+              {recentReports!.length}
+            </span>
+          )}
+        </div>
+
+        {!recentReports || recentReports.length === 0 ? (
+          <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] px-5 py-8 text-center">
+            <p className="text-sm text-slate-500">No pending reports</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] overflow-hidden">
+            {recentReports.map((r, i) => {
+              const reasonLabel: Record<string, string> = {
+                inappropriate_content: 'Inappropriate content',
+                harassment: 'Harassment',
+                scam_fraud: 'Scam / fraud',
+                safety_concern: 'Safety concern',
+                spam: 'Spam',
+                other: 'Other',
+              }
+              const typeLabel: Record<string, string> = {
+                request: 'Request',
+                offer: 'Offer',
+                user: 'User',
+                message_thread: 'Conversation',
+              }
+              const reporterName = Array.isArray(r.profiles) ? r.profiles[0]?.name : r.profiles?.name
+              const timeAgo = (iso: string) => {
+                const diff = Date.now() - new Date(iso).getTime()
+                const mins = Math.floor(diff / 60000)
+                if (mins < 60) return `${mins}m ago`
+                const hrs = Math.floor(mins / 60)
+                if (hrs < 24) return `${hrs}h ago`
+                return `${Math.floor(hrs / 24)}d ago`
+              }
+              return (
+                <div key={r.id} className={`px-5 py-4 ${i < recentReports.length - 1 ? 'border-b border-[#1e2d4a]' : ''}`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="rounded-full border border-red-500/20 bg-red-500/[0.08] px-2 py-0.5 text-[10px] font-semibold text-red-400">
+                          {typeLabel[r.target_type] ?? r.target_type}
+                        </span>
+                        <span className="text-xs text-slate-300 font-medium">{reasonLabel[r.reason] ?? r.reason}</span>
+                      </div>
+                      {r.details && (
+                        <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{r.details}</p>
+                      )}
+                      <p className="mt-1.5 text-[10px] text-slate-600">
+                        by {reporterName ?? 'Unknown'} · {timeAgo(r.created_at)}
+                      </p>
+                    </div>
+                    <span className="flex-shrink-0 font-mono text-[10px] text-slate-700 break-all max-w-[140px] text-right">
+                      {r.target_id.slice(0, 8)}…
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        <p className="mt-2 text-[10px] text-slate-700">
+          To resolve: email campusosapp@gmail.com or update report status directly in Supabase.
+        </p>
       </div>
     </div>
   )

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { trackEvent } from '@/lib/analytics'
+import ReportModal from '@/app/components/ReportModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -250,6 +251,9 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
 
   // View-offers modal (requester side)
   const [offersTarget, setOffersTarget] = useState<OffersTarget | null>(null)
+
+  // Report modal
+  const [reportTarget, setReportTarget] = useState<{ type: 'request' | 'offer'; id: string; name?: string } | null>(null)
 
   // Accept/decline handlers update local state immediately
   function handleOfferAccepted(requestId: string, offerId: string, seatsToFill = 1) {
@@ -571,6 +575,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
                 onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
                 onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
+                onReport={!isOwn ? () => setReportTarget({ type: 'request', id: req.id, name: req.title }) : undefined}
               />
             )
           })}
@@ -653,6 +658,21 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                   Cancel
                 </button>
               </div>
+
+              {offerTarget.category === 'rides' && (
+                <p className="text-[10px] text-slate-600 leading-relaxed text-center">
+                  CampusOS coordinates connections only — confirm all ride details directly with the other student.{' '}
+                  <a href="/safety" target="_blank" rel="noopener" className="text-blue-500/70 hover:text-blue-400 transition-colors">Safety tips</a>
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={() => { closeOfferModal(); setReportTarget({ type: 'request', id: offerTarget.requestId, name: offerTarget.title }) }}
+                className="text-[10px] text-slate-700 hover:text-slate-500 transition-colors text-center w-full"
+              >
+                Report this request
+              </button>
             </form>
           </Modal>
         )
@@ -674,6 +694,16 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       {/* Toast */}
       {offeredIds.size > 0 && !offerTarget && (
         <OfferToast key={offeredIds.size} />
+      )}
+
+      {/* Report modal */}
+      {reportTarget && (
+        <ReportModal
+          targetType={reportTarget.type}
+          targetId={reportTarget.id}
+          displayName={reportTarget.name}
+          onClose={() => setReportTarget(null)}
+        />
       )}
     </>
   )
@@ -702,6 +732,7 @@ function RequestCard({
   onComplete,
   completing = false,
   isPast = false,
+  onReport,
 }: {
   req: FeedRequest
   profile: ProfileInfo | null
@@ -723,6 +754,7 @@ function RequestCard({
   onComplete?: () => void
   completing?: boolean
   isPast?: boolean
+  onReport?: () => void
 }) {
   const isRide = req.category === 'rides'
   const isFull = isRide && req.is_driver === true && req.available_seats != null && (req.seats_filled ?? 0) >= req.available_seats
@@ -946,6 +978,18 @@ function RequestCard({
             )}
             <span className="flex-shrink-0 text-xs text-slate-700">·</span>
             <span className="flex-shrink-0 text-xs text-slate-600">{timeAgo(req.created_at)}</span>
+            {onReport && (
+              <>
+                <span className="flex-shrink-0 text-xs text-slate-700">·</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onReport() }}
+                  className="flex-shrink-0 text-[10px] text-slate-700 hover:text-red-400/70 transition-colors"
+                >
+                  Report
+                </button>
+              </>
+            )}
           </div>
 
           {isPast ? (

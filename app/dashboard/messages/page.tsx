@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { trackEvent } from '@/lib/analytics'
+import ReportModal from '@/app/components/ReportModal'
 
 interface MessageRow {
   id: string
@@ -88,6 +89,7 @@ export default function MessagesPage() {
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
+  const [reportConv, setReportConv] = useState<{ id: string; name?: string } | null>(null)
   const threadEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -255,6 +257,7 @@ export default function MessagesPage() {
   }
 
   return (
+    <>
     <div className="flex h-[calc(100vh-0px)] md:h-screen overflow-hidden">
       {/* Conversation list */}
       <div className={`${showThread ? 'hidden md:flex' : 'flex'} w-full md:w-72 flex-col border-r border-[#1e2d4a] bg-[#060b17] flex-shrink-0`}>
@@ -337,6 +340,14 @@ export default function MessagesPage() {
                   <p className="text-xs text-slate-500 truncate">Re: {selectedConv.request_title}</p>
                 )}
               </div>
+              <button
+                type="button"
+                onClick={() => setReportConv({ id: selectedConv.other_user_id, name: selectedConv.other_name ?? undefined })}
+                className="flex-shrink-0 text-[10px] text-slate-700 hover:text-red-400/70 transition-colors px-1"
+                title="Report this user"
+              >
+                Report
+              </button>
             </div>
 
             {/* Messages */}
@@ -405,6 +416,15 @@ export default function MessagesPage() {
         )}
       </div>
     </div>
+    {reportConv && (
+      <ReportModal
+        targetType="user"
+        targetId={reportConv.id}
+        displayName={reportConv.name}
+        onClose={() => setReportConv(null)}
+      />
+    )}
+    </>
   )
 }
 

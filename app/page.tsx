@@ -30,7 +30,7 @@ const STEPS = [
 ]
 
 const TRUST = [
-  { emoji: '🎓', label: '.edu verified', body: 'Only students with a valid university email can join. No strangers.' },
+  { emoji: '🎓', label: '.edu verified', body: 'Everyone signs up with a university email address. You\'re always interacting with members of your campus community.' },
   { emoji: '⭐', label: 'Rated profiles', body: 'Every student builds a reputation through completed requests and reviews.' },
   { emoji: '🔒', label: 'Campus-focused', body: 'Built for the rhythms of student life — move-in, finals, late nights, airport runs.' },
   { emoji: '💬', label: 'Real-time coordination', body: 'Chat directly once an offer is accepted. No third-party middleman.' },
@@ -172,7 +172,7 @@ export default function LandingPage() {
             Built for trust on campus
           </h2>
           <p className="text-center text-sm text-slate-500 mb-12">
-            Everyone on CampusOS is a real, verified student.
+            Everyone uses a university email to join. You decide who to work with.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
@@ -223,7 +223,13 @@ export default function LandingPage() {
             <span className="text-blue-400 leading-none">⬡</span>
             <span className="text-sm font-medium text-slate-500">CampusOS</span>
           </div>
-          <p className="text-xs text-slate-600">Students helping students. University email required.</p>
+          <div className="flex flex-wrap justify-center gap-x-5 gap-y-1.5 text-xs text-slate-600">
+            <Link href="/terms"      className="hover:text-slate-400 transition-colors">Terms</Link>
+            <Link href="/privacy"    className="hover:text-slate-400 transition-colors">Privacy</Link>
+            <Link href="/guidelines" className="hover:text-slate-400 transition-colors">Guidelines</Link>
+            <Link href="/safety"     className="hover:text-slate-400 transition-colors">Safety</Link>
+            <a href="mailto:campusosapp@gmail.com" className="hover:text-slate-400 transition-colors">Contact</a>
+          </div>
         </div>
       </footer>
     </div>
