@@ -2,27 +2,37 @@
 
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const ADMIN_EMAILS = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com'])
 
-const NAV = [
-  { href: '/dashboard', label: 'Dashboard', icon: 'home' },
-  { href: '/dashboard/rides', label: 'Rides', icon: 'rides' },
-  { href: '/dashboard/requests', label: 'My Requests', icon: 'list' },
-  { href: '/dashboard/offers', label: 'My Offers', icon: 'offers' },
-  { href: '/dashboard/messages', label: 'Messages', icon: 'chat' },
-  { href: '/dashboard/profile', label: 'Profile', icon: 'user' },
+// Profile is excluded here and rendered explicitly so mobile can treat it as a sheet trigger
+const NAV_MAIN = [
+  { href: '/dashboard',          label: 'Dashboard',   icon: 'home' },
+  { href: '/dashboard/rides',    label: 'Rides',        icon: 'rides' },
+  { href: '/dashboard/requests', label: 'My Requests',  icon: 'list' },
+  { href: '/dashboard/offers',   label: 'My Offers',    icon: 'offers' },
+  { href: '/dashboard/messages', label: 'Messages',     icon: 'chat' },
 ]
 
 const NOTIF_ICONS: Record<string, string> = {
   offer_received: '🤝',
   offer_accepted: '✅',
   offer_rejected: '❌',
-  counter_offer: '↩',
-  new_message: '💬',
+  counter_offer:  '↩',
+  new_message:    '💬',
   task_completed: '🎉',
+}
+
+// Destination and action label for each notification type
+const NOTIF_ACTION: Record<string, { route: string; label: string }> = {
+  offer_received: { route: '/dashboard/requests', label: 'View requests' },
+  offer_accepted: { route: '/dashboard/offers',   label: 'View offer' },
+  offer_rejected: { route: '/dashboard/offers',   label: 'View offer' },
+  counter_offer:  { route: '/dashboard/offers',   label: 'Respond to counter' },
+  new_message:    { route: '/dashboard/messages', label: 'Open messages' },
+  task_completed: { route: '/dashboard/requests', label: 'View requests' },
 }
 
 interface NotifRow {
@@ -51,37 +61,93 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-function NotificationBell({ userId }: { userId: string }) {
-  const [unreadCount, setUnreadCount] = useState(0)
+// ─── Shared notification list (used in both desktop dropdown and mobile sheet) ─
+
+function NotifList({
+  notifications,
+  loading,
+  onClose,
+}: {
+  notifications: NotifRow[]
+  loading: boolean
+  onClose: () => void
+}) {
+  const router = useRouter()
+
+  function navigate(n: NotifRow) {
+    onClose()
+    router.push(NOTIF_ACTION[n.type]?.route ?? '/dashboard')
+  }
+
+  if (loading) {
+    return <div className="py-8 text-center text-xs text-slate-500">Loading…</div>
+  }
+
+  if (notifications.length === 0) {
+    return (
+      <div className="px-4 py-8 text-center">
+        <p className="text-sm font-medium text-slate-400 mb-1.5">All caught up</p>
+        <p className="text-xs text-slate-600 leading-relaxed">
+          Offer acceptances, counter-offers, messages, and ride updates will appear here.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {notifications.map(n => {
+        const action = NOTIF_ACTION[n.type]
+        return (
+          <button
+            key={n.id}
+            type="button"
+            onClick={() => navigate(n)}
+            className={`w-full text-left border-b border-[#1e2d4a]/50 px-4 py-3 last:border-0 transition-colors hover:bg-white/[0.04] active:bg-white/[0.06] ${!n.read ? 'bg-blue-500/[0.04]' : ''}`}
+          >
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 flex-shrink-0 text-base leading-none">
+                {NOTIF_ICONS[n.type] ?? '🔔'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs leading-relaxed text-slate-300">{n.message}</p>
+                <div className="mt-1 flex items-center gap-2 flex-wrap">
+                  <p className="text-[10px] text-slate-600">{timeAgo(n.created_at)}</p>
+                  {action && (
+                    <span className="text-[10px] text-blue-400/70">{action.label} →</span>
+                  )}
+                </div>
+              </div>
+              {!n.read && (
+                <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-400" />
+              )}
+            </div>
+          </button>
+        )
+      })}
+    </>
+  )
+}
+
+// ─── Desktop notification bell + dropdown ─────────────────────────────────────
+// Receives unreadCount from Sidebar (shared with mobile bell) so both surfaces
+// show the same count from a single realtime subscription.
+
+function NotificationBell({
+  userId,
+  unreadCount,
+  onRead,
+}: {
+  userId: string
+  unreadCount: number
+  onRead: () => void
+}) {
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<NotifRow[]>([])
   const [loading, setLoading] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Fetch initial unread count + subscribe to realtime inserts
-  useEffect(() => {
-    const supabase = createClient()
-
-    supabase
-      .from('notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('read', false)
-      .then(({ count }) => setUnreadCount(count ?? 0))
-
-    const channel = supabase
-      .channel(`notif-bell-${userId}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-        () => setUnreadCount(prev => prev + 1),
-      )
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [userId])
-
-  // Close dropdown on outside click
+  // Close on outside click
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -92,7 +158,11 @@ function NotificationBell({ userId }: { userId: string }) {
     return () => document.removeEventListener('mousedown', handle)
   }, [open])
 
-  async function loadNotifications() {
+  async function handleToggle() {
+    const opening = !open
+    setOpen(opening)
+    if (!opening) return
+
     setLoading(true)
     const supabase = createClient()
     const { data } = await supabase
@@ -103,24 +173,15 @@ function NotificationBell({ userId }: { userId: string }) {
       .limit(20)
     setNotifications((data ?? []) as NotifRow[])
     setLoading(false)
-  }
 
-  async function handleToggle() {
-    const opening = !open
-    setOpen(opening)
-    if (opening) {
-      await loadNotifications()
-      // Mark all unread as read
-      if (unreadCount > 0) {
-        const supabase = createClient()
-        await supabase
-          .from('notifications')
-          .update({ read: true })
-          .eq('user_id', userId)
-          .eq('read', false)
-        setUnreadCount(0)
-        setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-      }
+    if (unreadCount > 0) {
+      await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', userId)
+        .eq('read', false)
+      onRead()
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
     }
   }
 
@@ -141,40 +202,22 @@ function NotificationBell({ userId }: { userId: string }) {
       </button>
 
       {open && (
-        <div className="fixed left-60 top-4 z-50 w-80 rounded-xl border border-[#1e2d4a] bg-[#060b17] shadow-2xl shadow-black/60">
+        // absolute left-0 top-full — positions below the bell container, left-aligned.
+        // The sidebar is w-60 (240px) and the dropdown is w-80 (320px), so it extends
+        // 80px into the content area over the sidebar's right edge. z-50 keeps it on top.
+        <div className="absolute left-0 top-full mt-2 z-50 w-80 rounded-xl border border-[#1e2d4a] bg-[#060b17] shadow-2xl shadow-black/60">
           <div className="flex items-center justify-between border-b border-[#1e2d4a] px-4 py-3">
             <span className="text-xs font-semibold text-white">Notifications</span>
             {notifications.length > 0 && (
               <span className="text-[10px] text-slate-600">{notifications.length} recent</span>
             )}
           </div>
-
           <div className="max-h-80 overflow-y-auto">
-            {loading ? (
-              <div className="py-8 text-center text-xs text-slate-500">Loading…</div>
-            ) : notifications.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">No notifications yet</div>
-            ) : (
-              notifications.map(n => (
-                <div
-                  key={n.id}
-                  className={`border-b border-[#1e2d4a]/50 px-4 py-3 last:border-0 ${!n.read ? 'bg-blue-500/[0.04]' : ''}`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <span className="mt-0.5 flex-shrink-0 text-base leading-none">
-                      {NOTIF_ICONS[n.type] ?? '🔔'}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs leading-relaxed text-slate-300">{n.message}</p>
-                      <p className="mt-1 text-[10px] text-slate-600">{timeAgo(n.created_at)}</p>
-                    </div>
-                    {!n.read && (
-                      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-400" />
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
+            <NotifList
+              notifications={notifications}
+              loading={loading}
+              onClose={() => setOpen(false)}
+            />
           </div>
         </div>
       )}
@@ -182,9 +225,63 @@ function NotificationBell({ userId }: { userId: string }) {
   )
 }
 
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+
 export default function Sidebar({ userName, userEmail, userId, logout }: Props) {
   const pathname = usePathname()
   const [mobileProfileOpen, setMobileProfileOpen] = useState(false)
+  const [mobileNotifOpen, setMobileNotifOpen] = useState(false)
+  const [mobileNotifications, setMobileNotifications] = useState<NotifRow[]>([])
+  const [mobileNotifLoading, setMobileNotifLoading] = useState(false)
+
+  // Single unread count — shared between desktop bell and mobile bell
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    const supabase = createClient()
+
+    supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('read', false)
+      .then(({ count }) => setUnreadCount(count ?? 0))
+
+    const channel = supabase
+      .channel(`notif-sidebar-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        () => setUnreadCount(prev => prev + 1),
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [userId])
+
+  async function openMobileNotif() {
+    setMobileNotifOpen(true)
+    setMobileNotifLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('notifications')
+      .select('id, type, message, read, created_at, related_request_id')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setMobileNotifications((data ?? []) as NotifRow[])
+    setMobileNotifLoading(false)
+
+    if (unreadCount > 0) {
+      await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', userId)
+        .eq('read', false)
+      setUnreadCount(0)
+      setMobileNotifications(prev => prev.map(n => ({ ...n, read: true })))
+    }
+  }
 
   const initials = userName
     ? userName.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
@@ -202,12 +299,16 @@ export default function Sidebar({ userName, userEmail, userId, logout }: Props) 
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-[#1e2d4a] flex-shrink-0">
           <span className="text-blue-400 text-xl leading-none">⬡</span>
           <span className="flex-1 font-semibold text-[15px] tracking-tight text-white">CampusOS</span>
-          <NotificationBell userId={userId} />
+          <NotificationBell
+            userId={userId}
+            unreadCount={unreadCount}
+            onRead={() => setUnreadCount(0)}
+          />
         </div>
 
         {/* Nav links */}
         <nav className="flex-1 px-3 py-5 space-y-0.5 overflow-y-auto">
-          {NAV.map((item) => (
+          {NAV_MAIN.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -221,6 +322,17 @@ export default function Sidebar({ userName, userEmail, userId, logout }: Props) 
               {item.label}
             </Link>
           ))}
+          <Link
+            href="/dashboard/profile"
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+              isActive('/dashboard/profile')
+                ? 'bg-blue-500/10 text-blue-400 font-medium'
+                : 'text-slate-400 hover:bg-white/[0.04] hover:text-slate-200'
+            }`}
+          >
+            <NavIcon name="user" active={isActive('/dashboard/profile')} />
+            Profile
+          </Link>
           {ADMIN_EMAILS.has(userEmail) && (
             <Link
               href="/dashboard/admin"
@@ -261,40 +373,91 @@ export default function Sidebar({ userName, userEmail, userId, logout }: Props) 
         </div>
       </aside>
 
-      {/* ── Mobile bottom nav ── */}
+      {/* ── Mobile bottom nav ──
+          7 items: 5 main routes + bell + profile. Minimum touch width ~51px on
+          360px devices (above the 44px Apple HIG minimum). Labels are 9px. */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#060b17]/95 backdrop-blur-md border-t border-[#1e2d4a] flex items-stretch h-16">
-        {NAV.map((item) => {
-          if (item.icon === 'user') {
-            return (
-              <button
-                key={item.href}
-                type="button"
-                onClick={() => setMobileProfileOpen(true)}
-                className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
-                  isActive(item.href) ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'
-                }`}
-              >
-                <NavIcon name={item.icon} active={isActive(item.href)} />
-                <span className="text-[9px] leading-none font-medium">Profile</span>
-              </button>
-            )
-          }
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
-                isActive(item.href) ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'
-              }`}
-            >
-              <NavIcon name={item.icon} active={isActive(item.href)} />
-              <span className="text-[9px] leading-none font-medium">
-                {item.label.split(' ')[0]}
+        {NAV_MAIN.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+              isActive(item.href) ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'
+            }`}
+          >
+            <NavIcon name={item.icon} active={isActive(item.href)} />
+            <span className="text-[9px] leading-none font-medium">
+              {item.label.split(' ')[0]}
+            </span>
+          </Link>
+        ))}
+
+        {/* Bell — shows unread badge, opens mobile notification sheet */}
+        <button
+          type="button"
+          onClick={openMobileNotif}
+          className="flex-1 flex flex-col items-center justify-center gap-1 text-slate-600 hover:text-slate-400 transition-colors relative"
+          aria-label="Notifications"
+        >
+          <div className="relative">
+            <BellIcon />
+            {unreadCount > 0 && (
+              <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white">
+                {unreadCount > 9 ? '9+' : unreadCount}
               </span>
-            </Link>
-          )
-        })}
+            )}
+          </div>
+          <span className="text-[9px] leading-none font-medium">Alerts</span>
+        </button>
+
+        {/* Profile — opens profile sheet */}
+        <button
+          type="button"
+          onClick={() => setMobileProfileOpen(true)}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-colors ${
+            isActive('/dashboard/profile') ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'
+          }`}
+        >
+          <NavIcon name="user" active={isActive('/dashboard/profile')} />
+          <span className="text-[9px] leading-none font-medium">Profile</span>
+        </button>
       </nav>
+
+      {/* ── Mobile notification sheet ── */}
+      {mobileNotifOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setMobileNotifOpen(false)}
+          />
+          <div className="relative rounded-t-2xl border-t border-[#1e2d4a] bg-[#060b17]">
+            {/* Handle */}
+            <div className="mx-auto mt-3 mb-1 h-1 w-10 rounded-full bg-white/10" />
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d4a]">
+              <span className="text-sm font-semibold text-white">Notifications</span>
+              <button
+                type="button"
+                onClick={() => setMobileNotifOpen(false)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/[0.06] hover:text-slate-300 transition-colors"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            {/* List */}
+            <div className="max-h-[60vh] overflow-y-auto pb-safe">
+              <NotifList
+                notifications={mobileNotifications}
+                loading={mobileNotifLoading}
+                onClose={() => setMobileNotifOpen(false)}
+              />
+            </div>
+            {/* Bottom safe area for home indicator */}
+            <div className="h-8" />
+          </div>
+        </div>
+      )}
 
       {/* ── Mobile profile sheet ── */}
       {mobileProfileOpen && (
@@ -347,6 +510,8 @@ export default function Sidebar({ userName, userEmail, userId, logout }: Props) 
     </>
   )
 }
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
 
 function NavIcon({ name, active }: { name: string; active: boolean }) {
   const cls = `h-[18px] w-[18px] flex-shrink-0 transition-colors ${active ? 'text-blue-400' : ''}`
