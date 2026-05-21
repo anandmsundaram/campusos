@@ -305,18 +305,18 @@ export default function MyRequestsPage() {
 
     setRequests(prev => prev.map(r => r.id === req.id ? { ...r, status: 'completed' } : r))
 
-    // Rides: notify all confirmed passengers, no review modal
+    // Rides: notify all accepted passengers via canonical request_offers
     if (req.category === 'rides') {
-      const { data: passengers } = await supabase
-        .from('ride_passengers')
-        .select('passenger_id')
+      const { data: acceptedOffers } = await supabase
+        .from('request_offers')
+        .select('helper_id')
         .eq('request_id', req.id)
-        .eq('status', 'confirmed')
+        .eq('status', 'accepted')
 
-      if (passengers && passengers.length > 0) {
-        for (const p of passengers) {
+      if (acceptedOffers && acceptedOffers.length > 0) {
+        for (const o of acceptedOffers) {
           await supabase.from('notifications').insert({
-            user_id: p.passenger_id,
+            user_id: o.helper_id,
             type: 'task_completed',
             message: `Ride "${req.title}" has been completed. Safe travels!`,
             related_request_id: req.id,

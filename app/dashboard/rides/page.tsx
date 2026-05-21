@@ -29,12 +29,16 @@ interface RideRequest {
   profiles: { name: string | null; rating: number | null } | { name: string | null; rating: number | null }[] | null
 }
 
-interface PassengerRow {
+// Canonical offer row — same shape as request_offers table
+interface RequestOfferRow {
   id: string
   request_id: string
-  passenger_id: string
-  status: 'pending' | 'confirmed' | 'cancelled'
-  price_agreed: number | null
+  helper_id: string
+  status: 'pending' | 'accepted' | 'rejected' | 'countered'
+  counter_budget: number | null
+  requester_counter: number | null
+  final_agreed_price: number | null
+  seats_requested: number | null
   created_at: string
   profiles?: { name: string | null; rating: number | null } | null
 }
@@ -53,6 +57,8 @@ interface RideMessage {
 const AIRPORT_KW = ['airport', 'iah', 'dfw', 'hou', 'aus', 'sat', 'dal', 'bush', 'hobby', 'midway', 'intercontinental']
 const DATE_GROUP_ORDER = ['today', 'tomorrow', 'weekend', 'next_week', 'later', 'flexible'] as const
 type DateGroup = typeof DATE_GROUP_ORDER[number]
+
+const OFFER_SELECT = 'id, request_id, helper_id, status, counter_budget, requester_counter, final_agreed_price, seats_requested, created_at'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,7 +85,7 @@ function getDateGroup(scheduledTime: string | null): DateGroup {
   const diffDays = Math.floor((d.getTime() - today.getTime()) / 86400000)
   if (diffDays <= 0) return 'today'
   if (diffDays === 1) return 'tomorrow'
-  const dow = d.getDay() // 0=Sun 6=Sat
+  const dow = d.getDay()
   if ((dow === 0 || dow === 6) && diffDays <= 6) return 'weekend'
   if (diffDays <= 7) return 'next_week'
   return 'later'
@@ -136,8 +142,10 @@ export default function RidesPage() {
   const [search, setSearch] = useState('')
   const [airportFilter, setAirportFilter] = useState(false)
   const [matchCount, setMatchCount] = useState(0)
-  const [passengersByRide, setPassengersByRide] = useState<Map<string, PassengerRow[]>>(new Map())
-  const [myPassengerEntries, setMyPassengerEntries] = useState<Map<string, PassengerRow>>(new Map())
+  // Canonical: offers on rides where I am the driver (keyed by request_id)
+  const [offersByRide, setOffersByRide] = useState<Map<string, RequestOfferRow[]>>(new Map())
+  // Canonical: my own offer on a ride where I am the passenger (keyed by request_id)
+  const [myOfferByRide, setMyOfferByRide] = useState<Map<string, RequestOfferRow>>(new Map())
   const [chatRideId, setChatRideId] = useState<string | null>(null)
   const [acting, setActing] = useState<string | null>(null)
   const [highlightedRideId, setHighlightedRideId] = useState<string | null>(null)
@@ -166,7 +174,6 @@ export default function RidesPage() {
       .eq('status', 'open')
       .order('scheduled_time', { ascending: true })
 
-    // Schema cache fallback — retry without migration 006/007 columns
     if (ridesError && /schema cache|Could not find the/i.test(ridesError.message)) {
       const fallback = await supabase
         .from('requests')
@@ -189,40 +196,45 @@ export default function RidesPage() {
     const allRides = (ridesData ?? []) as RideRequest[]
     setRides(allRides)
 
-    // My passenger entries (rides I've joined)
-    const { data: myEntries } = await supabase
-      .from('ride_passengers')
-      .select('id, request_id, passenger_id, status, price_agreed, created_at')
-      .eq('passenger_id', user.id)
-      .neq('status', 'cancelled')
+    const allRideIds = allRides.map(r => r.id)
 
-    const entriesMap = new Map<string, PassengerRow>()
-    for (const e of (myEntries ?? []) as PassengerRow[]) {
-      entriesMap.set(e.request_id, e)
+    // ── My offers as passenger (canonical — request_offers only) ───────────────
+    if (allRideIds.length > 0) {
+      const { data: myOfferData } = await supabase
+        .from('request_offers')
+        .select(OFFER_SELECT)
+        .eq('helper_id', user.id)
+        .in('request_id', allRideIds)
+        .in('status', ['pending', 'countered', 'accepted'])
+
+      const myMap = new Map<string, RequestOfferRow>()
+      for (const o of (myOfferData ?? []) as RequestOfferRow[]) {
+        myMap.set(o.request_id, o)
+      }
+      setMyOfferByRide(myMap)
     }
-    setMyPassengerEntries(entriesMap)
 
-    // Passengers for rides I'm driving
+    // ── Offers on rides I'm driving (canonical) ────────────────────────────────
     const myDriverRideIds = allRides
       .filter(r => r.requester_id === user.id && r.is_driver)
       .map(r => r.id)
 
     if (myDriverRideIds.length > 0) {
-      const { data: pData } = await supabase
-        .from('ride_passengers')
-        .select('id, request_id, passenger_id, status, price_agreed, created_at, profiles(name, rating)')
+      const { data: offerData } = await supabase
+        .from('request_offers')
+        .select(`${OFFER_SELECT}, profiles!helper_id(name, rating)`)
         .in('request_id', myDriverRideIds)
-        .neq('status', 'cancelled')
+        .in('status', ['pending', 'countered', 'accepted'])
 
-      const pMap = new Map<string, PassengerRow[]>()
-      for (const p of (pData ?? []) as unknown as PassengerRow[]) {
-        if (!pMap.has(p.request_id)) pMap.set(p.request_id, [])
-        pMap.get(p.request_id)!.push(p)
+      const oMap = new Map<string, RequestOfferRow[]>()
+      for (const o of (offerData ?? []) as unknown as RequestOfferRow[]) {
+        if (!oMap.has(o.request_id)) oMap.set(o.request_id, [])
+        oMap.get(o.request_id)!.push(o)
       }
-      setPassengersByRide(pMap)
+      setOffersByRide(oMap)
     }
 
-    // Smart match count
+    // ── Smart match count ──────────────────────────────────────────────────────
     const myPassengerRides = allRides.filter(r => r.requester_id === user.id && r.is_driver === false)
     if (myPassengerRides.length > 0) {
       const matchSet = new Set<string>()
@@ -246,7 +258,7 @@ export default function RidesPage() {
 
   useEffect(() => { load() }, [load])
 
-  // ─── Actions ──────────────────────────────────────────────────────────────
+  // ─── Actions (all use request_offers RPCs — no ride_passengers writes) ───────
 
   async function handleRequestSeat(ride: RideRequest) {
     if (!userId || acting) return
@@ -256,112 +268,134 @@ export default function RidesPage() {
     const isFull = ride.available_seats != null && ride.seats_filled >= ride.available_seats
     if (isFull || ride.ride_started) { setActing(null); return }
 
-    const willAutoAccept = ride.auto_accept && (ride.available_seats == null || ride.seats_filled < ride.available_seats)
-    const newStatus = willAutoAccept ? 'confirmed' : 'pending'
-
-    const { error } = await supabase.from('ride_passengers').insert({
-      request_id: ride.id,
-      passenger_id: userId,
-      status: newStatus,
-      price_agreed: ride.budget ?? null,
+    const { data: result } = await supabase.rpc('submit_offer_safe', {
+      p_request_id:      ride.id,
+      p_message:         null,
+      p_counter_budget:  ride.budget ?? null,
+      p_seats_requested: 1,
     })
 
-    if (error) { setActing(null); return }
+    if (!result?.ok) { setActing(null); return }
 
-    if (willAutoAccept) {
-      const newFilled = ride.seats_filled + 1
-      const updates: Record<string, unknown> = { seats_filled: newFilled }
-      if (ride.available_seats != null && newFilled >= ride.available_seats) updates.status = 'matched'
-      await supabase.from('requests').update(updates).eq('id', ride.id)
-      await supabase.from('notifications').insert({
-        user_id: ride.requester_id, type: 'offer_received',
-        message: `A passenger has joined your ride to ${ride.destination_city ?? 'your destination'}`,
-        related_request_id: ride.id,
-      })
-      setRides(prev => prev.map(r => r.id === ride.id
-        ? { ...r, seats_filled: newFilled, status: updates.status ? String(updates.status) : r.status } : r))
-    } else {
-      await supabase.from('notifications').insert({
-        user_id: ride.requester_id, type: 'offer_received',
-        message: `Someone requested a seat on your ride to ${ride.destination_city ?? 'your destination'}. Approve or decline.`,
-        related_request_id: ride.id,
-      })
-    }
+    await supabase.from('notifications').insert({
+      user_id: ride.requester_id,
+      type: 'offer_received',
+      message: `Someone requested a seat on your ride to ${ride.destination_city ?? 'your destination'}. Accept or decline.`,
+      related_request_id: ride.id,
+    })
 
-    const newEntry: PassengerRow = {
-      id: '', request_id: ride.id, passenger_id: userId,
-      status: newStatus as 'pending' | 'confirmed' | 'cancelled',
-      price_agreed: ride.budget ?? null, created_at: new Date().toISOString(),
+    // Fetch the newly created offer so local state reflects pending status
+    const { data: newOffer } = await supabase
+      .from('request_offers')
+      .select(OFFER_SELECT)
+      .eq('request_id', ride.id)
+      .eq('helper_id', userId)
+      .single()
+
+    if (newOffer) {
+      setMyOfferByRide(prev => new Map(prev).set(ride.id, newOffer as RequestOfferRow))
     }
-    setMyPassengerEntries(prev => new Map(prev).set(ride.id, newEntry))
     setActing(null)
   }
 
-  async function handleCancelSeat(ride: RideRequest) {
+  // Withdraw a pending offer OR leave an accepted ride
+  async function handleWithdrawOffer(ride: RideRequest) {
     if (!userId || acting) return
-    const entry = myPassengerEntries.get(ride.id)
-    if (!entry) return
+    const offer = myOfferByRide.get(ride.id)
+    if (!offer) return
     setActing(ride.id)
     const supabase = createClient()
 
-    const { error } = await supabase.from('ride_passengers').update({ status: 'cancelled' }).eq('id', entry.id)
-    if (error) { setActing(null); return }
+    if (offer.status === 'accepted') {
+      // Leave confirmed ride — mark offer rejected and decrement seats
+      await supabase
+        .from('request_offers')
+        .update({ status: 'rejected' })
+        .eq('id', offer.id)
 
-    const updates: Record<string, unknown> = { seats_filled: Math.max(0, ride.seats_filled - 1) }
-    if (ride.status === 'matched') updates.status = 'open'
-    await supabase.from('requests').update(updates).eq('id', ride.id)
-    await supabase.from('notifications').insert({
-      user_id: ride.requester_id, type: 'offer_rejected',
-      message: `A passenger cancelled their seat on your ride to ${ride.destination_city ?? 'your destination'}`,
-      related_request_id: ride.id,
-    })
-    setMyPassengerEntries(prev => { const m = new Map(prev); m.delete(ride.id); return m })
-    setRides(prev => prev.map(r => r.id === ride.id
-      ? { ...r, seats_filled: Math.max(0, r.seats_filled - 1), status: updates.status ? String(updates.status) : r.status } : r))
+      const seatsDelta = offer.seats_requested ?? 1
+      const newFilled = Math.max(0, ride.seats_filled - seatsDelta)
+      const reqUpdates: Record<string, unknown> = { seats_filled: newFilled }
+      if (ride.status === 'matched') reqUpdates.status = 'open'
+      await supabase.from('requests').update(reqUpdates).eq('id', ride.id)
+
+      await supabase.from('notifications').insert({
+        user_id: ride.requester_id,
+        type: 'offer_rejected',
+        message: `A passenger left your ride to ${ride.destination_city ?? 'your destination'}`,
+        related_request_id: ride.id,
+      })
+
+      setRides(prev => prev.map(r => r.id === ride.id
+        ? { ...r, seats_filled: newFilled, status: reqUpdates.status ? String(reqUpdates.status) : r.status } : r))
+    } else {
+      // Withdraw pending/countered offer — no seat change needed
+      await supabase
+        .from('request_offers')
+        .update({ status: 'rejected' })
+        .eq('id', offer.id)
+    }
+
+    setMyOfferByRide(prev => { const m = new Map(prev); m.delete(ride.id); return m })
     setActing(null)
   }
 
-  async function handleApprove(rideId: string, entryId: string, passengerId: string, ride: RideRequest) {
+  // Driver approves a passenger's pending offer — delegates to accept_offer_atomic
+  async function handleApprove(rideId: string, offerId: string, helperId: string, ride: RideRequest) {
     if (acting) return
-    setActing(entryId)
+    setActing(offerId)
     const supabase = createClient()
 
-    const { error } = await supabase.from('ride_passengers').update({ status: 'confirmed' }).eq('id', entryId)
-    if (error) { setActing(null); return }
+    const { data: result } = await supabase.rpc('accept_offer_atomic', {
+      p_offer_id:    offerId,
+      p_accepted_by: userId!,
+    })
 
-    const newFilled = ride.seats_filled + 1
-    const reqUpdates: Record<string, unknown> = { seats_filled: newFilled }
-    if (ride.available_seats != null && newFilled >= ride.available_seats) reqUpdates.status = 'matched'
-    await supabase.from('requests').update(reqUpdates).eq('id', rideId)
+    if (!result?.ok) { setActing(null); return }
+
     await supabase.from('notifications').insert({
-      user_id: passengerId, type: 'offer_accepted',
+      user_id: helperId,
+      type: 'offer_accepted',
       message: `Your seat on the ride to ${ride.destination_city ?? 'your destination'} has been confirmed!`,
       related_request_id: rideId,
     })
-    setPassengersByRide(prev => {
+
+    setOffersByRide(prev => {
       const m = new Map(prev)
-      m.set(rideId, (m.get(rideId) ?? []).map(p => p.id === entryId ? { ...p, status: 'confirmed' as const } : p))
+      m.set(rideId, (m.get(rideId) ?? []).map(o =>
+        o.id === offerId
+          ? { ...o, status: 'accepted' as const, final_agreed_price: result.final_agreed_price ?? o.final_agreed_price }
+          : o
+      ))
       return m
     })
-    setRides(prev => prev.map(r => r.id === rideId
-      ? { ...r, seats_filled: newFilled, status: reqUpdates.status ? String(reqUpdates.status) : r.status } : r))
+
+    if (result.seats_filled != null) {
+      setRides(prev => prev.map(r => r.id === rideId
+        ? { ...r, seats_filled: result.seats_filled, status: result.request_status ?? r.status }
+        : r))
+    }
     setActing(null)
   }
 
-  async function handleDecline(rideId: string, entryId: string, passengerId: string, ride: RideRequest) {
+  // Driver rejects a passenger's pending offer
+  async function handleDecline(rideId: string, offerId: string, helperId: string, ride: RideRequest) {
     if (acting) return
-    setActing(entryId)
+    setActing(offerId)
     const supabase = createClient()
 
-    await supabase.from('ride_passengers').update({ status: 'cancelled' }).eq('id', entryId)
+    await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offerId)
+
     await supabase.from('notifications').insert({
-      user_id: passengerId, type: 'offer_rejected',
+      user_id: helperId,
+      type: 'offer_rejected',
       message: `Your seat request for the ride to ${ride.destination_city ?? 'your destination'} was declined.`,
       related_request_id: rideId,
     })
-    setPassengersByRide(prev => {
+
+    setOffersByRide(prev => {
       const m = new Map(prev)
-      m.set(rideId, (m.get(rideId) ?? []).filter(p => p.id !== entryId))
+      m.set(rideId, (m.get(rideId) ?? []).filter(o => o.id !== offerId))
       return m
     })
     setActing(null)
@@ -377,9 +411,11 @@ export default function RidesPage() {
       p_reason: 'cancelled_by_requester',
     })
     if (!result?.ok) { setActing(null); return }
-    for (const p of passengersByRide.get(ride.id) ?? []) {
+
+    for (const o of offersByRide.get(ride.id) ?? []) {
       await supabase.from('notifications').insert({
-        user_id: p.passenger_id, type: 'offer_rejected',
+        user_id: o.helper_id,
+        type: 'offer_rejected',
         message: `The ride to ${ride.destination_city ?? 'your destination'} has been cancelled by the driver.`,
         related_request_id: ride.id,
       })
@@ -394,9 +430,11 @@ export default function RidesPage() {
     const supabase = createClient()
 
     await supabase.from('requests').update({ ride_started: true }).eq('id', ride.id)
-    for (const p of (passengersByRide.get(ride.id) ?? []).filter(p => p.status === 'confirmed')) {
+
+    for (const o of (offersByRide.get(ride.id) ?? []).filter(o => o.status === 'accepted')) {
       await supabase.from('notifications').insert({
-        user_id: p.passenger_id, type: 'new_message',
+        user_id: o.helper_id,
+        type: 'new_message',
         message: `Your driver has started the ride to ${ride.destination_city ?? 'your destination'}. Have a safe trip!`,
         related_request_id: ride.id,
       })
@@ -409,7 +447,6 @@ export default function RidesPage() {
     if (!userId) return
     const supabase = createClient()
 
-    // Only create an initial message if no thread exists yet
     const { data: existing } = await supabase
       .from('messages')
       .select('id')
@@ -454,7 +491,6 @@ export default function RidesPage() {
     return true
   })
 
-  // Date-based groups, sorted by scheduled_time within each group
   const grouped = new Map<DateGroup, RideRequest[]>()
   for (const g of DATE_GROUP_ORDER) grouped.set(g, [])
   for (const r of filtered) grouped.get(getDateGroup(r.scheduled_time))!.push(r)
@@ -619,41 +655,46 @@ export default function RidesPage() {
                 <div className="flex flex-col gap-4">
                   {items.map(ride => {
                     const isOwn = ride.requester_id === userId
-                    const myEntry = myPassengerEntries.get(ride.id)
-                    const passengers = passengersByRide.get(ride.id) ?? []
-                    const confirmedPassengers = passengers.filter(p => p.status === 'confirmed')
-                    const earnings = confirmedPassengers.reduce((sum, p) => sum + (p.price_agreed ?? 0), 0)
+                    const myOffer = myOfferByRide.get(ride.id) ?? null
+                    const offers = offersByRide.get(ride.id) ?? []
+                    const acceptedOffers = offers.filter(o => o.status === 'accepted')
                     const isFull = ride.available_seats != null && ride.seats_filled >= ride.available_seats
                     const seatsLeft = ride.available_seats != null ? ride.available_seats - ride.seats_filled : null
-                    const canChat = isOwn || myEntry?.status === 'confirmed'
+                    const canChat = isOwn || myOffer?.status === 'accepted'
                     const returnTrip = findReturnTrip(ride, rides)
+                    const earnings = isOwn && ride.is_driver
+                      ? acceptedOffers.reduce((sum, o) => {
+                          const price = o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? ride.budget ?? 0
+                          return sum + price * (o.seats_requested ?? 1)
+                        }, 0)
+                      : null
 
                     return (
                       <div key={ride.id}>
                         <RideCard
                           ride={ride}
                           isOwn={isOwn}
-                          myEntry={myEntry ?? null}
+                          myOffer={myOffer}
                           isFull={isFull}
                           seatsLeft={seatsLeft}
-                          earnings={isOwn && ride.is_driver ? earnings : null}
-                          confirmedCount={isOwn ? confirmedPassengers.length : 0}
+                          earnings={earnings}
+                          acceptedCount={isOwn ? acceptedOffers.length : 0}
                           acting={acting}
                           canChat={canChat}
                           highlighted={highlightedRideId === ride.id}
                           onRequestSeat={() => handleRequestSeat(ride)}
-                          onCancelSeat={() => handleCancelSeat(ride)}
+                          onWithdrawOffer={() => handleWithdrawOffer(ride)}
                           onStartRide={() => handleStartRide(ride)}
                           onCancelRide={() => handleDriverCancelRide(ride)}
                           onOpenChat={() => setChatRideId(ride.id)}
                           onDmDriver={() => handleDmDriver(ride)}
+                          onGoToOffers={() => router.push('/dashboard')}
                           setRef={el => {
                             if (el) cardRefs.current.set(ride.id, el)
                             else cardRefs.current.delete(ride.id)
                           }}
                         />
 
-                        {/* Return trip banner */}
                         {returnTrip && (
                           <button
                             type="button"
@@ -671,14 +712,13 @@ export default function RidesPage() {
                           </button>
                         )}
 
-                        {/* Passenger management for driver's own cards */}
-                        {isOwn && ride.is_driver && passengers.length > 0 && (
-                          <PassengerSection
-                            passengers={passengers}
+                        {isOwn && ride.is_driver && offers.length > 0 && (
+                          <OfferSection
+                            offers={offers}
                             ride={ride}
                             acting={acting}
-                            onApprove={(entryId, passengerId) => handleApprove(ride.id, entryId, passengerId, ride)}
-                            onDecline={(entryId, passengerId) => handleDecline(ride.id, entryId, passengerId, ride)}
+                            onApprove={(offerId, helperId) => handleApprove(ride.id, offerId, helperId, ride)}
+                            onDecline={(offerId, helperId) => handleDecline(ride.id, offerId, helperId, ride)}
                           />
                         )}
                       </div>
@@ -705,31 +745,32 @@ export default function RidesPage() {
 // ─── Ride Card ────────────────────────────────────────────────────────────────
 
 function RideCard({
-  ride, isOwn, myEntry, isFull, seatsLeft, earnings, confirmedCount, acting,
-  canChat, highlighted, onRequestSeat, onCancelSeat, onStartRide, onCancelRide,
-  onOpenChat, onDmDriver, setRef,
+  ride, isOwn, myOffer, isFull, seatsLeft, earnings, acceptedCount, acting,
+  canChat, highlighted, onRequestSeat, onWithdrawOffer, onStartRide, onCancelRide,
+  onOpenChat, onDmDriver, onGoToOffers, setRef,
 }: {
   ride: RideRequest
   isOwn: boolean
-  myEntry: PassengerRow | null
+  myOffer: RequestOfferRow | null
   isFull: boolean
   seatsLeft: number | null
   earnings: number | null
-  confirmedCount: number
+  acceptedCount: number
   acting: string | null
   canChat: boolean
   highlighted: boolean
   onRequestSeat: () => void
-  onCancelSeat: () => void
+  onWithdrawOffer: () => void
   onStartRide: () => void
   onCancelRide: () => void
   onOpenChat: () => void
   onDmDriver: () => void
+  onGoToOffers: () => void
   setRef: (el: HTMLDivElement | null) => void
 }) {
   const profile = normalizeProfile(ride.profiles)
   const isActing = acting === ride.id
-  const showDmDriver = !isOwn && !myEntry
+  const showDmDriver = !isOwn && !myOffer
 
   return (
     <div
@@ -743,7 +784,7 @@ function RideCard({
       <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${ride.is_driver ? 'bg-blue-500' : 'bg-purple-500'}`} />
 
       <div className="pl-5 pr-4 pt-4 pb-4">
-        {/* Route — prominent */}
+        {/* Route */}
         <div className="flex items-center gap-2 mb-2.5">
           <span className="text-base font-semibold text-white">{ride.origin_city ?? '—'}</span>
           <svg className="h-4 w-4 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -810,15 +851,19 @@ function RideCard({
           )}
         </div>
 
-        {/* My passenger status */}
-        {!isOwn && myEntry && (
+        {/* My offer status (as passenger) */}
+        {!isOwn && myOffer && (
           <div className={`mb-3 rounded-lg border px-3 py-2 text-xs font-medium ${
-            myEntry.status === 'confirmed'
+            myOffer.status === 'accepted'
               ? 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-400'
+              : myOffer.status === 'countered'
+              ? 'border-blue-500/20 bg-blue-500/[0.07] text-blue-400'
               : 'border-yellow-500/20 bg-yellow-500/[0.07] text-yellow-400'
           }`}>
-            {myEntry.status === 'confirmed'
-              ? `✓ Seat confirmed${myEntry.price_agreed != null ? ` · You agreed to pay $${myEntry.price_agreed}` : ''}`
+            {myOffer.status === 'accepted'
+              ? `✓ Seat confirmed${(myOffer.final_agreed_price ?? myOffer.counter_budget) != null ? ` · $${myOffer.final_agreed_price ?? myOffer.counter_budget} agreed` : ''}`
+              : myOffer.status === 'countered'
+              ? '↔ Counter received from driver — respond in My Offers'
               : '⏳ Seat request pending driver approval'}
           </div>
         )}
@@ -867,7 +912,7 @@ function RideCard({
 
             {isOwn && ride.is_driver ? (
               <div className="flex items-center gap-2">
-                {!ride.ride_started && confirmedCount >= 1 && (
+                {!ride.ride_started && acceptedCount >= 1 && (
                   <button
                     type="button"
                     onClick={onStartRide}
@@ -888,15 +933,25 @@ function RideCard({
               </div>
             ) : isOwn ? (
               <span className="text-xs text-slate-600">Your request</span>
-            ) : myEntry ? (
-              <button
-                type="button"
-                onClick={onCancelSeat}
-                disabled={!!acting}
-                className="rounded-lg border border-[#1e2d4a] px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
-              >
-                {myEntry.status === 'pending' ? 'Cancel request' : 'Leave ride'}
-              </button>
+            ) : myOffer ? (
+              myOffer.status === 'countered' ? (
+                <button
+                  type="button"
+                  onClick={onGoToOffers}
+                  className="rounded-lg border border-blue-500/30 px-2.5 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-500/10 transition-colors"
+                >
+                  My Offers →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onWithdrawOffer}
+                  disabled={!!acting}
+                  className="rounded-lg border border-[#1e2d4a] px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
+                >
+                  {myOffer.status === 'pending' ? 'Cancel request' : 'Leave ride'}
+                </button>
+              )
             ) : isFull || ride.ride_started ? (
               <span className="text-xs font-semibold text-slate-600">{isFull ? 'Full' : 'Started'}</span>
             ) : (
@@ -916,19 +971,19 @@ function RideCard({
   )
 }
 
-// ─── Passenger Management Section ────────────────────────────────────────────
+// ─── Offer Management Section (driver view) ───────────────────────────────────
 
-function PassengerSection({
-  passengers, ride, acting, onApprove, onDecline,
+function OfferSection({
+  offers, ride, acting, onApprove, onDecline,
 }: {
-  passengers: PassengerRow[]
+  offers: RequestOfferRow[]
   ride: RideRequest
   acting: string | null
-  onApprove: (entryId: string, passengerId: string) => void
-  onDecline: (entryId: string, passengerId: string) => void
+  onApprove: (offerId: string, helperId: string) => void
+  onDecline: (offerId: string, helperId: string) => void
 }) {
-  const confirmed = passengers.filter(p => p.status === 'confirmed')
-  const pending   = passengers.filter(p => p.status === 'pending')
+  const confirmed = offers.filter(o => o.status === 'accepted')
+  const pending   = offers.filter(o => o.status === 'pending' || o.status === 'countered')
 
   return (
     <div className="ml-3 mt-1 rounded-b-xl border border-t-0 border-[#1e2d4a] bg-[#070c1a] px-4 py-3">
@@ -938,17 +993,18 @@ function PassengerSection({
 
       {confirmed.length > 0 && (
         <div className="flex flex-col gap-2 mb-3">
-          {confirmed.map(p => {
-            const prof = p.profiles as { name: string | null; rating: number | null } | null
+          {confirmed.map(o => {
+            const prof = o.profiles as { name: string | null; rating: number | null } | null
+            const agreedPrice = o.final_agreed_price ?? o.counter_budget
             return (
-              <div key={p.id} className="flex items-center gap-2.5">
+              <div key={o.id} className="flex items-center gap-2.5">
                 <div className="h-6 w-6 flex-shrink-0 flex items-center justify-center rounded-full bg-gradient-to-br from-emerald-500/30 to-emerald-700/30 text-[11px] font-semibold text-emerald-300">
                   {prof?.name ? prof.name[0].toUpperCase() : '?'}
                 </div>
                 <span className="text-xs font-medium text-slate-300">{prof?.name ?? 'Passenger'}</span>
                 {prof?.rating != null && <span className="text-xs text-slate-600">★ {Number(prof.rating).toFixed(1)}</span>}
-                {p.price_agreed != null && (
-                  <span className="ml-auto text-xs font-semibold text-emerald-400">${p.price_agreed}</span>
+                {agreedPrice != null && (
+                  <span className="ml-auto text-xs font-semibold text-emerald-400">${agreedPrice}</span>
                 )}
               </div>
             )
@@ -958,21 +1014,25 @@ function PassengerSection({
 
       {pending.length > 0 && (
         <div className="flex flex-col gap-2">
-          {pending.map(p => {
-            const prof = p.profiles as { name: string | null; rating: number | null } | null
-            const isActing = acting === p.id
+          {pending.map(o => {
+            const prof = o.profiles as { name: string | null; rating: number | null } | null
+            const isActing = acting === o.id
             const isFull = ride.available_seats != null && ride.seats_filled >= ride.available_seats
+            const requestedPrice = o.counter_budget ?? ride.budget
             return (
-              <div key={p.id} className="flex items-center gap-2.5 rounded-lg border border-yellow-500/10 bg-yellow-500/[0.04] px-2.5 py-2">
+              <div key={o.id} className="flex items-center gap-2.5 rounded-lg border border-yellow-500/10 bg-yellow-500/[0.04] px-2.5 py-2">
                 <div className="h-6 w-6 flex-shrink-0 flex items-center justify-center rounded-full bg-gradient-to-br from-yellow-500/30 to-yellow-700/30 text-[11px] font-semibold text-yellow-300">
                   {prof?.name ? prof.name[0].toUpperCase() : '?'}
                 </div>
                 <span className="flex-1 text-xs font-medium text-slate-300">{prof?.name ?? 'Passenger'}</span>
-                {p.price_agreed != null && <span className="text-xs text-yellow-400">${p.price_agreed}</span>}
+                {requestedPrice != null && <span className="text-xs text-yellow-400">${requestedPrice}</span>}
+                {o.status === 'countered' && (
+                  <span className="text-[10px] text-blue-400 border border-blue-500/20 rounded px-1.5 py-0.5">countered</span>
+                )}
                 <div className="flex gap-1.5">
                   <button
                     type="button"
-                    onClick={() => onApprove(p.id, p.passenger_id)}
+                    onClick={() => onApprove(o.id, o.helper_id)}
                     disabled={!!acting || isFull}
                     className="rounded-md bg-emerald-600/80 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
                   >
@@ -980,7 +1040,7 @@ function PassengerSection({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onDecline(p.id, p.passenger_id)}
+                    onClick={() => onDecline(o.id, o.helper_id)}
                     disabled={!!acting}
                     className="rounded-md border border-[#1e2d4a] px-2 py-1 text-[11px] font-medium text-slate-400 hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
                   >

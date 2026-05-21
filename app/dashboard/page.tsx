@@ -18,16 +18,20 @@ interface DriverRideRow {
 }
 
 interface PaxRideReq {
+  id: string
   title: string
   origin_city: string | null
   destination_city: string | null
   scheduled_time: string | null
   available_seats: number | null
+  is_driver: boolean | null
   profiles: { name: string | null } | { name: string | null }[] | null
 }
 
+// Accepted offer the user made on a driver ride (canonical — from request_offers)
 interface PaxRideRow {
-  price_agreed: number | null
+  final_agreed_price: number | null
+  counter_budget: number | null
   requests: PaxRideReq | PaxRideReq[] | null
 }
 
@@ -171,12 +175,12 @@ export default async function DashboardPage() {
       .gt('scheduled_time', now)
       .order('scheduled_time', { ascending: true })
       .limit(1),
-    // Next ride as confirmed passenger — only migration-005 columns
+    // Next ride as accepted passenger — canonical: accepted request_offers on driver rides
     supabase
-      .from('ride_passengers')
-      .select('price_agreed, requests(title, origin_city, destination_city, scheduled_time, available_seats, profiles!requester_id(name))')
-      .eq('passenger_id', user!.id)
-      .eq('status', 'confirmed')
+      .from('request_offers')
+      .select('final_agreed_price, counter_budget, requests(id, title, origin_city, destination_city, scheduled_time, available_seats, is_driver, profiles!requester_id(name))')
+      .eq('helper_id', user!.id)
+      .eq('status', 'accepted')
       .limit(20),
   ])
 
@@ -186,11 +190,14 @@ export default async function DashboardPage() {
 
   const futurePaxRides = paxRides
     .map(p => ({
-      price_agreed: p.price_agreed,
+      price_agreed: p.final_agreed_price ?? p.counter_budget,
       req: (Array.isArray(p.requests) ? p.requests[0] : p.requests) as PaxRideReq | null,
     }))
     .filter((p): p is { price_agreed: number | null; req: PaxRideReq } =>
-      p.req != null && !!p.req.scheduled_time && new Date(p.req.scheduled_time) > new Date()
+      p.req != null &&
+      p.req.is_driver === true &&   // only driver rides (not passenger-posted requests)
+      !!p.req.scheduled_time &&
+      new Date(p.req.scheduled_time) > new Date()
     )
     .sort((a, b) => new Date(a.req.scheduled_time!).getTime() - new Date(b.req.scheduled_time!).getTime())
 
