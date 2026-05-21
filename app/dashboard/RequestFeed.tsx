@@ -32,6 +32,7 @@ export interface FeedRequest {
   price_type?: 'fixed' | 'split' | 'free' | null
   is_airport_ride?: boolean | null
   structured_data?: Record<string, unknown> | null
+  description?: string | null
 }
 
 export interface OfferOnCard {
@@ -765,6 +766,8 @@ function RequestCard({
   const isExpired = isPast && req.status === 'open' && !hasSeatsSold
   const isPastRide = isPast && !!hasSeatsSold
 
+  const [expanded, setExpanded] = useState(false)
+
   // Trust signal derivations — used in card footer
   const completedTasksCount = profile?.completed_tasks ?? 0
   const isTrusted = (profile?.rating ?? 0) >= 4.3 && completedTasksCount >= 5
@@ -837,6 +840,13 @@ function RequestCard({
           <p className="text-[15px] font-semibold text-white leading-snug mb-3">{req.title}</p>
         )}
 
+        {/* Parser summary subtitle — non-ride skim hint */}
+        {!isRide && !expanded && typeof req.structured_data?.summary === 'string' && (
+          <p data-testid="card-summary" className="text-xs text-slate-500 leading-relaxed -mt-1 mb-3 line-clamp-2">
+            {req.structured_data.summary}
+          </p>
+        )}
+
         {/* Meta row */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-4">
           {/* Non-ride location */}
@@ -886,6 +896,18 @@ function RequestCard({
 
         {/* Structured data meta chips — non-ride categories only */}
         {!isRide && <StructuredDataMeta category={req.category} sd={req.structured_data} />}
+
+        {/* Expanded detail section */}
+        {expanded && (
+          <div data-testid="card-detail-section" className="mt-2 mb-3 rounded-lg border border-[#1e2d4a] bg-white/[0.02] p-3 space-y-2">
+            {req.description && (
+              <p data-testid="card-description" className="text-xs text-slate-400 italic leading-relaxed">
+                &ldquo;{req.description}&rdquo;
+              </p>
+            )}
+            {req.structured_data && <ExpandedStructuredData category={req.category} sd={req.structured_data} />}
+          </div>
+        )}
 
         {/* Passengers section — driver's own card with accepted bookings */}
         {isOwn && isRide && req.is_driver && acceptedOffers && acceptedOffers.length > 0 && (() => {
@@ -994,6 +1016,15 @@ function RequestCard({
                 </button>
               </>
             )}
+            <span className="flex-shrink-0 text-xs text-slate-700">·</span>
+            <button
+              type="button"
+              data-testid="card-expand-btn"
+              onClick={(e) => { e.stopPropagation(); setExpanded(v => !v) }}
+              className="flex-shrink-0 text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
+            >
+              {expanded ? 'Less ▴' : 'Details ▾'}
+            </button>
           </div>
 
           {isPast ? (
@@ -2039,12 +2070,17 @@ function StructuredDataMeta({ category, sd }: { category: string; sd: Record<str
     if (virtual === true) chips.push('Virtual')
     else if (virtual === false) chips.push('In person')
     else if (virtual === 'either') chips.push('Virtual or in person')
+    const helpType = sd.help_type
+    const helpTypeLabels: Record<string, string> = { homework: 'Homework', exam_prep: 'Exam prep', concept: 'Concept help', coding: 'Coding', proofreading: 'Proofreading', study_session: 'Study group' }
+    if (typeof helpType === 'string') chips.push(helpTypeLabels[helpType] ?? helpType)
   } else if (category === 'errands') {
     const type = sd.errand_type
     const typeLabels: Record<string, string> = { grocery: 'Grocery run', food_pickup: 'Food pickup', package: 'Package', delivery: 'Delivery', other: 'Errand' }
     if (typeof type === 'string') chips.push(typeLabels[type] ?? type)
     const place = sd.store_or_place
     if (typeof place === 'string') chips.push(place)
+    const taskDetails = sd.task_details
+    if (typeof taskDetails === 'string') chips.push(taskDetails.length > 25 ? taskDetails.slice(0, 25) + '…' : taskDetails)
   } else if (category === 'borrow') {
     const item = sd.item
     if (typeof item === 'string') chips.push(item)
@@ -2059,6 +2095,49 @@ function StructuredDataMeta({ category, sd }: { category: string; sd: Record<str
         <span key={c} className="rounded-full border border-[#1e2d4a] bg-white/[0.03] px-2.5 py-0.5 text-[11px] text-slate-400">
           {c}
         </span>
+      ))}
+    </div>
+  )
+}
+
+function ExpandedStructuredData({ category, sd }: { category: string; sd: Record<string, unknown> }) {
+  const rows: { label: string; value: string }[] = []
+
+  if (category === 'rides') {
+    const luggage = sd.has_luggage
+    if (luggage === true) rows.push({ label: 'Luggage', value: 'Yes' })
+    else if (luggage === false) rows.push({ label: 'Luggage', value: 'None' })
+  } else if (category === 'moving') {
+    const moveType = sd.move_type
+    const moveLabels: Record<string, string> = { move_in: 'Moving in', move_out: 'Moving out', furniture: 'Moving furniture', other: 'Other' }
+    if (typeof moveType === 'string') rows.push({ label: 'Type', value: moveLabels[moveType] ?? moveType })
+    if (sd.truck_needed === true) rows.push({ label: 'Needs', value: 'Truck or van' })
+    if (sd.has_heavy_items === true) rows.push({ label: 'Items', value: 'Heavy items' })
+    const dur = sd.estimated_duration
+    if (typeof dur === 'string') rows.push({ label: 'Estimated', value: dur })
+  } else if (category === 'peer_help') {
+    const helpType = sd.help_type
+    const helpLabels: Record<string, string> = { homework: 'Homework help', exam_prep: 'Exam prep', concept: 'Concept explanation', coding: 'Coding help', proofreading: 'Proofreading', study_session: 'Study session' }
+    if (typeof helpType === 'string') rows.push({ label: 'Type', value: helpLabels[helpType] ?? helpType })
+    if (sd.session_type === 'recurring') rows.push({ label: 'Frequency', value: 'Weekly / recurring' })
+  } else if (category === 'errands') {
+    const taskDetails = sd.task_details
+    if (typeof taskDetails === 'string') rows.push({ label: 'Task', value: taskDetails })
+    const reimburse = sd.reimbursement_type
+    const reimburseLabels: Record<string, string> = { paid: "They'll pay you", reimburse: 'They reimburse your costs', free: 'Free favor' }
+    if (typeof reimburse === 'string') rows.push({ label: 'Payment', value: reimburseLabels[reimburse] ?? reimburse })
+  } else if (category === 'borrow') {
+    if (sd.replacement_responsibility === true) rows.push({ label: 'Note', value: 'Will replace if damaged' })
+  }
+
+  if (rows.length === 0) return null
+  return (
+    <div className="flex flex-col gap-1.5 pt-1 border-t border-[#1e2d4a]/60">
+      {rows.map(({ label, value }) => (
+        <div key={label} className="flex items-baseline gap-2">
+          <span className="text-[10px] uppercase tracking-wider text-slate-600 w-16 flex-shrink-0">{label}</span>
+          <span className="text-xs text-slate-400">{value}</span>
+        </div>
       ))}
     </div>
   )

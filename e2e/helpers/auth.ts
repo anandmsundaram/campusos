@@ -97,6 +97,13 @@ export interface MockParsedRequest {
   is_airport_ride: boolean | null
   helper_requirements: string | null
   missing_fields: string[]
+  is_offer: boolean
+  ambiguous: boolean
+  clarification_question: string | null
+  clarification_options: Array<{ label: string; appended_text: string }> | null
+  summary: string
+  payment_mode_unclear: boolean
+  structured_data: Record<string, unknown> | null
 }
 
 /**
@@ -125,6 +132,13 @@ export async function mockParseRequest(
     is_airport_ride: false,
     helper_requirements: null,
     missing_fields: [],
+    is_offer: false,
+    ambiguous: false,
+    clarification_question: null,
+    clarification_options: null,
+    summary: 'E2E test ride from Austin to Dallas.',
+    payment_mode_unclear: false,
+    structured_data: null,
   }
 
   await page.route('/api/parse-request', async route => {

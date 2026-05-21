@@ -22,6 +22,12 @@ interface ParsedRequest {
   flexible_time: boolean
   price_type: 'fixed' | 'split' | 'free' | null
   is_airport_ride: boolean | null
+  is_offer: boolean
+  ambiguous: boolean
+  clarification_question: string | null
+  clarification_options: Array<{ label: string; appended_text: string }> | null
+  summary: string
+  payment_mode_unclear: boolean
   structured_data: Record<string, unknown> | null
 }
 
@@ -69,7 +75,7 @@ type FollowUpQuestion =
   | { key: string; label: string; hint?: string; type: 'chips'; options: ChipOption[] }
   | { key: string; label: string; hint?: string; type: 'text'; placeholder: string }
 
-// Rides handled separately via inline inputs in the confirm card.
+// Rides handled via inline inputs in the confirm card.
 const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQuestion[]>> = {
   moving: [
     {
@@ -114,6 +120,12 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
       placeholder: 'e.g. HEB, Walmart, post office, 24th St…',
     },
     {
+      key: 'task_details',
+      label: 'What should they pick up or do?',
+      type: 'text',
+      placeholder: 'e.g. Milk and eggs; Pick up package from room 204…',
+    },
+    {
       key: 'reimbursement_type',
       label: 'Payment arrangement?',
       hint: 'So helpers know what to expect',
@@ -131,6 +143,19 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
       label: 'Subject or course?',
       type: 'text',
       placeholder: 'e.g. CHEM 101, Calc II, Python…',
+    },
+    {
+      key: 'help_type',
+      label: 'What kind of help?',
+      type: 'chips',
+      options: [
+        { value: 'homework', label: '📝 Homework' },
+        { value: 'exam_prep', label: '📚 Exam prep' },
+        { value: 'concept', label: '💡 Concept explanation' },
+        { value: 'coding', label: '💻 Coding help' },
+        { value: 'proofreading', label: '✍️ Proofreading' },
+        { value: 'study_session', label: '🤝 Study session' },
+      ],
     },
     {
       key: 'is_virtual',
@@ -165,15 +190,15 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
 }
 
 // Fields that must be filled before the Confirm button unlocks.
-// Rides origin/destination are checked separately (top-level parsed fields, not structured_data).
+// Rides origin/destination are handled separately (inline inputs, top-level parsed fields).
 const CRITICAL_FIELDS: Partial<Record<ParsedRequest['category'], string[]>> = {
-  errands: ['errand_type', 'store_or_place'],
+  errands: ['errand_type', 'store_or_place', 'task_details'],
   moving: ['helpers_needed'],
   peer_help: ['subject'],
   borrow: ['item'],
 }
 
-// ─── Label maps for confirm card summary ──────────────────────────────────────
+// ─── Label maps for confirm card summary (requester perspective) ──────────────
 
 const ERRAND_TYPE_LABELS: Record<string, string> = {
   grocery: '🛒 Groceries',
@@ -182,10 +207,11 @@ const ERRAND_TYPE_LABELS: Record<string, string> = {
   delivery: '🚚 Delivery',
   other: 'Errand',
 }
+// Requester view — "you" = the requester
 const REIMBURSEMENT_LABELS: Record<string, string> = {
-  paid: "💰 They'll pay me",
-  reimburse: '🔄 Reimburse costs',
-  free: '🤝 Favor',
+  paid: "💰 You'll pay the helper",
+  reimburse: '🔄 You reimburse costs',
+  free: '🤝 Free favor',
 }
 const ACCESS_LABELS: Record<string, string> = {
   stairs: '🪜 Stairs',
@@ -197,10 +223,17 @@ const VIRTUAL_LABELS: Record<string, string> = {
   false: '📍 In person',
   either: '🔀 Either works',
 }
+const HELP_TYPE_LABELS: Record<string, string> = {
+  homework: '📝 Homework help',
+  exam_prep: '📚 Exam prep',
+  concept: '💡 Concept explanation',
+  coding: '💻 Coding help',
+  proofreading: '✍️ Proofreading',
+  study_session: '🤝 Study session',
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Converts followupAnswers raw string values to typed structured_data values.
 function applyFollowupAnswers(
   base: Record<string, unknown>,
   answers: Record<string, string>,
@@ -223,14 +256,13 @@ export default function RequestInput() {
 
   const [text, setText] = useState('')
   const [focused, setFocused] = useState(false)
-  const [status, setStatus] = useState<'idle' | 'parsing' | 'confirm' | 'saving' | 'done'>('idle')
+  const [status, setStatus] = useState<'idle' | 'parsing' | 'disambiguating' | 'confirm' | 'saving' | 'done'>('idle')
   const [parsed, setParsed] = useState<ParsedRequest | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [autoAccept, setAutoAccept] = useState(true)
   const [priceType, setPriceType] = useState<'fixed' | 'split' | 'free'>('split')
   const [followupAnswers, setFollowupAnswers] = useState<Record<string, string>>({})
 
-  // Parser-extracted structured_data merged with follow-up answers (live preview).
   const mergedSD = useMemo<Record<string, unknown>>(() => {
     if (!parsed) return {}
     return applyFollowupAnswers(parsed.structured_data ?? {}, followupAnswers)
@@ -245,7 +277,7 @@ export default function RequestInput() {
     return questions.filter(q => sd[q.key] === null || sd[q.key] === undefined)
   }, [parsed])
 
-  // True when all critical fields are present — gates the Confirm button.
+  // Gates the Confirm button — all critical fields must be filled.
   const canConfirm = useMemo<boolean>(() => {
     if (!parsed) return false
     if (parsed.category === 'rides') {
@@ -268,10 +300,8 @@ export default function RequestInput() {
 
   useEffect(() => {
     if (text || focused) return
-
     const target = PLACEHOLDERS[phIdx]
     let timer: ReturnType<typeof setTimeout>
-
     if (phase === 'typing') {
       if (displayed.length < target.length) {
         timer = setTimeout(() => setDisplayed(target.slice(0, displayed.length + 1)), 55)
@@ -288,9 +318,29 @@ export default function RequestInput() {
         setPhase('typing')
       }
     }
-
     return () => clearTimeout(timer)
   }, [displayed, phase, phIdx, text, focused])
+
+  // ─── Shared parse handler (used by both initial submit and clarification re-parse) ──
+
+  function applyParsedResult(data: ParsedRequest) {
+    // Non-ride offer: show interstitial instead of confirm card
+    if (data.is_offer && data.category !== 'rides') {
+      setParsed(data)
+      setStatus('confirm') // JSX checks is_offer to render interstitial
+      return
+    }
+    // Ambiguous intent: ask for clarification
+    if (data.ambiguous && data.clarification_options?.length) {
+      setParsed(data)
+      setStatus('disambiguating')
+      return
+    }
+    // Normal confirm flow
+    setParsed(data)
+    setPriceType(data.price_type ?? 'split')
+    setStatus('confirm')
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -320,9 +370,35 @@ export default function RequestInput() {
       return
     }
 
-    setParsed(data)
-    setPriceType(data.price_type ?? 'split')
-    setStatus('confirm')
+    applyParsedResult(data)
+  }
+
+  // Re-parse with the original text + a clarifying phrase chosen by the user.
+  async function handleClarificationPick(appendedText: string) {
+    setError(null)
+    setStatus('parsing')
+    const clarifiedText = text.trim() + ' ' + appendedText
+
+    const res = await fetch('/api/parse-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: clarifiedText }),
+    })
+
+    if (!res.ok) {
+      setError('Failed to process your selection. Please try again.')
+      setStatus('disambiguating')
+      return
+    }
+
+    const data = await res.json()
+    if (!data.category || !data.title) {
+      setError('Could not understand your request. Try being more specific.')
+      setStatus('idle')
+      return
+    }
+
+    applyParsedResult(data)
   }
 
   async function handleConfirm() {
@@ -338,8 +414,12 @@ export default function RequestInput() {
       return
     }
 
-    // Build structured_data — exclude ride location keys (they go to top-level columns).
-    const sdBase = parsed.structured_data ?? {}
+    // Merge parser summary into structured_data so it's persisted alongside other fields.
+    const sdBase = {
+      ...(parsed.structured_data ?? {}),
+      ...(parsed.summary ? { summary: parsed.summary } : {}),
+    }
+    // Exclude ride location keys — they go to top-level columns, not structured_data.
     const sdFollowupAnswers = parsed.category === 'rides'
       ? Object.fromEntries(
           Object.entries(followupAnswers).filter(([k]) => k !== 'origin_city' && k !== 'destination_city')
@@ -355,13 +435,13 @@ export default function RequestInput() {
       requester_id: user.id,
       category: parsed.category,
       title: parsed.title,
+      description: text.trim() || null,
       urgency: parsed.urgency,
       ...(parsed.location != null && { location: parsed.location }),
       ...(parsed.scheduled_time != null && { scheduled_time: parsed.scheduled_time }),
       ...(!isDriverNonFixed && parsed.budget != null && { budget: parsed.budget }),
       ...(structuredDataToSave != null && { structured_data: structuredDataToSave }),
       ...(parsed.category === 'rides' && {
-        // Merge parser-extracted fields with inline follow-up answers
         origin_city: parsed.origin_city ?? followupAnswers.origin_city ?? null,
         destination_city: parsed.destination_city ?? followupAnswers.destination_city ?? null,
         is_driver: parsed.is_driver ?? null,
@@ -412,6 +492,8 @@ export default function RequestInput() {
   }
 
   const showCard = (status === 'confirm' || status === 'saving') && parsed !== null
+  const isOfferInterstitial = showCard && !!parsed?.is_offer && parsed.category !== 'rides'
+  const showConfirmCard = showCard && !isOfferInterstitial
   const busy = status === 'parsing' || status === 'saving'
 
   return (
@@ -530,11 +612,66 @@ export default function RequestInput() {
         </div>
       )}
 
-      {/* Confirmation card */}
-      {showCard && (
+      {/* ── Disambiguation card — parser flagged ambiguous intent ── */}
+      {status === 'disambiguating' && parsed && (
+        <div data-testid="disambig-card" className="w-full max-w-2xl rounded-2xl border border-blue-500/20 bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
+          <p className="text-sm font-semibold text-white mb-1">
+            {parsed.clarification_question ?? 'What do you need?'}
+          </p>
+          <p className="text-xs text-slate-500 mb-4">Choose the closest match — you can add details after.</p>
+          <div className="flex flex-col gap-2">
+            {(parsed.clarification_options ?? []).map(opt => (
+              <button
+                key={opt.appended_text}
+                data-testid="disambig-option"
+                type="button"
+                onClick={() => handleClarificationPick(opt.appended_text)}
+                className="flex items-center gap-3 rounded-xl border border-[#1e2d4a] bg-white/[0.02] px-4 py-3 text-sm text-slate-300 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.05] hover:text-white"
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleEdit}
+            className="mt-4 text-xs text-slate-600 hover:text-slate-400 transition-colors w-full text-center"
+          >
+            Edit my message
+          </button>
+        </div>
+      )}
+
+      {/* ── Offer interstitial — non-ride offer posts not yet supported ── */}
+      {isOfferInterstitial && (
+        <div data-testid="offer-interstitial" className="w-full max-w-2xl rounded-2xl border border-purple-500/15 bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
+          <p className="text-base font-semibold text-white mb-2">Looks like you&apos;re offering help</p>
+          <p className="text-sm text-slate-400 leading-relaxed mb-5">
+            Offer availability posts are launching soon. For now, browse the feed and respond directly to students who need what you can provide.
+          </p>
+          <div className="flex gap-3">
+            <a
+              href="#feed"
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white text-center transition-colors hover:bg-blue-500"
+            >
+              Browse requests →
+            </a>
+            <button
+              type="button"
+              onClick={handleEdit}
+              className="rounded-lg border border-[#1e2d4a] px-4 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-white"
+            >
+              Edit
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirmation card ── */}
+      {showConfirmCard && (
         <div className="w-full max-w-2xl rounded-2xl border border-[#1e2d4a] bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
 
-          {/* ── Follow-up questions (non-rides, only when parser left fields null) ── */}
+          {/* Follow-up questions (non-rides, only when parser left fields null) */}
           {followupQuestionsToShow.length > 0 && (
             <div className="mb-6 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-4 py-4">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-400/70 mb-3">
@@ -571,6 +708,7 @@ export default function RequestInput() {
                       </div>
                     ) : (
                       <input
+                        data-testid={`followup-text-${q.key}`}
                         type="text"
                         value={followupAnswers[q.key] ?? ''}
                         onChange={e => handleFollowupChange(q.key, e.target.value)}
@@ -584,10 +722,15 @@ export default function RequestInput() {
             </div>
           )}
 
-          {/* ── Parsed summary ── */}
-          <p className="mb-5 text-sm font-medium text-slate-300">
+          {/* Parsed summary — natural language from parser */}
+          <p className="mb-1 text-sm font-medium text-slate-300">
             Here&apos;s what we understood — does this look right?
           </p>
+          {parsed!.summary && (
+            <p data-testid="summary-text" className="mb-4 text-sm text-slate-500 italic leading-relaxed">
+              &ldquo;{parsed!.summary}&rdquo;
+            </p>
+          )}
 
           <div className="mb-5 flex flex-col gap-3">
             <Row label="Category" value={CATEGORY_LABELS[parsed!.category]} />
@@ -631,7 +774,7 @@ export default function RequestInput() {
                   </div>
                 )}
 
-                {/* Route display — merges parser extraction with inline follow-up answers */}
+                {/* Route display — merges parsed + followup */}
                 {(parsed!.origin_city || followupAnswers.origin_city) &&
                  (parsed!.destination_city || followupAnswers.destination_city) && (
                   <div className="flex items-center justify-between">
@@ -676,7 +819,7 @@ export default function RequestInput() {
                   />
                 )}
 
-                {/* Pricing — only for drivers */}
+                {/* Pricing — drivers only */}
                 {parsed!.is_driver && (
                   <div className="flex flex-col gap-1.5 pt-1">
                     <span className="text-xs text-slate-500">Pricing</span>
@@ -702,7 +845,7 @@ export default function RequestInput() {
                   </div>
                 )}
 
-                {/* Auto-accept toggle — only for drivers */}
+                {/* Auto-accept toggle — drivers only */}
                 {parsed!.is_driver && (
                   <div className="flex items-center justify-between pt-1">
                     <div className="flex flex-col gap-0.5">
@@ -759,6 +902,9 @@ export default function RequestInput() {
                 {mergedSD.subject && (
                   <Row label="Subject" value={mergedSD.subject as string} />
                 )}
+                {mergedSD.help_type && (
+                  <Row label="Help type" value={HELP_TYPE_LABELS[mergedSD.help_type as string] ?? String(mergedSD.help_type)} />
+                )}
                 {mergedSD.is_virtual !== null && mergedSD.is_virtual !== undefined && (
                   <Row
                     label="Format"
@@ -777,8 +923,15 @@ export default function RequestInput() {
                 {mergedSD.store_or_place && (
                   <Row label="Where" value={mergedSD.store_or_place as string} />
                 )}
+                {mergedSD.task_details && (
+                  <Row label="Task" value={mergedSD.task_details as string} />
+                )}
                 {mergedSD.reimbursement_type && (
-                  <Row label="Payment" value={REIMBURSEMENT_LABELS[mergedSD.reimbursement_type as string] ?? String(mergedSD.reimbursement_type)} />
+                  <Row
+                    data-testid="payment-label"
+                    label="Payment"
+                    value={REIMBURSEMENT_LABELS[mergedSD.reimbursement_type as string] ?? String(mergedSD.reimbursement_type)}
+                  />
                 )}
               </>
             )}
@@ -864,9 +1017,9 @@ export default function RequestInput() {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, 'data-testid': testId }: { label: string; value: string; 'data-testid'?: string }) {
   return (
-    <div className="flex items-start justify-between gap-4">
+    <div data-testid={testId} className="flex items-start justify-between gap-4">
       <span className="shrink-0 text-xs text-slate-500">{label}</span>
       <span className="text-right text-sm text-white">{value}</span>
     </div>

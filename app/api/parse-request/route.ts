@@ -28,6 +28,12 @@ Output schema (all fields required in output, use null/false for unknown):
   "flexible_time": boolean,
   "price_type": "fixed" | "split" | "free" | null,
   "is_airport_ride": boolean,
+  "is_offer": boolean,
+  "ambiguous": boolean,
+  "clarification_question": string | null,
+  "clarification_options": [{"label": string, "appended_text": string}] | null,
+  "summary": string,
+  "payment_mode_unclear": boolean,
   "structured_data": object
 }
 
@@ -38,6 +44,12 @@ General rules:
 - urgency: default "medium"; use "high" for "urgent", "ASAP", "emergency"
 - budget: numeric USD amount only when price_type is "fixed"; null otherwise
 - For non-ride categories: set origin_city=null, destination_city=null, is_driver=null, available_seats=null, is_round_trip=false, return_date=null, flexible_time=false, price_type=null, is_airport_ride=false
+- is_offer: true if the user is OFFERING help (not requesting it). Offer signals: "I'm going to [place]", "I can help", "I can drive", "I have [seats/item]", "I'm available to", "anyone need anything while I'm at", "I can tutor", "I can lend", "I'm heading to", "offering". False if requesting help.
+- ambiguous: true ONLY when the intent is genuinely unclear — e.g. "Anyone going to Walmart?" (ride? errand? checking?), "Need Target tomorrow" (ride there? pickup?), "Can someone help Saturday?" (with what?). Do NOT set ambiguous if a category can reasonably be inferred. If ambiguous, still pick the most likely category.
+- clarification_question: when ambiguous=true, a short natural question (5-10 words, e.g. "What do you need?"). null when not ambiguous.
+- clarification_options: when ambiguous=true, 2-4 options. Each has "label" (emoji + short phrase ≤30 chars) and "appended_text" (3-8 word phrase appended to original text to clarify intent, e.g. "I need a ride there" or "I need someone to pick something up"). null when not ambiguous.
+- summary: ALWAYS required. 1-2 complete natural language sentences describing the request/offer. Preserve human context. Example — BAD: "Walmart run". GOOD: "Need someone going to Walmart on Harvey Mitchell to pick up milk and eggs." For offers: "Offering 3 seats to Houston Friday morning, splitting gas."
+- payment_mode_unclear: true if user mentioned any payment concept (pay, Venmo, CashApp, gas, split, cash, money, will pay, paid) but the specific mode cannot be determined. false if payment not mentioned, or if mode is clear.
 
 Ride-specific rules (category "rides" only):
 - origin_city: city/area departing FROM
@@ -76,20 +88,24 @@ category "peer_help":
   structured_data: {
     "subject": string | null,
     "is_virtual": true | false | "either" | null,
-    "session_type": "one_time" | "recurring" | null
+    "session_type": "one_time" | "recurring" | null,
+    "help_type": "homework" | "exam_prep" | "concept" | "coding" | "proofreading" | "study_session" | null
   }
   subject: specific course or subject name if mentioned (e.g. "CHEM 101", "calculus", "Python"); null if not clear
   is_virtual: true if "online"/"virtual"/"Zoom"; false if "in person"/"in-person"/"meet up"; "either" if "either works"/"flexible"; null if not stated
   session_type: "recurring" if "weekly"/"every week"/"ongoing"; "one_time" otherwise
+  help_type: "homework" if assignment/problem set help; "exam_prep" if test/exam prep/review; "concept" if explaining a topic/concept; "coding" if programming/code help; "proofreading" if editing/proofreading writing; "study_session" if studying together/study group; null if not clear
 
 category "errands":
   structured_data: {
     "errand_type": "grocery" | "food_pickup" | "package" | "delivery" | "other" | null,
     "store_or_place": string | null,
+    "task_details": string | null,
     "reimbursement_type": "paid" | "reimburse" | "free" | null
   }
   errand_type: classify from context (grocery run → "grocery"; Uber Eats/food pickup → "food_pickup"; package/mail → "package"; drop off/deliver → "delivery")
   store_or_place: store name or location if mentioned (e.g. "HEB", "Walmart", "post office")
+  task_details: specific items to pick up or tasks to perform if mentioned (e.g. "milk, eggs, and bread", "pick up my package from the mailroom", "drop off charger at Zachry 403"); null if not mentioned
   reimbursement_type: "paid" if they offer to pay helper; "reimburse" if helper fronts money and gets reimbursed; "free" if favor; null if not clear
 
 category "borrow":
@@ -106,7 +122,7 @@ missing_fields per category (list field names NOT extracted):
 - rides: from ["origin_city","destination_city","scheduled_time"] — only those that are null
 - moving: from ["helpers_needed","location","access_type"] — only those that are null/not stated
 - peer_help: from ["subject","is_virtual","scheduled_time"] — only those that are null
-- errands: from ["location","reimbursement_type"] — only those that are null
+- errands: from ["location","reimbursement_type","task_details"] — only those that are null
 - borrow: from ["item","borrow_duration"] — only those that are null
 
 Output only the JSON object, nothing else.`
