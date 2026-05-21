@@ -16,7 +16,7 @@ function validatePassword(password: string): string | null {
   return null
 }
 
-const EDU_BYPASSES = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com'])
+const EDU_BYPASSES = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com', 'anand.slate@gmail.com'])
 
 function isEduEmail(email: string) {
   const normalized = email.trim().toLowerCase()
