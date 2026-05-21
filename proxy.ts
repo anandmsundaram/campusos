@@ -32,6 +32,7 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
   const isPublicPath =
+    pathname === '/' ||
     pathname === '/login' ||
     pathname === '/signup' ||
     pathname.startsWith('/api/auth')

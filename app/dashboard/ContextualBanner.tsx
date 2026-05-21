@@ -24,23 +24,23 @@ function getCurrentContext(): BannerContext | null {
     }
   }
 
-  // Fall finals (late November + early-mid December)
-  if ((month === 11 && day >= 18) || (month === 12 && day <= 16)) {
-    return {
-      emoji: '📚',
-      title: 'Finals are coming up',
-      body: 'Find a peer tutor or share what you know — there\'s always someone who could use the help before exams.',
-      colorClass: 'border-green-500/20 bg-green-500/[0.04] text-green-400',
-    }
-  }
-
-  // Thanksgiving travel window (Nov 18–27)
+  // Thanksgiving travel window (Nov 18–27) — must come before fall finals
   if (month === 11 && day >= 18 && day <= 27) {
     return {
       emoji: '✈️',
       title: 'Heading home for Thanksgiving?',
       body: 'Coordinate rides with students going the same direction — split the cost, skip the airport stress.',
       colorClass: 'border-blue-500/20 bg-blue-500/[0.04] text-blue-400',
+    }
+  }
+
+  // Fall finals (post-Thanksgiving November + early-mid December)
+  if ((month === 11 && day >= 28) || (month === 12 && day <= 16)) {
+    return {
+      emoji: '📚',
+      title: 'Finals are coming up',
+      body: 'Find a peer tutor or share what you know — there\'s always someone who could use the help before exams.',
+      colorClass: 'border-green-500/20 bg-green-500/[0.04] text-green-400',
     }
   }
 
