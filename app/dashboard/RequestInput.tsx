@@ -69,7 +69,7 @@ type FollowUpQuestion =
   | { key: string; label: string; hint?: string; type: 'chips'; options: ChipOption[] }
   | { key: string; label: string; hint?: string; type: 'text'; placeholder: string }
 
-// Rides deliberately omitted — the confirm card already covers all ride fields well.
+// Rides handled separately via inline inputs in the confirm card.
 const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQuestion[]>> = {
   moving: [
     {
@@ -94,16 +94,6 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
         { value: 'ground', label: '🏠 Ground floor' },
       ],
     },
-    {
-      key: 'has_heavy_items',
-      label: 'Any heavy items?',
-      hint: 'Furniture, large boxes',
-      type: 'chips',
-      options: [
-        { value: 'true', label: '🏋️ Yes' },
-        { value: 'false', label: '📦 Mostly light' },
-      ],
-    },
   ],
   errands: [
     {
@@ -116,6 +106,12 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
         { value: 'package', label: '📦 Package' },
         { value: 'other', label: '⚡ Other' },
       ],
+    },
+    {
+      key: 'store_or_place',
+      label: 'Where? (store or location)',
+      type: 'text',
+      placeholder: 'e.g. HEB, Walmart, post office, 24th St…',
     },
     {
       key: 'reimbursement_type',
@@ -149,6 +145,12 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
   ],
   borrow: [
     {
+      key: 'item',
+      label: 'What do you need to borrow?',
+      type: 'text',
+      placeholder: 'e.g. drill, graphing calculator, textbook…',
+    },
+    {
       key: 'borrow_duration',
       label: 'How long do you need it?',
       type: 'chips',
@@ -159,16 +161,16 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
         { value: 'longer', label: '📌 Longer' },
       ],
     },
-    {
-      key: 'replacement_responsibility',
-      label: 'If it breaks?',
-      type: 'chips',
-      options: [
-        { value: 'true', label: "✓ I'll replace it" },
-        { value: 'false', label: "🤝 We'll work it out" },
-      ],
-    },
   ],
+}
+
+// Fields that must be filled before the Confirm button unlocks.
+// Rides origin/destination are checked separately (top-level parsed fields, not structured_data).
+const CRITICAL_FIELDS: Partial<Record<ParsedRequest['category'], string[]>> = {
+  errands: ['errand_type', 'store_or_place'],
+  moving: ['helpers_needed'],
+  peer_help: ['subject'],
+  borrow: ['item'],
 }
 
 // ─── Label maps for confirm card summary ──────────────────────────────────────
@@ -210,7 +212,6 @@ function applyFollowupAnswers(
     if (rawVal === 'false') { merged[key] = false; continue }
     const n = Number(rawVal)
     if (!isNaN(n) && isFinite(n) && rawVal.trim() !== '') { merged[key] = n; continue }
-    // String values: 'either', 'stairs', 'elevator', 'grocery', 'paid', 'a few hours', etc.
     merged[key] = rawVal
   }
   return merged
@@ -229,13 +230,13 @@ export default function RequestInput() {
   const [priceType, setPriceType] = useState<'fixed' | 'split' | 'free'>('split')
   const [followupAnswers, setFollowupAnswers] = useState<Record<string, string>>({})
 
-  // Derived: parser-extracted structured_data merged with follow-up answers (for live preview)
+  // Parser-extracted structured_data merged with follow-up answers (live preview).
   const mergedSD = useMemo<Record<string, unknown>>(() => {
     if (!parsed) return {}
     return applyFollowupAnswers(parsed.structured_data ?? {}, followupAnswers)
   }, [parsed, followupAnswers])
 
-  // Follow-up questions to show: only those the parser didn't extract
+  // Follow-up questions to show: only those the parser didn't extract.
   const followupQuestionsToShow = useMemo<FollowUpQuestion[]>(() => {
     if (!parsed) return []
     const questions = FOLLOWUP_QUESTIONS[parsed.category] ?? []
@@ -243,6 +244,22 @@ export default function RequestInput() {
     if (!sd) return questions
     return questions.filter(q => sd[q.key] === null || sd[q.key] === undefined)
   }, [parsed])
+
+  // True when all critical fields are present — gates the Confirm button.
+  const canConfirm = useMemo<boolean>(() => {
+    if (!parsed) return false
+    if (parsed.category === 'rides') {
+      const origin = parsed.origin_city?.trim() || followupAnswers.origin_city?.trim()
+      const dest = parsed.destination_city?.trim() || followupAnswers.destination_city?.trim()
+      return !!(origin && dest)
+    }
+    const criticals = CRITICAL_FIELDS[parsed.category] ?? []
+    if (criticals.length === 0) return true
+    return criticals.every(key => {
+      const val = mergedSD[key]
+      return val !== null && val !== undefined && val !== ''
+    })
+  }, [parsed, mergedSD, followupAnswers])
 
   // Typewriter placeholder animation
   const [phIdx, setPhIdx] = useState(0)
@@ -321,9 +338,14 @@ export default function RequestInput() {
       return
     }
 
-    // Build merged structured_data from parser + follow-up answers
+    // Build structured_data — exclude ride location keys (they go to top-level columns).
     const sdBase = parsed.structured_data ?? {}
-    const sdMerged = applyFollowupAnswers(sdBase, followupAnswers)
+    const sdFollowupAnswers = parsed.category === 'rides'
+      ? Object.fromEntries(
+          Object.entries(followupAnswers).filter(([k]) => k !== 'origin_city' && k !== 'destination_city')
+        )
+      : followupAnswers
+    const sdMerged = applyFollowupAnswers(sdBase, sdFollowupAnswers)
     const hasStructuredData = Object.values(sdMerged).some(v => v !== null && v !== undefined)
     const structuredDataToSave = hasStructuredData ? sdMerged : null
 
@@ -339,8 +361,9 @@ export default function RequestInput() {
       ...(!isDriverNonFixed && parsed.budget != null && { budget: parsed.budget }),
       ...(structuredDataToSave != null && { structured_data: structuredDataToSave }),
       ...(parsed.category === 'rides' && {
-        origin_city: parsed.origin_city ?? null,
-        destination_city: parsed.destination_city ?? null,
+        // Merge parser-extracted fields with inline follow-up answers
+        origin_city: parsed.origin_city ?? followupAnswers.origin_city ?? null,
+        destination_city: parsed.destination_city ?? followupAnswers.destination_city ?? null,
         is_driver: parsed.is_driver ?? null,
         available_seats: parsed.available_seats ?? null,
         is_round_trip: parsed.is_round_trip ?? false,
@@ -511,11 +534,11 @@ export default function RequestInput() {
       {showCard && (
         <div className="w-full max-w-2xl rounded-2xl border border-[#1e2d4a] bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
 
-          {/* ── Follow-up questions (non-rides only, only when parser left fields null) ── */}
+          {/* ── Follow-up questions (non-rides, only when parser left fields null) ── */}
           {followupQuestionsToShow.length > 0 && (
             <div className="mb-6 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-4 py-4">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-400/70 mb-3">
-                Quick details
+                A few details
               </p>
               <div className="flex flex-col gap-4">
                 {followupQuestionsToShow.map(q => (
@@ -536,7 +559,7 @@ export default function RequestInput() {
                                 followupAnswers[q.key] === opt.value ? '' : opt.value,
                               )
                             }
-                            className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                            className={`rounded-lg border px-3 py-2.5 text-xs font-medium transition-colors ${
                               followupAnswers[q.key] === opt.value
                                 ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
                                 : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
@@ -573,16 +596,54 @@ export default function RequestInput() {
             {/* ── RIDES-specific rows ── */}
             {parsed!.category === 'rides' && (
               <>
-                {parsed!.origin_city && parsed!.destination_city && (
+                {/* Inline inputs when parser didn't extract origin or destination */}
+                {(!parsed!.origin_city || !parsed!.destination_city) && (
+                  <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] px-4 py-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/60 mb-3">
+                      Route details needed
+                    </p>
+                    <div className="flex flex-col gap-3">
+                      {!parsed!.origin_city && (
+                        <div>
+                          <p className="text-xs font-medium text-slate-300 mb-1.5">From</p>
+                          <input
+                            type="text"
+                            value={followupAnswers.origin_city ?? ''}
+                            onChange={e => handleFollowupChange('origin_city', e.target.value)}
+                            placeholder="e.g. Jester West, my apt, 24th St"
+                            className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-blue-500/40"
+                          />
+                        </div>
+                      )}
+                      {!parsed!.destination_city && (
+                        <div>
+                          <p className="text-xs font-medium text-slate-300 mb-1.5">To</p>
+                          <input
+                            type="text"
+                            value={followupAnswers.destination_city ?? ''}
+                            onChange={e => handleFollowupChange('destination_city', e.target.value)}
+                            placeholder="e.g. Austin Target, DFW Airport, 6th St"
+                            className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-blue-500/40"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Route display — merges parser extraction with inline follow-up answers */}
+                {(parsed!.origin_city || followupAnswers.origin_city) &&
+                 (parsed!.destination_city || followupAnswers.destination_city) && (
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-500">Route</span>
                     <span className="flex items-center gap-2 text-sm text-white">
-                      <span>{parsed!.origin_city}</span>
+                      <span>{parsed!.origin_city || followupAnswers.origin_city}</span>
                       <span className="text-slate-500">→</span>
-                      <span>{parsed!.destination_city}</span>
+                      <span>{parsed!.destination_city || followupAnswers.destination_city}</span>
                     </span>
                   </div>
                 )}
+
                 {parsed!.is_driver !== null && (
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-500">Role</span>
@@ -683,9 +744,6 @@ export default function RequestInput() {
                 {mergedSD.access_type && (
                   <Row label="Access" value={ACCESS_LABELS[mergedSD.access_type as string] ?? String(mergedSD.access_type)} />
                 )}
-                {mergedSD.has_heavy_items != null && (
-                  <Row label="Heavy items" value={mergedSD.has_heavy_items ? 'Yes' : 'No'} />
-                )}
                 {mergedSD.truck_needed === true && (
                   <Row label="Truck needed" value="Yes" />
                 )}
@@ -733,12 +791,6 @@ export default function RequestInput() {
                 )}
                 {mergedSD.borrow_duration && (
                   <Row label="Duration" value={mergedSD.borrow_duration as string} />
-                )}
-                {mergedSD.replacement_responsibility != null && (
-                  <Row
-                    label="If broken"
-                    value={mergedSD.replacement_responsibility ? "I'll replace it" : "We'll discuss it"}
-                  />
                 )}
               </>
             )}
@@ -788,8 +840,8 @@ export default function RequestInput() {
             <button
               data-testid="confirm-post-btn"
               onClick={handleConfirm}
-              disabled={status === 'saving'}
-              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
+              disabled={status === 'saving' || !canConfirm}
+              className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {status === 'saving' ? 'Saving…' : 'Confirm & post'}
             </button>
@@ -801,6 +853,11 @@ export default function RequestInput() {
               Edit
             </button>
           </div>
+          {!canConfirm && status !== 'saving' && (
+            <p className="mt-2 text-center text-[11px] text-slate-600">
+              Add the missing details above to post
+            </p>
+          )}
         </div>
       )}
     </section>
