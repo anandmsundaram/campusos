@@ -3,6 +3,8 @@ import Link from 'next/link'
 import RequestInput from './RequestInput'
 import RequestFeed, { type FeedRequest, type MyOffer, type FeedRequestWithOffers } from './RequestFeed'
 import OnboardingCard from './OnboardingCard'
+import ActivityPulse from './ActivityPulse'
+import ContextualBanner from './ContextualBanner'
 
 function isSchemaErr(msg?: string | null) {
   return !!msg && /schema cache|Could not find the|more than one relationship/i.test(msg)
@@ -154,11 +156,17 @@ export default async function DashboardPage() {
     myReqData = (fallback ?? []) as unknown[]
   }
 
+  // ── Activity pulse counts ──────────────────────────────────────────────────
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const dayAgo  = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+
   // ── Remaining parallel queries ─────────────────────────────────────────────
   const [
     { data: myOffersRaw },
     { data: driverRideRaw },
     { data: passengerRidesRaw },
+    { count: completedThisWeek },
+    { count: helpedToday },
   ] = await Promise.all([
     supabase
       .from('request_offers')
@@ -183,6 +191,18 @@ export default async function DashboardPage() {
       .eq('helper_id', user!.id)
       .eq('status', 'accepted')
       .limit(20),
+    // Activity pulse: requests completed this week
+    supabase
+      .from('requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'completed')
+      .gte('created_at', weekAgo),
+    // Activity pulse: offers accepted today (proxy for "students helped")
+    supabase
+      .from('request_offers')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'accepted')
+      .gte('created_at', dayAgo),
   ])
 
   // ── Determine soonest upcoming ride ────────────────────────────────────────
@@ -331,8 +351,18 @@ export default async function DashboardPage() {
           </div>
         )}
 
+        {/* Activity pulse + contextual banner */}
+        <div className="mt-8">
+          <ActivityPulse
+            openCount={feedData.length}
+            completedThisWeek={completedThisWeek ?? 0}
+            helpedToday={helpedToday ?? 0}
+          />
+          <ContextualBanner />
+        </div>
+
         {/* Request feed */}
-        <div className="mt-10">
+        <div className="mt-2">
           <RequestFeed
             requests={feedData as unknown as FeedRequest[]}
             myRequests={myReqData as unknown as FeedRequestWithOffers[]}

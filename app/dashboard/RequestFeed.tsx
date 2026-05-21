@@ -80,6 +80,9 @@ interface RequestInfo {
 interface ProfileInfo {
   name: string | null
   rating: number | null
+  completed_tasks?: number | null
+  university?: string | null
+  verification_status?: string | null
 }
 
 interface OfferRow {
@@ -214,6 +217,18 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       if (req) map.set(req.id, o)
     }
     return map
+  }, [myOffers])
+
+  // Set of requester_ids for whom I've had an accepted offer — used to show
+  // "You've worked with this person before" hint on cards in the All Open tab.
+  const priorRequesterIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const o of myOffers) {
+      if (o.status !== 'accepted') continue
+      const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
+      if (req?.requester_id) set.add(req.requester_id)
+    }
+    return set
   }, [myOffers])
 
   // Active = open (not yet past scheduled time) or matched; Past = completed or expired
@@ -548,6 +563,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 myOfferCounter={myOffersByRequestId.get(req.id)?.requester_counter ?? null}
                 myOfferAgreedPrice={(() => { const o = myOffersByRequestId.get(req.id); return o ? (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget) : null })()}
                 myOfferSeats={myOffersByRequestId.get(req.id)?.seats_requested ?? 1}
+                hasWorkedWithRequester={!isOwn && priorRequesterIds.has(req.requester_id)}
                 onGoToOffers={() => setTab('offers')}
                 onOffer={() => openOfferModal(req)}
                 onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
@@ -673,6 +689,7 @@ function RequestCard({
   myOfferAgreedPrice = null,
   myOfferSeats = 1,
   acceptedOffers,
+  hasWorkedWithRequester = false,
   onOffer,
   onViewOffers,
   onGoToOffers,
@@ -693,6 +710,7 @@ function RequestCard({
   myOfferAgreedPrice?: number | null
   myOfferSeats?: number
   acceptedOffers?: OfferOnCard[]
+  hasWorkedWithRequester?: boolean
   onOffer: () => void
   onViewOffers: () => void
   onGoToOffers?: () => void
@@ -711,6 +729,10 @@ function RequestCard({
     ((req.seats_filled ?? 0) > 0 || (acceptedOffers && acceptedOffers.length > 0))
   const isExpired = isPast && req.status === 'open' && !hasSeatsSold
   const isPastRide = isPast && !!hasSeatsSold
+
+  // Trust signal derivations — used in card footer
+  const completedTasksCount = profile?.completed_tasks ?? 0
+  const isTrusted = (profile?.rating ?? 0) >= 4.3 && completedTasksCount >= 5
 
   // Context-aware action label
   const ctaLabel = isRide
@@ -812,11 +834,16 @@ function RequestCard({
           )}
           {/* Driver info — shown to non-owners browsing ride cards */}
           {isRide && !isOwn && profile && (
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[11px]">👤</span>
-              <span className="text-slate-300">{profile.name ?? 'Anonymous'}</span>
+              <span className="text-slate-300">{profile.name ?? 'A student'}</span>
               {profile.rating != null && (
-                <span className="text-slate-600">★ {Number(profile.rating).toFixed(1)}</span>
+                <span className={Number(profile.rating) >= 4.5 ? 'text-yellow-400 font-medium' : 'text-slate-600'}>
+                  ★ {Number(profile.rating).toFixed(1)}
+                </span>
+              )}
+              {(profile.completed_tasks ?? 0) > 0 && (
+                <span className="text-slate-600">{profile.completed_tasks} rides</span>
               )}
             </span>
           )}
@@ -890,18 +917,33 @@ function RequestCard({
 
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-[#1e2d4a] pt-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
             <Avatar name={profile?.name} />
-            <span className="text-xs text-slate-400 font-medium">
-              {profile?.name ?? 'Anonymous'}
+            <span className="text-xs text-slate-400 font-medium truncate max-w-[120px]">
+              {profile?.name ?? 'A student'}
             </span>
+            {hasWorkedWithRequester && (
+              <span className="flex-shrink-0 rounded-full border border-emerald-500/25 bg-emerald-500/[0.07] px-1.5 py-0.5 text-[9px] font-semibold leading-none text-emerald-400">
+                Worked together
+              </span>
+            )}
             {profile?.rating != null && (
-              <span className="text-xs text-slate-600">
+              <span className={`flex-shrink-0 text-xs ${Number(profile.rating) >= 4.5 ? 'text-yellow-400 font-medium' : 'text-slate-600'}`}>
                 ★ {Number(profile.rating).toFixed(1)}
               </span>
             )}
-            <span className="text-xs text-slate-700">·</span>
-            <span className="text-xs text-slate-600">{timeAgo(req.created_at)}</span>
+            {isTrusted && (
+              <span className="flex-shrink-0 rounded-full border border-yellow-500/20 bg-yellow-500/[0.06] px-1.5 py-0.5 text-[9px] font-semibold leading-none text-yellow-400/80">
+                Trusted
+              </span>
+            )}
+            {completedTasksCount > 0 && (
+              <span className="flex-shrink-0 text-[10px] text-slate-600">
+                {completedTasksCount} helped
+              </span>
+            )}
+            <span className="flex-shrink-0 text-xs text-slate-700">·</span>
+            <span className="flex-shrink-0 text-xs text-slate-600">{timeAgo(req.created_at)}</span>
           </div>
 
           {isPast ? (
@@ -1179,6 +1221,19 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
   const [actError, setActError] = useState<string | null>(null)
   const now = useMemo(() => new Date(), [])
 
+  // Set of requester_ids for whom I've had 2+ accepted offers — "regulars"
+  const repeatRequesterIds = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const o of offers) {
+      if (o.status !== 'accepted') continue
+      const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
+      if (req?.requester_id) counts.set(req.requester_id, (counts.get(req.requester_id) ?? 0) + 1)
+    }
+    const set = new Set<string>()
+    for (const [id, count] of counts) { if (count >= 2) set.add(id) }
+    return set
+  }, [offers])
+
   async function markRideComplete(offerId: string, requestId: string, requesterId: string) {
     setActing(offerId)
     setActError(null)
@@ -1249,10 +1304,12 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
 
   if (offers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-[#1e2d4a] bg-[#0d1526]/60 py-16 text-center">
-        <p className="text-sm font-medium text-slate-400">No offers yet</p>
-        <p className="mt-1 text-xs text-slate-600">
-          Browse requests and click &ldquo;I can help&rdquo; to send an offer
+      <div className="flex flex-col items-center justify-center rounded-xl border border-[#1e2d4a] bg-[#0d1526]/60 py-14 px-6 text-center">
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#1e2d4a] bg-[#0d1526] text-2xl">🤝</div>
+        <p className="text-sm font-medium text-slate-400">You haven&apos;t offered help yet</p>
+        <p className="mt-1.5 max-w-xs text-xs text-slate-600 leading-relaxed">
+          Switch to <span className="text-slate-400 font-medium">All Open</span> to browse requests from students on your campus.
+          Hit &ldquo;I can help&rdquo; on anything that fits — rides, errands, tutoring, or moving.
         </p>
       </div>
     )
@@ -1386,15 +1443,23 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                 </div>
               )}
 
-              <div className="flex items-center gap-2 border-t border-[#1e2d4a] pt-3">
+              <div className="flex items-center gap-2 flex-wrap border-t border-[#1e2d4a] pt-3">
                 <Avatar name={profile?.name} />
                 <span className="text-xs text-slate-500">
-                  Requested by <span className="text-slate-300">{profile?.name ?? 'Anonymous'}</span>
+                  {req.category === 'rides' && req.is_driver ? 'Driver' : 'Posted by'}{' '}
+                  <span className="text-slate-300">{profile?.name ?? 'A student'}</span>
                 </span>
                 {profile?.rating != null && (
-                  <span className="text-xs text-slate-600">★ {Number(profile.rating).toFixed(1)}</span>
+                  <span className={`text-xs flex-shrink-0 ${Number(profile.rating) >= 4.5 ? 'text-yellow-400 font-medium' : 'text-slate-600'}`}>
+                    ★ {Number(profile.rating).toFixed(1)}
+                  </span>
                 )}
-                <span className="ml-auto text-xs text-slate-600">{timeAgo(offer.created_at)}</span>
+                {repeatRequesterIds.has(req.requester_id) && (
+                  <span className="flex-shrink-0 rounded-full border border-blue-500/20 bg-blue-500/[0.06] px-1.5 py-0.5 text-[9px] font-semibold leading-none text-blue-400">
+                    Regular
+                  </span>
+                )}
+                <span className="ml-auto flex-shrink-0 text-xs text-slate-600">{timeAgo(offer.created_at)}</span>
               </div>
             </div>
           </div>
