@@ -33,6 +33,8 @@ export interface FeedRequest {
   is_airport_ride?: boolean | null
   structured_data?: Record<string, unknown> | null
   description?: string | null
+  pickup_location?: Record<string, unknown> | null
+  dropoff_location?: Record<string, unknown> | null
 }
 
 export interface OfferOnCard {

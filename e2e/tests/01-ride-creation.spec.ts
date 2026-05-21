@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from '../helpers/fixtures'
-import { mockParseRequest } from '../helpers/auth'
+import { mockParseRequest, mockLocationSearch, mockLocationDetails } from '../helpers/auth'
 import { goToDashboard } from '../helpers/fixtures'
 
 const SEATS = 3
@@ -35,6 +35,33 @@ test.describe('Ride creation', () => {
       missing_fields: [],
     })
 
+    // Mock location API — two campus-place results, no details call needed
+    await mockLocationSearch(page, [
+      {
+        place_name: 'Hullabaloo Hall',
+        formatted_address: '255 Houston St, College Station, TX 77840',
+        source: 'campus_place',
+        needs_details: false,
+        lat: 30.6223,
+        lng: -96.3339,
+      },
+      {
+        place_name: 'Dallas Union Station',
+        formatted_address: '400 S Houston St, Dallas, TX 75202',
+        source: 'campus_place',
+        needs_details: false,
+        lat: 32.7792,
+        lng: -96.8089,
+      },
+    ])
+    await mockLocationDetails(page, {
+      place_name: 'Dallas Union Station',
+      formatted_address: '400 S Houston St, Dallas, TX 75202',
+      source: 'places_provider',
+      lat: 32.7792,
+      lng: -96.8089,
+    })
+
     await goToDashboard(page)
 
     // Type the request
@@ -44,6 +71,32 @@ test.describe('Ride creation', () => {
     // Wait for parse → confirm card
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
     await expect(page.getByText(`[E2E-${runId}]`)).toBeVisible()
+
+    // Confirm button is disabled until both locations selected
+    await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
+
+    // Select pickup location
+    const pickupPicker = page.locator('[data-testid="location-picker-pickup"]')
+    await pickupPicker.locator('input').fill('Hulla')
+    const firstPickupSuggestion = pickupPicker.locator('[data-testid="location-suggestion"]').first()
+    await firstPickupSuggestion.waitFor({ timeout: 5_000 })
+    await firstPickupSuggestion.click()
+    await expect(pickupPicker.locator('[data-testid="location-chip"]')).toBeVisible()
+
+    // Still disabled — dropoff missing
+    await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
+
+    // Select dropoff location (clear first to avoid hint pre-fill no-op)
+    const dropoffPicker = page.locator('[data-testid="location-picker-dropoff"]')
+    await dropoffPicker.locator('input').clear()
+    await dropoffPicker.locator('input').type('Union')
+    const firstDropoffSuggestion = dropoffPicker.locator('[data-testid="location-suggestion"]').first()
+    await firstDropoffSuggestion.waitFor({ timeout: 5_000 })
+    await firstDropoffSuggestion.click()
+    await expect(dropoffPicker.locator('[data-testid="location-chip"]')).toBeVisible()
+
+    // Now enabled
+    await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeEnabled()
 
     // Confirm and post
     await page.locator('[data-testid="confirm-post-btn"]').click()

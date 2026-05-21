@@ -62,6 +62,7 @@ const FULL_SELECT = `
   auto_accept, seats_filled, ride_started,
   price_type, is_airport_ride,
   structured_data,
+  pickup_location, dropoff_location,
   profiles!requester_id (
     id, name, university, rating, completed_tasks, verification_status
   )

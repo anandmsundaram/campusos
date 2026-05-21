@@ -7,6 +7,7 @@
 
 import { Page, BrowserContext } from '@playwright/test'
 import path from 'path'
+import type { LocationSuggestion, ResolvedLocation } from '@/lib/location-types'
 
 // ─── Storage-state paths ──────────────────────────────────────────────────────
 
@@ -146,6 +147,58 @@ export async function mockParseRequest(
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ ...defaults, ...response }),
+    })
+  })
+}
+
+// ─── Default stubs for location mocks ────────────────────────────────────────
+
+const DEFAULT_LOCATION_RESULT: LocationSuggestion = {
+  place_name: 'Test Location',
+  formatted_address: '123 Test St, College Station, TX 77840',
+  source: 'campus_place',
+  needs_details: false,
+}
+
+const DEFAULT_LOCATION_DETAILS: ResolvedLocation = {
+  place_name: 'Test Location',
+  formatted_address: '123 Test St, College Station, TX 77840',
+  source: 'places_provider',
+  original_query: 'test',
+}
+
+/**
+ * Intercept /api/location-search and return canned suggestions.
+ * Must be called before the picker input is interacted with.
+ */
+export async function mockLocationSearch(
+  page: Page,
+  results: Partial<LocationSuggestion>[],
+): Promise<void> {
+  await page.route(/\/api\/location-search/, async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        results: results.map(r => ({ ...DEFAULT_LOCATION_RESULT, ...r })),
+      }),
+    })
+  })
+}
+
+/**
+ * Intercept /api/location-details and return a canned resolved location.
+ * Must be called before a `needs_details: true` suggestion is selected.
+ */
+export async function mockLocationDetails(
+  page: Page,
+  details: Partial<ResolvedLocation>,
+): Promise<void> {
+  await page.route(/\/api\/location-details/, async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...DEFAULT_LOCATION_DETAILS, ...details }),
     })
   })
 }

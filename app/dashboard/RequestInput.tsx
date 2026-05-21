@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { LocationPicker } from '@/app/components/LocationPicker'
+import type { ResolvedLocation } from '@/lib/location-types'
 
 interface ParsedRequest {
   category: 'rides' | 'moving' | 'peer_help' | 'errands' | 'borrow'
@@ -262,6 +264,8 @@ export default function RequestInput() {
   const [autoAccept, setAutoAccept] = useState(true)
   const [priceType, setPriceType] = useState<'fixed' | 'split' | 'free'>('split')
   const [followupAnswers, setFollowupAnswers] = useState<Record<string, string>>({})
+  const [pickupLocation, setPickupLocation] = useState<ResolvedLocation | null>(null)
+  const [dropoffLocation, setDropoffLocation] = useState<ResolvedLocation | null>(null)
 
   const mergedSD = useMemo<Record<string, unknown>>(() => {
     if (!parsed) return {}
@@ -281,9 +285,7 @@ export default function RequestInput() {
   const canConfirm = useMemo<boolean>(() => {
     if (!parsed) return false
     if (parsed.category === 'rides') {
-      const origin = parsed.origin_city?.trim() || followupAnswers.origin_city?.trim()
-      const dest = parsed.destination_city?.trim() || followupAnswers.destination_city?.trim()
-      return !!(origin && dest)
+      return pickupLocation !== null && dropoffLocation !== null
     }
     const criticals = CRITICAL_FIELDS[parsed.category] ?? []
     if (criticals.length === 0) return true
@@ -291,7 +293,7 @@ export default function RequestInput() {
       const val = mergedSD[key]
       return val !== null && val !== undefined && val !== ''
     })
-  }, [parsed, mergedSD, followupAnswers])
+  }, [parsed, mergedSD, followupAnswers, pickupLocation, dropoffLocation])
 
   // Typewriter placeholder animation
   const [phIdx, setPhIdx] = useState(0)
@@ -350,6 +352,8 @@ export default function RequestInput() {
     setParsed(null)
     setAutoAccept(true)
     setFollowupAnswers({})
+    setPickupLocation(null)
+    setDropoffLocation(null)
 
     const res = await fetch('/api/parse-request', {
       method: 'POST',
@@ -442,8 +446,10 @@ export default function RequestInput() {
       ...(!isDriverNonFixed && parsed.budget != null && { budget: parsed.budget }),
       ...(structuredDataToSave != null && { structured_data: structuredDataToSave }),
       ...(parsed.category === 'rides' && {
-        origin_city: parsed.origin_city ?? followupAnswers.origin_city ?? null,
-        destination_city: parsed.destination_city ?? followupAnswers.destination_city ?? null,
+        pickup_location: pickupLocation ?? null,
+        dropoff_location: dropoffLocation ?? null,
+        origin_city: pickupLocation?.place_name ?? parsed.origin_city ?? null,
+        destination_city: dropoffLocation?.place_name ?? parsed.destination_city ?? null,
         is_driver: parsed.is_driver ?? null,
         available_seats: parsed.available_seats ?? null,
         is_round_trip: parsed.is_round_trip ?? false,
@@ -463,6 +469,8 @@ export default function RequestInput() {
       delete fallback.price_type
       delete fallback.is_airport_ride
       delete fallback.structured_data
+      delete fallback.pickup_location
+      delete fallback.dropoff_location
       ;({ error: dbError } = await supabase.from('requests').insert(fallback))
     }
 
@@ -475,6 +483,8 @@ export default function RequestInput() {
     setParsed(null)
     setText('')
     setFollowupAnswers({})
+    setPickupLocation(null)
+    setDropoffLocation(null)
     setStatus('done')
     router.refresh()
     setTimeout(() => setStatus('idle'), 3000)
@@ -485,6 +495,8 @@ export default function RequestInput() {
     setStatus('idle')
     setParsed(null)
     setFollowupAnswers({})
+    setPickupLocation(null)
+    setDropoffLocation(null)
   }
 
   function handleFollowupChange(key: string, value: string) {
@@ -739,53 +751,34 @@ export default function RequestInput() {
             {/* ── RIDES-specific rows ── */}
             {parsed!.category === 'rides' && (
               <>
-                {/* Inline inputs when parser didn't extract origin or destination */}
-                {(!parsed!.origin_city || !parsed!.destination_city) && (
-                  <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] px-4 py-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/60 mb-3">
-                      Route details needed
-                    </p>
-                    <div className="flex flex-col gap-3">
-                      {!parsed!.origin_city && (
-                        <div>
-                          <p className="text-xs font-medium text-slate-300 mb-1.5">From</p>
-                          <input
-                            type="text"
-                            value={followupAnswers.origin_city ?? ''}
-                            onChange={e => handleFollowupChange('origin_city', e.target.value)}
-                            placeholder="e.g. Jester West, my apt, 24th St"
-                            className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-blue-500/40"
-                          />
-                        </div>
-                      )}
-                      {!parsed!.destination_city && (
-                        <div>
-                          <p className="text-xs font-medium text-slate-300 mb-1.5">To</p>
-                          <input
-                            type="text"
-                            value={followupAnswers.destination_city ?? ''}
-                            onChange={e => handleFollowupChange('destination_city', e.target.value)}
-                            placeholder="e.g. Austin Target, DFW Airport, 6th St"
-                            className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-blue-500/40"
-                          />
-                        </div>
-                      )}
+                {/* Location pickers — both required before confirm unlocks */}
+                <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/60 mb-3">
+                    Route — select specific locations
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-300 mb-1.5">Pickup / From</p>
+                      <LocationPicker
+                        value={pickupLocation}
+                        onChange={setPickupLocation}
+                        hint={parsed!.origin_city ?? undefined}
+                        placeholder="Search dorm, building, or address…"
+                        data-testid="location-picker-pickup"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-slate-300 mb-1.5">Dropoff / To</p>
+                      <LocationPicker
+                        value={dropoffLocation}
+                        onChange={setDropoffLocation}
+                        hint={parsed!.destination_city ?? undefined}
+                        placeholder="Search destination or address…"
+                        data-testid="location-picker-dropoff"
+                      />
                     </div>
                   </div>
-                )}
-
-                {/* Route display — merges parsed + followup */}
-                {(parsed!.origin_city || followupAnswers.origin_city) &&
-                 (parsed!.destination_city || followupAnswers.destination_city) && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">Route</span>
-                    <span className="flex items-center gap-2 text-sm text-white">
-                      <span>{parsed!.origin_city || followupAnswers.origin_city}</span>
-                      <span className="text-slate-500">→</span>
-                      <span>{parsed!.destination_city || followupAnswers.destination_city}</span>
-                    </span>
-                  </div>
-                )}
+                </div>
 
                 {parsed!.is_driver !== null && (
                   <div className="flex items-center justify-between">
