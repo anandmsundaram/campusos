@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { trackEvent } from '@/lib/analytics'
 
 interface MessageRow {
   id: string
@@ -138,6 +139,7 @@ export default function MessagesPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { trackEvent('messages_opened') }, [])
 
   // Scroll to bottom whenever selected conversation or message count changes
   useEffect(() => {

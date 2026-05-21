@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { trackEvent } from '@/lib/analytics'
 
 const YEARS = ['Freshman', 'Sophomore', 'Junior', 'Senior', 'Graduate', 'PhD'] as const
 
@@ -35,6 +36,7 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [emailTouched, setEmailTouched] = useState(false)
+  const signupStartedFired = useRef(false)
 
   const eduError = emailTouched && form.email.length > 0 && !isEduEmail(form.email)
   const pwdHasLength = form.password.length >= 10
@@ -83,6 +85,7 @@ export default function SignupPage() {
       return
     }
 
+    trackEvent('signup_completed')
     router.push('/login?message=Check your email to confirm your account')
   }
 
@@ -139,6 +142,12 @@ export default function SignupPage() {
                 required
                 value={form.email}
                 onChange={set('email')}
+                onFocus={() => {
+                  if (!signupStartedFired.current) {
+                    signupStartedFired.current = true
+                    trackEvent('signup_started')
+                  }
+                }}
                 onBlur={() => setEmailTouched(true)}
                 placeholder="you@university.edu"
                 className={[

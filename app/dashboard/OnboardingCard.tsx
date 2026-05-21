@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { trackEvent } from '@/lib/analytics'
 
 const STORAGE_KEY = 'campusos_onboarding_dismissed'
 
@@ -28,6 +29,7 @@ export default function OnboardingCard() {
 
   function dismiss() {
     try { localStorage.setItem(STORAGE_KEY, '1') } catch { /* */ }
+    trackEvent('onboarding_card_dismissed')
     setVisible(false)
   }
 

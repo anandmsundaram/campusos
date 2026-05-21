@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { trackEvent } from '@/lib/analytics'
 
 const ADMIN_EMAILS = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com'])
 
@@ -163,6 +164,7 @@ function NotificationBell({
     setOpen(opening)
     if (!opening) return
 
+    trackEvent('notifications_opened')
     setLoading(true)
     const supabase = createClient()
     const { data } = await supabase
@@ -261,6 +263,7 @@ export default function Sidebar({ userName, userEmail, userId, logout }: Props) 
 
   async function openMobileNotif() {
     setMobileNotifOpen(true)
+    trackEvent('notifications_opened')
     setMobileNotifLoading(true)
     const supabase = createClient()
     const { data } = await supabase

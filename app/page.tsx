@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import PageTracker from '@/app/components/PageTracker'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ const TRUST = [
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#060b17] text-white font-sans antialiased">
+      <PageTracker event="landing_page_view" />
       {/* ── Nav ── */}
       <header className="sticky top-0 z-50 border-b border-[#1e2d4a]/60 bg-[#060b17]/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3.5">

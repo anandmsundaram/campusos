@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { trackEvent } from '@/lib/analytics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -373,6 +374,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       })
     }
 
+    trackEvent('offer_submitted', { category: offerTarget.category })
     setOfferedIds((prev) => new Set(prev).add(offerTarget.requestId))
     setSubmitting(false)
     setOfferTarget(null)

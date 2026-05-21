@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { trackEvent } from '@/lib/analytics'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -257,6 +258,7 @@ export default function RidesPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { trackEvent('rides_page_opened') }, [])
 
   // ─── Actions (all use request_offers RPCs — no ride_passengers writes) ───────
 

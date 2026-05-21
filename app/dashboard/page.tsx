@@ -5,6 +5,7 @@ import RequestFeed, { type FeedRequest, type MyOffer, type FeedRequestWithOffers
 import OnboardingCard from './OnboardingCard'
 import ActivityPulse from './ActivityPulse'
 import ContextualBanner from './ContextualBanner'
+import PageTracker from '@/app/components/PageTracker'
 
 function isSchemaErr(msg?: string | null) {
   return !!msg && /schema cache|Could not find the|more than one relationship/i.test(msg)
@@ -334,6 +335,7 @@ export default async function DashboardPage() {
       />
 
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-12">
+        <PageTracker event="dashboard_opened" />
         <RequestInput />
 
         {/* First-session onboarding card — client component, dismisses via localStorage */}
