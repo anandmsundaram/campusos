@@ -267,11 +267,11 @@ export default function MessagesPage() {
 
         <div className="flex-1 overflow-y-auto">
           {conversations.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
               <div className="mb-3 text-3xl">💬</div>
-              <p className="text-sm font-medium text-slate-400">No messages yet</p>
-              <p className="mt-2 text-xs text-slate-600 leading-relaxed">
-                Accept an offer to start chatting with your helper
+              <p className="text-sm font-semibold text-slate-300">No messages yet</p>
+              <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+                Messages appear here once an offer is accepted. Post a request or offer to help — then chat directly with the other student.
               </p>
             </div>
           ) : (

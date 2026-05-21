@@ -1752,19 +1752,39 @@ function OfferRowCard({
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 function EmptyState({ tab }: { tab: 'all' | 'mine' | 'offers' }) {
-  const messages = {
-    all: { emoji: '📭', title: 'No open requests', sub: 'Be the first to post something in your campus' },
-    mine: { emoji: '📝', title: 'No requests yet', sub: 'Use the input above to post your first request' },
-    offers: { emoji: '🤝', title: 'No offers yet', sub: 'Browse open requests and click "I can help"' },
+  const content = {
+    all: {
+      emoji: '📭',
+      title: 'No open requests right now',
+      sub: 'Be the first to post something. Rides, tutoring, errands, moving help, borrowing — anything campus-related.',
+      cta: null,
+    },
+    mine: {
+      emoji: '📝',
+      title: 'You haven\'t posted a request yet',
+      sub: 'Use the input above to describe what you need. Other verified students will respond with offers.',
+      cta: 'Try: "Need a ride to Austin airport Friday at 6 AM — $25 budget"',
+    },
+    offers: {
+      emoji: '🤝',
+      title: 'You haven\'t offered help yet',
+      sub: 'Switch to "All Open" to browse requests from students nearby. Click "I can help" on any request to send an offer.',
+      cta: null,
+    },
   }
-  const m = messages[tab]
+  const c = content[tab]
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-[#1e2d4a] bg-[#0d1526]/60 py-16 text-center">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-[#1e2d4a] bg-[#0d1526]/60 py-14 px-6 text-center">
       <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#1e2d4a] bg-[#0d1526] text-2xl">
-        {m.emoji}
+        {c.emoji}
       </div>
-      <p className="text-sm font-medium text-slate-400">{m.title}</p>
-      <p className="mt-1 text-xs text-slate-600">{m.sub}</p>
+      <p className="text-sm font-medium text-slate-400">{c.title}</p>
+      <p className="mt-1.5 max-w-xs text-xs text-slate-600 leading-relaxed">{c.sub}</p>
+      {c.cta && (
+        <p className="mt-3 max-w-xs rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-4 py-2.5 text-xs text-slate-500 italic leading-relaxed">
+          {c.cta}
+        </p>
+      )}
     </div>
   )
 }

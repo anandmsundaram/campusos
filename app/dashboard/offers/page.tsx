@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 interface RequesterProfile {
@@ -125,12 +126,21 @@ export default function MyOffersPage() {
       </div>
 
       {offers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1e2d4a] bg-[#0d1526] py-20 text-center">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1e2d4a] bg-[#0d1526] py-16 px-6 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-[#1e2d4a] bg-[#0a0f1e] text-2xl">
             🤝
           </div>
-          <p className="text-sm font-medium text-slate-400">You haven't offered help yet</p>
-          <p className="mt-1 text-xs text-slate-600">Browse open requests and click "I can help"</p>
+          <p className="text-sm font-semibold text-slate-300">You haven&apos;t offered help yet</p>
+          <p className="mt-2 max-w-xs text-xs text-slate-500 leading-relaxed">
+            Browse open requests from students on your campus. Offer to give a ride, help move, tutor, run an errand, or lend something.
+            Accepted offers show up here.
+          </p>
+          <Link
+            href="/dashboard"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
+          >
+            Browse open requests
+          </Link>
         </div>
       ) : (
         <div className="flex flex-col gap-3">

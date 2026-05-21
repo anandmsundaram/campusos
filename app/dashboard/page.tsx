@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import RequestInput from './RequestInput'
 import RequestFeed, { type FeedRequest, type MyOffer, type FeedRequestWithOffers } from './RequestFeed'
+import OnboardingCard from './OnboardingCard'
 
 function isSchemaErr(msg?: string | null) {
   return !!msg && /schema cache|Could not find the|more than one relationship/i.test(msg)
@@ -260,7 +261,7 @@ export default async function DashboardPage() {
     request_offers?: { status: string; counter_budget: number | null; requester_counter: number | null; final_agreed_price?: number | null; seats_requested: number | null }[]
   }
 
-  let inPlay = 0, earned = 0, owed = 0
+  let committed = 0, earned = 0, owed = 0
 
   // Offers I made on OTHERS' requests (I am the helper or the passenger)
   for (const o of (myOffersRaw ?? []) as FinOffer[]) {
@@ -276,7 +277,7 @@ export default async function DashboardPage() {
     } else {
       // I am the HELPER (task or driving for a ride-seeker) → I earn
       if (req.status === 'completed') earned += total
-      else if (req.status === 'open' || req.status === 'matched') inPlay += total
+      else if (req.status === 'open' || req.status === 'matched') committed += total
     }
   }
 
@@ -290,7 +291,7 @@ export default async function DashboardPage() {
       if (r.is_driver === true) {
         // I am the DRIVER — passengers pay me
         if (r.status === 'completed') earned += total
-        else if (r.status === 'open' || r.status === 'matched') inPlay += total
+        else if (r.status === 'open' || r.status === 'matched') committed += total
       } else {
         // I am a task requester — I pay helpers
         if (r.status === 'open' || r.status === 'matched') owed += total
@@ -298,8 +299,8 @@ export default async function DashboardPage() {
     }
   }
 
-  // Active = MY own open/matched requests (not a global count)
-  const active = (myReqData as FinReq[]).filter(r => r.status === 'open' || r.status === 'matched').length
+  // Open requests = MY own open/matched requests (not a global count)
+  const openRequests = (myReqData as FinReq[]).filter(r => r.status === 'open' || r.status === 'matched').length
 
   return (
     <div className="relative min-h-screen">
@@ -315,9 +316,12 @@ export default async function DashboardPage() {
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-12">
         <RequestInput />
 
+        {/* First-session onboarding card — client component, dismisses via localStorage */}
+        <OnboardingCard />
+
         {/* Finance strip */}
         <div className="mt-10">
-          <FinanceStrip inPlay={inPlay} earned={earned} owed={owed} active={active} />
+          <FinanceStrip committed={committed} earned={earned} owed={owed} openRequests={openRequests} />
         </div>
 
         {/* My Next Ride widget — only rendered when a ride exists */}
@@ -348,21 +352,26 @@ function fmtDollars(n: number) {
   return n % 1 === 0 ? `$${n.toLocaleString()}` : `$${n.toFixed(2)}`
 }
 
-function FinanceStrip({ inPlay, earned, owed, active }: {
-  inPlay: number; earned: number; owed: number; active: number
+function FinanceStrip({ committed, earned, owed, openRequests }: {
+  committed: number; earned: number; owed: number; openRequests: number
 }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <FinStat label="In Play" sub="pending earnings" value={fmtDollars(inPlay)} dim={inPlay === 0} accent="emerald" />
-      <FinStat label="Earned" sub="as helper" value={fmtDollars(earned)} dim={earned === 0} accent="blue" />
-      <FinStat label="To Pay" sub="you committed" value={fmtDollars(owed)} dim={owed === 0} accent="orange" />
-      <FinStat label="Active" sub="open requests" value={active.toLocaleString()} dim={active === 0} accent="slate" />
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <FinStat label="Committed" sub="pending earnings" value={fmtDollars(committed)} dim={committed === 0} accent="emerald" testId="fin-in-play" />
+        <FinStat label="Earned" sub="as helper" value={fmtDollars(earned)} dim={earned === 0} accent="blue" testId="fin-earned" />
+        <FinStat label="To Pay" sub="you owe" value={fmtDollars(owed)} dim={owed === 0} accent="orange" testId="fin-to-pay" />
+        <FinStat label="Open Requests" sub="awaiting match" value={openRequests.toLocaleString()} dim={openRequests === 0} accent="slate" testId="fin-active" />
+      </div>
+      <p className="text-[10px] text-slate-700 text-right leading-tight px-0.5">
+        Payments handled directly between students (Venmo, Zelle, cash, etc.)
+      </p>
     </div>
   )
 }
 
-function FinStat({ label, sub, value, dim, accent }: {
-  label: string; sub: string; value: string; dim: boolean; accent: 'emerald' | 'blue' | 'orange' | 'slate'
+function FinStat({ label, sub, value, dim, accent, testId }: {
+  label: string; sub: string; value: string; dim: boolean; accent: 'emerald' | 'blue' | 'orange' | 'slate'; testId: string
 }) {
   const valueColor = dim ? 'text-slate-600' : {
     emerald: 'text-emerald-400',
@@ -370,12 +379,6 @@ function FinStat({ label, sub, value, dim, accent }: {
     orange: 'text-orange-400',
     slate: 'text-white',
   }[accent]
-  const testId = {
-    'In Play': 'fin-in-play',
-    'Earned': 'fin-earned',
-    'To Pay': 'fin-to-pay',
-    'Active': 'fin-active',
-  }[label]
   return (
     <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] px-4 py-3">
       <p data-testid={testId} className={`text-xl font-bold tabular-nums ${valueColor}`}>{value}</p>

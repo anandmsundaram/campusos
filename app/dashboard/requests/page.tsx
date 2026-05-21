@@ -365,17 +365,27 @@ export default function MyRequestsPage() {
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-12">
         <PageHeader title="My Requests" sub="Requests you've posted on CampusOS" />
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1e2d4a] bg-[#0d1526] py-20 text-center">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1e2d4a] bg-[#0d1526] py-16 px-6 text-center">
           <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-[#1e2d4a] bg-[#0a0f1e] text-2xl">
             📝
           </div>
-          <p className="text-sm font-medium text-slate-400">You haven't posted any requests yet</p>
-          <p className="mt-1 text-xs text-slate-600">Head to the dashboard to post your first request</p>
+          <p className="text-sm font-semibold text-slate-300">You haven&apos;t posted a request yet</p>
+          <p className="mt-2 max-w-xs text-xs text-slate-500 leading-relaxed">
+            Requests are how you ask for help on campus — rides, tutoring, moving, errands, or borrowing items.
+            Other verified students respond with offers.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {['🚗 Ride', '📦 Moving', '📚 Tutoring', '🛒 Errand', '🔌 Borrow'].map(tag => (
+              <span key={tag} className="rounded-full border border-[#1e2d4a] bg-white/[0.02] px-3 py-1 text-xs text-slate-600">
+                {tag}
+              </span>
+            ))}
+          </div>
           <Link
             href="/dashboard"
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
+            className="mt-6 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition-colors"
           >
-            Go to Dashboard
+            Post your first request
           </Link>
         </div>
       </div>
