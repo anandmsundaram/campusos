@@ -307,17 +307,9 @@ export default function RidesPage() {
     const supabase = createClient()
 
     if (offer.status === 'accepted') {
-      // Leave confirmed ride — mark offer rejected and decrement seats
-      await supabase
-        .from('request_offers')
-        .update({ status: 'rejected' })
-        .eq('id', offer.id)
-
-      const seatsDelta = offer.seats_requested ?? 1
-      const newFilled = Math.max(0, ride.seats_filled - seatsDelta)
-      const reqUpdates: Record<string, unknown> = { seats_filled: newFilled }
-      if (ride.status === 'matched') reqUpdates.status = 'open'
-      await supabase.from('requests').update(reqUpdates).eq('id', ride.id)
+      // Leave confirmed ride — RPC atomically rejects offer and decrements seats_filled
+      const { data: result } = await supabase.rpc('leave_ride_safe', { p_offer_id: offer.id })
+      if (!result?.ok) { setActing(null); return }
 
       await supabase.from('notifications').insert({
         user_id: ride.requester_id,
@@ -326,8 +318,10 @@ export default function RidesPage() {
         related_request_id: ride.id,
       })
 
-      setRides(prev => prev.map(r => r.id === ride.id
-        ? { ...r, seats_filled: newFilled, status: reqUpdates.status ? String(reqUpdates.status) : r.status } : r))
+      if (result.seats_filled != null) {
+        setRides(prev => prev.map(r => r.id === ride.id
+          ? { ...r, seats_filled: result.seats_filled, status: result.request_status ?? r.status } : r))
+      }
     } else {
       // Withdraw pending/countered offer — no seat change needed
       await supabase
@@ -670,7 +664,7 @@ export default function RidesPage() {
                       : null
 
                     return (
-                      <div key={ride.id}>
+                      <div key={ride.id} data-request-id={ride.id}>
                         <RideCard
                           ride={ride}
                           isOwn={isOwn}
@@ -1031,6 +1025,7 @@ function OfferSection({
                 )}
                 <div className="flex gap-1.5">
                   <button
+                    data-testid="rides-approve-btn"
                     type="button"
                     onClick={() => onApprove(o.id, o.helper_id)}
                     disabled={!!acting || isFull}
