@@ -199,9 +199,9 @@ test.describe('UX cleanup: P0 issues', () => {
 
     // Step 1: date bucket
     await page.locator('[data-testid="time-option"]').first().click()
-    // Step 2: time mode
-    await page.locator('[data-testid="time-mode"]').first().waitFor({ timeout: 3_000 })
-    await page.locator('[data-testid="time-mode"]').first().click()
+    // Step 2: select Flexible (immediately completes time gate without sub-pickers)
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).waitFor({ timeout: 3_000 })
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).click()
 
     // Confirm now enabled — time complete + payment pre-filled + location set
     await expect(page.locator('[data-testid="confirm-post-btn"]')).not.toBeDisabled()
@@ -359,10 +359,10 @@ test.describe('UX cleanup: P0 issues', () => {
     await picker.locator('[data-testid="location-suggestion"]').first().click()
     await expect(picker.locator('[data-testid="location-chip"]')).toBeVisible()
 
-    // Complete two-step time
+    // Complete time: date bucket → Flexible
     await page.locator('[data-testid="time-option"]').first().click()
-    await page.locator('[data-testid="time-mode"]').first().waitFor({ timeout: 3_000 })
-    await page.locator('[data-testid="time-mode"]').first().click()
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).waitFor({ timeout: 3_000 })
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).click()
 
     // Select free payment
     await page.locator('[data-testid="payment-option"]').first().click()

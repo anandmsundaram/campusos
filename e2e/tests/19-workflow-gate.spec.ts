@@ -75,9 +75,9 @@ test.describe('Workflow gate: payment + time slots', () => {
 
     // Step 1: select date bucket
     await page.locator('[data-testid="time-option"]').first().click()
-    // Step 2: select time of day (two-step time flow)
-    await page.locator('[data-testid="time-mode"]').first().waitFor({ timeout: 3_000 })
-    await page.locator('[data-testid="time-mode"]').first().click()
+    // Step 2: select Flexible (completes time gate without sub-pickers)
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).waitFor({ timeout: 3_000 })
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).click()
 
     // Now all gates satisfied — confirm enabled
     await expect(page.locator('[data-testid="confirm-post-btn"]')).not.toBeDisabled()
@@ -394,9 +394,9 @@ test.describe('Workflow gate: payment + time slots', () => {
 
     // Step 1: select date bucket
     await page.locator('[data-testid="time-option"]').first().click()
-    // Step 2: select time of day
-    await page.locator('[data-testid="time-mode"]').first().waitFor({ timeout: 3_000 })
-    await page.locator('[data-testid="time-mode"]').first().click()
+    // Step 2: select time mode — Flexible completes in one click
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).waitFor({ timeout: 3_000 })
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).click()
 
     // Still disabled — payment still missing
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
@@ -487,9 +487,9 @@ test.describe('Workflow gate: payment + time slots', () => {
 
     // Step 1: select date bucket
     await page.locator('[data-testid="time-option"]').first().click()
-    // Step 2: select time of day
-    await page.locator('[data-testid="time-mode"]').first().waitFor({ timeout: 3_000 })
-    await page.locator('[data-testid="time-mode"]').first().click()
+    // Step 2: select time mode — Flexible completes in one click
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).waitFor({ timeout: 3_000 })
+    await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).click()
 
     // Still disabled — payment missing
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()

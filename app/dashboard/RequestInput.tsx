@@ -373,43 +373,125 @@ function buildPaymentSummary(slot: PaymentSlot): string {
   }
 }
 
-// ─── Two-step time slot system ───────────────────────────────────────────────
+// ─── Structured time slot system ─────────────────────────────────────────────
 
 interface TimeSlotState {
-  dateBucket: 'today' | 'tomorrow' | 'weekend' | 'later' | null
-  timeMode: 'morning' | 'afternoon' | 'evening' | 'flexible' | null
+  dateMode: 'today' | 'tomorrow' | 'weekend' | 'later' | null
+  date: string | null           // 'YYYY-MM-DD' for dateMode='later'
+  weekendDay: 'saturday' | 'sunday' | null  // for dateMode='weekend'
+  timeMode: 'specific' | 'range' | 'flexible' | null
+  startHour: string             // '1'-'12', '' = unset
+  startMinute: string           // '00','15','30','45', '' = unset
+  startAmPm: 'AM' | 'PM' | ''
+  endHour: string
+  endMinute: string
+  endAmPm: 'AM' | 'PM' | ''
 }
 
-const EMPTY_TIME_SLOT: TimeSlotState = { dateBucket: null, timeMode: null }
+const EMPTY_TIME_SLOT: TimeSlotState = {
+  dateMode: null, date: null, weekendDay: null, timeMode: null,
+  startHour: '', startMinute: '', startAmPm: '',
+  endHour: '', endMinute: '', endAmPm: '',
+}
 
-const DATE_BUCKET_OPTIONS: { value: TimeSlotState['dateBucket']; label: string }[] = [
-  { value: 'today', label: '📅 Today' },
-  { value: 'tomorrow', label: '📆 Tomorrow' },
-  { value: 'weekend', label: '📌 This weekend' },
-  { value: 'later', label: '🗓️ Later' },
+const DATE_BUCKET_OPTIONS = [
+  { value: 'today' as const, label: '📅 Today' },
+  { value: 'tomorrow' as const, label: '📆 Tomorrow' },
+  { value: 'weekend' as const, label: '📌 This weekend' },
+  { value: 'later' as const, label: '🗓️ Later / pick date' },
 ]
 
-const TIME_MODE_OPTIONS: { value: TimeSlotState['timeMode']; label: string }[] = [
-  { value: 'morning', label: '🌅 Morning' },
-  { value: 'afternoon', label: '☀️ Afternoon' },
-  { value: 'evening', label: '🌙 Evening' },
-  { value: 'flexible', label: '🔀 Flexible' },
-]
+const HOURS = ['1','2','3','4','5','6','7','8','9','10','11','12']
+const MINUTES = ['00','15','30','45']
+
+function timeToMinutes(h: string, m: string, ap: string): number {
+  let hour = parseInt(h, 10)
+  const min = parseInt(m, 10)
+  if (ap === 'PM' && hour !== 12) hour += 12
+  if (ap === 'AM' && hour === 12) hour = 0
+  return hour * 60 + min
+}
+
+function isStartFuture(ts: TimeSlotState): boolean {
+  if (!ts.startHour || !ts.startMinute || !ts.startAmPm) return false
+  const now = new Date()
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  return timeToMinutes(ts.startHour, ts.startMinute, ts.startAmPm) > nowMin
+}
+
+function isEndAfterStart(ts: TimeSlotState): boolean {
+  if (!ts.startHour || !ts.startMinute || !ts.startAmPm) return false
+  if (!ts.endHour || !ts.endMinute || !ts.endAmPm) return false
+  return timeToMinutes(ts.endHour, ts.endMinute, ts.endAmPm) >
+         timeToMinutes(ts.startHour, ts.startMinute, ts.startAmPm)
+}
+
+function isDateResolved(ts: TimeSlotState): boolean {
+  if (!ts.dateMode) return false
+  if (ts.dateMode === 'weekend') return ts.weekendDay !== null
+  if (ts.dateMode === 'later') return ts.date !== null
+  return true
+}
+
+function getTimeValidationError(ts: TimeSlotState): string | null {
+  if (!isDateResolved(ts) || !ts.timeMode) return null
+  if (ts.timeMode === 'specific') {
+    if (ts.dateMode === 'today' && ts.startHour && ts.startMinute && ts.startAmPm) {
+      if (!isStartFuture(ts)) return 'Please select a time in the future'
+    }
+  }
+  if (ts.timeMode === 'range') {
+    if (ts.startHour && ts.startMinute && ts.startAmPm &&
+        ts.endHour && ts.endMinute && ts.endAmPm) {
+      if (ts.dateMode === 'today' && !isStartFuture(ts)) return 'Please select a start time in the future'
+      if (!isEndAfterStart(ts)) return 'End time must be after start time'
+    }
+  }
+  return null
+}
 
 function isTimeComplete(ts: TimeSlotState): boolean {
-  return ts.dateBucket !== null && ts.timeMode !== null
+  if (!isDateResolved(ts)) return false
+  if (!ts.timeMode) return false
+  if (ts.timeMode === 'flexible') return true
+  if (ts.timeMode === 'specific') {
+    if (!ts.startHour || !ts.startMinute || !ts.startAmPm) return false
+    if (ts.dateMode === 'today' && !isStartFuture(ts)) return false
+    return true
+  }
+  if (ts.timeMode === 'range') {
+    if (!ts.startHour || !ts.startMinute || !ts.startAmPm) return false
+    if (!ts.endHour || !ts.endMinute || !ts.endAmPm) return false
+    if (!isEndAfterStart(ts)) return false
+    if (ts.dateMode === 'today' && !isStartFuture(ts)) return false
+    return true
+  }
+  return false
+}
+
+function formatTime(h: string, m: string, ap: string): string {
+  return `${h}:${m} ${ap}`
 }
 
 function buildTimeLabel(ts: TimeSlotState): string {
+  if (!ts.dateMode) return ''
   const dateLabel =
-    ts.dateBucket === 'today' ? 'Today' :
-    ts.dateBucket === 'tomorrow' ? 'Tomorrow' :
-    ts.dateBucket === 'weekend' ? 'This weekend' : 'Later'
-  const timeLabel =
-    ts.timeMode === 'morning' ? 'morning' :
-    ts.timeMode === 'afternoon' ? 'afternoon' :
-    ts.timeMode === 'evening' ? 'evening' : 'flexible time'
-  return `${dateLabel}, ${timeLabel}`
+    ts.dateMode === 'today' ? 'Today' :
+    ts.dateMode === 'tomorrow' ? 'Tomorrow' :
+    ts.dateMode === 'weekend'
+      ? (ts.weekendDay === 'saturday' ? 'Saturday' :
+         ts.weekendDay === 'sunday' ? 'Sunday' : 'This weekend')
+      : ts.date
+        ? new Date(ts.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        : 'Later'
+  if (ts.timeMode === 'flexible' || !ts.timeMode) return `${dateLabel}, flexible time`
+  if (ts.timeMode === 'specific' && ts.startHour && ts.startMinute && ts.startAmPm) {
+    return `${dateLabel} at ${formatTime(ts.startHour, ts.startMinute, ts.startAmPm)}`
+  }
+  if (ts.timeMode === 'range' && ts.startHour && ts.endHour) {
+    return `${dateLabel} between ${formatTime(ts.startHour, ts.startMinute, ts.startAmPm)} – ${formatTime(ts.endHour, ts.endMinute, ts.endAmPm)}`
+  }
+  return dateLabel
 }
 
 // Pre-populate paymentSlot from whatever the parser already extracted
@@ -651,7 +733,9 @@ export default function RequestInput() {
   // Explicit offer language — casual phrases like "Going for Indian food" must NOT match
   const OFFER_MARKERS = /\b(i('m| am| can| will)?\s*(offer(ing)?|provid(e|ing)|giv(e|ing)|run(ning)?|do(ing)?|help(ing)? (with|anyone)|available( to)?)|anyone (want|need)s? (a|me to)|i have (a|an|extra|spare)|i('ll| will) (drive|pick up|run|go|do|get|bring|grab))\b/i
 
-  function applyParsedResult(data: ParsedRequest) {
+  // clarCount defaults to the closure value but callers can pass 0 explicitly
+  // to avoid the stale-closure bug when called right after setClarificationCount(0)
+  function applyParsedResult(data: ParsedRequest, clarCount = clarificationCount) {
     if (data.is_offer && data.category !== 'rides') {
       // Guard: only treat as offer if the original text has explicit offer language.
       // Casual social phrases ("Going for Indian food?") must fall through to confirm.
@@ -667,7 +751,7 @@ export default function RequestInput() {
       setStatus('confirm')
       return
     }
-    if (data.ambiguous && data.clarification_options?.length && clarificationCount === 0) {
+    if (data.ambiguous && data.clarification_options?.length && clarCount === 0) {
       setParsed(data)
       setClarificationCount(1)
       setStatus('disambiguating')
@@ -714,7 +798,7 @@ export default function RequestInput() {
       return
     }
 
-    applyParsedResult(data)
+    applyParsedResult(data, 0)  // pass 0 explicitly — state setter is async so closure value may be stale
   }
 
   function handleDisambigSelect(opt: { label: string; appended_text: string }) {
@@ -1119,29 +1203,30 @@ export default function RequestInput() {
             </div>
           )}
 
-          {/* ── Time / deadline question — two-step ── */}
+          {/* ── Time / deadline question — structured picker ── */}
           {showTimeQuestion && (
             <div data-testid="time-question" className="mb-5 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-4 py-4">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-400/70 mb-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-400/70 mb-3">
                 {parsed!.category === 'errands' ? 'When do you need this by?' :
                  parsed!.category === 'rides' ? 'When do you need the ride?' :
                  parsed!.category === 'moving' ? 'When do you need help?' :
                  'When?'}
               </p>
-              {/* Step 1: date bucket */}
+
+              {/* Step 1: Date bucket */}
               <div className="flex flex-wrap gap-2">
                 {DATE_BUCKET_OPTIONS.map(opt => (
                   <button
-                    key={opt.value!}
+                    key={opt.value}
                     data-testid="time-option"
                     type="button"
                     onClick={() => setTimeSlot(prev =>
-                      prev.dateBucket === opt.value
+                      prev.dateMode === opt.value
                         ? EMPTY_TIME_SLOT
-                        : { dateBucket: opt.value!, timeMode: null }
+                        : { ...EMPTY_TIME_SLOT, dateMode: opt.value }
                     )}
                     className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                      timeSlot.dateBucket === opt.value
+                      timeSlot.dateMode === opt.value
                         ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
                         : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
                     }`}
@@ -1150,28 +1235,207 @@ export default function RequestInput() {
                   </button>
                 ))}
               </div>
-              {/* Step 2: time of day — appears once date is picked */}
-              {timeSlot.dateBucket !== null && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {TIME_MODE_OPTIONS.map(opt => (
+
+              {/* Weekend sub-picker */}
+              {timeSlot.dateMode === 'weekend' && (
+                <div className="mt-2 flex gap-2">
+                  {(['saturday', 'sunday'] as const).map(day => (
                     <button
-                      key={opt.value!}
-                      data-testid="time-mode"
+                      key={day}
+                      data-testid="time-weekend-day"
                       type="button"
                       onClick={() => setTimeSlot(prev => ({
                         ...prev,
-                        timeMode: prev.timeMode === opt.value ? null : opt.value!,
+                        weekendDay: prev.weekendDay === day ? null : day,
+                        timeMode: prev.weekendDay === day ? null : prev.timeMode,
+                        startHour: '', startMinute: '', startAmPm: '',
+                        endHour: '', endMinute: '', endAmPm: '',
                       }))}
-                      className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                        timeSlot.timeMode === opt.value
+                      className={`rounded-lg border px-3 py-2 text-xs font-medium capitalize transition-colors ${
+                        timeSlot.weekendDay === day
                           ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
                           : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
                       }`}
                     >
-                      {opt.label}
+                      {day.charAt(0).toUpperCase() + day.slice(1)}
                     </button>
                   ))}
                 </div>
+              )}
+
+              {/* Later: date input */}
+              {timeSlot.dateMode === 'later' && (
+                <div className="mt-2">
+                  <input
+                    data-testid="time-date-input"
+                    type="date"
+                    min={new Date().toISOString().split('T')[0]}
+                    value={timeSlot.date ?? ''}
+                    onChange={e => setTimeSlot(prev => ({
+                      ...prev,
+                      date: e.target.value || null,
+                      timeMode: e.target.value ? prev.timeMode : null,
+                      startHour: '', startMinute: '', startAmPm: '',
+                      endHour: '', endMinute: '', endAmPm: '',
+                    }))}
+                    className="rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-blue-500/40"
+                  />
+                </div>
+              )}
+
+              {/* Step 2: Time mode — shown once date is fully resolved */}
+              {isDateResolved(timeSlot) && (
+                <div className="mt-3">
+                  <p className="text-[11px] text-slate-500 mb-1.5">What time?</p>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: 'specific' as const, label: '🕐 Specific time' },
+                      { value: 'range' as const, label: '↔️ Time range' },
+                      { value: 'flexible' as const, label: '🔀 Flexible' },
+                    ]).map(opt => (
+                      <button
+                        key={opt.value}
+                        data-testid="time-mode"
+                        type="button"
+                        onClick={() => setTimeSlot(prev => ({
+                          ...prev,
+                          timeMode: prev.timeMode === opt.value ? null : opt.value,
+                          startHour: '', startMinute: '', startAmPm: '',
+                          endHour: '', endMinute: '', endAmPm: '',
+                        }))}
+                        className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                          timeSlot.timeMode === opt.value
+                            ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
+                            : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Specific time picker */}
+              {timeSlot.timeMode === 'specific' && (
+                <div className="mt-3">
+                  <p className="text-[11px] text-slate-500 mb-1.5">Select time</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      data-testid="time-start-hour"
+                      value={timeSlot.startHour}
+                      onChange={e => setTimeSlot(prev => ({ ...prev, startHour: e.target.value }))}
+                      className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                    >
+                      <option value="">--</option>
+                      {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
+                    </select>
+                    <span className="text-slate-500 font-bold">:</span>
+                    <select
+                      data-testid="time-start-minute"
+                      value={timeSlot.startMinute}
+                      onChange={e => setTimeSlot(prev => ({ ...prev, startMinute: e.target.value }))}
+                      className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                    >
+                      <option value="">--</option>
+                      {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <div className="flex gap-1">
+                      {(['AM', 'PM'] as const).map(ap => (
+                        <button
+                          key={ap}
+                          data-testid={`time-start-ampm-${ap}`}
+                          type="button"
+                          onClick={() => setTimeSlot(prev => ({ ...prev, startAmPm: ap }))}
+                          className={`rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                            timeSlot.startAmPm === ap
+                              ? 'bg-blue-600 text-white'
+                              : 'border border-[#1e2d4a] text-slate-500 hover:text-slate-300'
+                          }`}
+                        >
+                          {ap}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Time range picker */}
+              {timeSlot.timeMode === 'range' && (
+                <div className="mt-3 flex flex-col gap-3">
+                  <div>
+                    <p className="text-[11px] text-slate-500 mb-1.5">From</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        data-testid="time-start-hour"
+                        value={timeSlot.startHour}
+                        onChange={e => setTimeSlot(prev => ({ ...prev, startHour: e.target.value }))}
+                        className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                      >
+                        <option value="">--</option>
+                        {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                      <span className="text-slate-500 font-bold">:</span>
+                      <select
+                        data-testid="time-start-minute"
+                        value={timeSlot.startMinute}
+                        onChange={e => setTimeSlot(prev => ({ ...prev, startMinute: e.target.value }))}
+                        className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                      >
+                        <option value="">--</option>
+                        {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <div className="flex gap-1">
+                        {(['AM', 'PM'] as const).map(ap => (
+                          <button key={ap} data-testid={`time-start-ampm-${ap}`} type="button"
+                            onClick={() => setTimeSlot(prev => ({ ...prev, startAmPm: ap }))}
+                            className={`rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${timeSlot.startAmPm === ap ? 'bg-blue-600 text-white' : 'border border-[#1e2d4a] text-slate-500 hover:text-slate-300'}`}
+                          >{ap}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-slate-500 mb-1.5">To</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        data-testid="time-end-hour"
+                        value={timeSlot.endHour}
+                        onChange={e => setTimeSlot(prev => ({ ...prev, endHour: e.target.value }))}
+                        className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                      >
+                        <option value="">--</option>
+                        {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                      <span className="text-slate-500 font-bold">:</span>
+                      <select
+                        data-testid="time-end-minute"
+                        value={timeSlot.endMinute}
+                        onChange={e => setTimeSlot(prev => ({ ...prev, endMinute: e.target.value }))}
+                        className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                      >
+                        <option value="">--</option>
+                        {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <div className="flex gap-1">
+                        {(['AM', 'PM'] as const).map(ap => (
+                          <button key={ap} data-testid={`time-end-ampm-${ap}`} type="button"
+                            onClick={() => setTimeSlot(prev => ({ ...prev, endAmPm: ap }))}
+                            className={`rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${timeSlot.endAmPm === ap ? 'bg-blue-600 text-white' : 'border border-[#1e2d4a] text-slate-500 hover:text-slate-300'}`}
+                          >{ap}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Validation error */}
+              {getTimeValidationError(timeSlot) && (
+                <p data-testid="time-validation-error" className="mt-2 text-xs text-red-400">
+                  {getTimeValidationError(timeSlot)}
+                </p>
               )}
             </div>
           )}
@@ -1513,7 +1777,7 @@ export default function RequestInput() {
               />
             )}
             {isTimeComplete(timeSlot) && !parsed!.scheduled_time && (
-              <Row label="When" value={buildTimeLabel(timeSlot)} />
+              <Row label="When" value={buildTimeLabel(timeSlot)} data-testid="when-row" />
             )}
             {parsed!.budget != null && !(parsed!.category === 'rides' && parsed!.is_driver) && (
               <Row label="Budget" value={`$${parsed!.budget}`} />
