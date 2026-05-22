@@ -7,14 +7,19 @@ const CAMPUS_LAT = parseFloat(process.env.NEXT_PUBLIC_CAMPUS_LAT ?? '30.6180')
 const CAMPUS_LNG = parseFloat(process.env.NEXT_PUBLIC_CAMPUS_LNG ?? '-96.3365')
 const CAMPUS_RADIUS = parseInt(process.env.NEXT_PUBLIC_CAMPUS_RADIUS_M ?? '8000', 10)
 
-const VAGUE_BLOCKED = new Set([
-  'target', 'walmart', 'costco', 'heb', 'kroger', 'whataburger', 'aldi',
-  'my dorm', 'dorm', 'airport', 'campus', 'home', 'here', 'there',
+// Truly vague terms — no search fires for these single-word inputs
+const NO_SEARCH_TERMS = new Set([
+  'my dorm', 'dorm', 'campus', 'home', 'here', 'there',
   'the store', 'nearby', 'close', 'school', 'work', 'store', 'market', 'mall',
 ])
 
-function isVague(q: string): boolean {
-  return VAGUE_BLOCKED.has(q.toLowerCase().trim())
+// Place/store names — valid search targets but suppress "use this address" option
+const NO_MANUAL_TERMS = new Set([
+  'target', 'walmart', 'costco', 'heb', 'kroger', 'whataburger', 'aldi', 'airport',
+])
+
+function isTooVague(q: string): boolean {
+  return NO_SEARCH_TERMS.has(q.toLowerCase().trim())
 }
 
 function looksLikeAddress(q: string): boolean {
@@ -69,12 +74,13 @@ export function LocationPicker({
   }, [])
 
   const search = useCallback(async (q: string) => {
-    if (q.trim().length < 2) {
+    if (q.trim().length < 2 || isTooVague(q)) {
       setSuggestions([])
       setIsOpen(false)
       return
     }
     setIsSearching(true)
+    setIsOpen(true) // Open immediately so loading state renders
     try {
       const params = new URLSearchParams({
         q,
@@ -87,7 +93,6 @@ export function LocationPicker({
       if (res.ok) {
         const data = await res.json()
         setSuggestions(data.results ?? [])
-        setIsOpen(true)
       }
     } finally {
       setIsSearching(false)
@@ -101,12 +106,18 @@ export function LocationPicker({
     setShowWarning(false)
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => search(q), 250)
+    debounceRef.current = setTimeout(() => search(q), 400)
   }
 
   function handleInputFocus() {
-    if (inputValue.trim().length >= 2 && suggestions.length > 0) {
-      setIsOpen(true)
+    const q = inputValue.trim()
+    if (q.length >= 2) {
+      if (suggestions.length > 0) {
+        setIsOpen(true)
+      } else if (!hasInteracted) {
+        // Hint pre-fill: user hasn't typed yet — trigger a search automatically
+        search(q)
+      }
     }
   }
 
@@ -127,7 +138,6 @@ export function LocationPicker({
       return
     }
 
-    // Needs details fetch (Google prediction without lat/lng)
     if (!suggestion.place_id) return
     setIsFetchingDetails(true)
     try {
@@ -148,7 +158,6 @@ export function LocationPicker({
           original_query: inputValue,
         })
         setInputValue(data.place_name || suggestion.place_name)
-        // Refresh session token after a complete autocomplete+details session
         sessionTokenRef.current = crypto.randomUUID()
       }
     } finally {
@@ -175,7 +184,6 @@ export function LocationPicker({
     sessionTokenRef.current = crypto.randomUUID()
   }
 
-  // If a value is selected, show chip
   if (value) {
     const isManual = value.source === 'manual_address'
     return (
@@ -213,8 +221,19 @@ export function LocationPicker({
 
   const campusSuggestions = suggestions.filter(s => s.source === 'campus_place')
   const nearbySuggestions = suggestions.filter(s => s.source === 'places_provider')
+  const lower = inputValue.toLowerCase().trim()
   const showManualOption =
-    looksLikeAddress(inputValue) && !isVague(inputValue) && !isSearching && hasInteracted
+    looksLikeAddress(inputValue) &&
+    !NO_SEARCH_TERMS.has(lower) &&
+    !NO_MANUAL_TERMS.has(lower) &&
+    !isSearching &&
+    hasInteracted
+  const showEmptyState =
+    isOpen && !isSearching && suggestions.length === 0 && !showManualOption && inputValue.trim().length >= 2
+  const showDropdown =
+    isOpen &&
+    inputValue.trim().length >= 2 &&
+    (isSearching || campusSuggestions.length > 0 || nearbySuggestions.length > 0 || showManualOption || showEmptyState)
 
   return (
     <div ref={containerRef} data-testid={testId} className="relative">
@@ -243,8 +262,15 @@ export function LocationPicker({
         </p>
       )}
 
-      {isOpen && (campusSuggestions.length > 0 || nearbySuggestions.length > 0 || showManualOption) && (
+      {showDropdown && (
         <div className="absolute z-50 mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 shadow-xl">
+          {isSearching && suggestions.length === 0 && (
+            <div className="flex items-center gap-2 px-3 py-3 text-xs text-slate-500">
+              <div className="h-3 w-3 flex-shrink-0 animate-spin rounded-full border-2 border-slate-600 border-t-blue-400" />
+              Searching…
+            </div>
+          )}
+
           {campusSuggestions.length > 0 && (
             <>
               <p className="px-3 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
@@ -297,6 +323,15 @@ export function LocationPicker({
                 <span className="text-xs text-slate-500">{inputValue.trim()}</span>
               </button>
             </>
+          )}
+
+          {showEmptyState && (
+            <div
+              data-testid="location-empty-state"
+              className="px-3 py-3 text-xs text-slate-500"
+            >
+              No matches. Try a more specific place, business, or address.
+            </div>
           )}
         </div>
       )}
