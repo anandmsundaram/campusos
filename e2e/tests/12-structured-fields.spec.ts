@@ -98,12 +98,14 @@ test.describe('Structured coordination fields', () => {
     // Wait for confirm card
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
 
-    // The payment label should say "You'll pay the helper", never "They'll pay me"
+    // The payment label should be requester-perspective, never "They'll pay me"
     const paymentLabel = page.locator('[data-testid="payment-label"]')
     await expect(paymentLabel).toBeVisible()
     const labelText = await paymentLabel.textContent()
     expect(labelText).not.toContain("They'll pay me")
-    expect(labelText).toContain("pay the helper")
+    expect(labelText).not.toContain("They'll pay you")
+    // Label should contain requester perspective: "You'll pay" is the pre-populated summary
+    expect(labelText).toContain("You'll pay")
   })
 
   // ── Test 4: Errand task_details blocks confirm until filled ───────────────
@@ -157,6 +159,12 @@ test.describe('Structured coordination fields', () => {
     const taskInput = page.locator('[data-testid="followup-text-task_details"]')
     await expect(taskInput).toBeVisible()
     await taskInput.fill('milk, eggs, and bread')
+
+    // Still disabled — payment not yet selected (grocery requires task_details AND payment)
+    await expect(confirmBtn).toBeDisabled()
+
+    // Select free payment option
+    await page.locator('[data-testid="payment-option"]').first().click()
 
     // Confirm should now be enabled
     await expect(confirmBtn).toBeEnabled()
@@ -235,6 +243,9 @@ test.describe('Structured coordination fields', () => {
     await fromPicker.locator('[data-testid="location-suggestion"]').first().waitFor({ timeout: 5_000 })
     await fromPicker.locator('[data-testid="location-suggestion"]').click()
     await expect(fromPicker.locator('[data-testid="location-chip"]')).toBeVisible()
+
+    // Select free payment option to satisfy payment gate
+    await page.locator('[data-testid="payment-option"]').first().click()
 
     // Post
     await page.locator('[data-testid="confirm-post-btn"]').click()

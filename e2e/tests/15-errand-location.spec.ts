@@ -114,7 +114,13 @@ test.describe('Errand location resolution', () => {
     // Fill task_details
     await page.locator('[data-testid="followup-text-task_details"]').fill('Milk, eggs, and bread')
 
-    // Now enabled
+    // Still disabled — payment not yet selected
+    await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
+
+    // Select free payment option to satisfy payment gate
+    await page.locator('[data-testid="payment-option"]').first().click()
+
+    // Now enabled — all gates satisfied
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeEnabled()
   })
 
@@ -257,6 +263,12 @@ test.describe('Moving location resolution', () => {
     await toPicker.locator('[data-testid="location-suggestion"]').filter({ hasText: 'White Creek' }).first().click()
     await expect(toPicker.locator('[data-testid="location-chip"]')).toBeVisible()
 
+    // Still disabled — payment not yet selected
+    await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
+
+    // Select free payment option to satisfy payment gate
+    await page.locator('[data-testid="payment-option"]').first().click()
+
     // Now all gates satisfied — confirm enabled
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeEnabled()
   })
@@ -318,7 +330,13 @@ test.describe('Moving location resolution', () => {
     await fromPicker.locator('[data-testid="location-suggestion"]').click()
     await expect(fromPicker.locator('[data-testid="location-chip"]')).toBeVisible()
 
-    // Enabled — furniture only needs from + helpers_needed
+    // Still disabled — payment not yet selected
+    await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
+
+    // Select free payment option to satisfy payment gate
+    await page.locator('[data-testid="payment-option"]').first().click()
+
+    // Enabled — furniture needs from + helpers_needed + payment
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeEnabled()
   })
 })

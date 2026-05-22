@@ -78,6 +78,7 @@ type FollowUpQuestion =
   | { key: string; label: string; hint?: string; type: 'text'; placeholder: string }
 
 // Rides handled via inline inputs in the confirm card.
+// Payment is handled by the shared PaymentSlot system — not listed here.
 const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQuestion[]>> = {
   moving: [
     {
@@ -120,17 +121,6 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
       label: 'What should they pick up or do?',
       type: 'text',
       placeholder: 'e.g. Milk and eggs; Pick up package from room 204…',
-    },
-    {
-      key: 'reimbursement_type',
-      label: 'Payment arrangement?',
-      hint: 'So helpers know what to expect',
-      type: 'chips',
-      options: [
-        { value: 'paid', label: "💰 I'll pay you" },
-        { value: 'reimburse', label: '🔄 Reimburse costs' },
-        { value: 'free', label: '🤝 Favor' },
-      ],
     },
   ],
   peer_help: [
@@ -186,13 +176,12 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
 }
 
 // Fields that must be filled before the Confirm button unlocks.
-// Rides origin/destination are handled separately (inline inputs, top-level parsed fields).
 const CRITICAL_FIELDS: Partial<Record<ParsedRequest['category'], string[]>> = {
   peer_help: ['subject'],
   borrow: ['item'],
 }
 
-// ─── Label maps for confirm card summary (requester perspective) ──────────────
+// ─── Label maps for confirm card summary ─────────────────────────────────────
 
 const ERRAND_TYPE_LABELS: Record<string, string> = {
   grocery: '🛒 Groceries',
@@ -200,12 +189,6 @@ const ERRAND_TYPE_LABELS: Record<string, string> = {
   package: '📦 Package pickup',
   delivery: '🚚 Delivery',
   other: 'Errand',
-}
-// Requester view — "you" = the requester
-const REIMBURSEMENT_LABELS: Record<string, string> = {
-  paid: "💰 You'll pay the helper",
-  reimburse: '🔄 You reimburse costs',
-  free: '🤝 Free favor',
 }
 const ACCESS_LABELS: Record<string, string> = {
   stairs: '🪜 Stairs',
@@ -224,6 +207,190 @@ const HELP_TYPE_LABELS: Record<string, string> = {
   coding: '💻 Coding help',
   proofreading: '✍️ Proofreading',
   study_session: '🤝 Study session',
+}
+
+// ─── Payment slot system ──────────────────────────────────────────────────────
+
+type PaymentMode =
+  | 'free'
+  | 'fixed_amount'
+  | 'hourly'
+  | 'split_gas'
+  | 'reimburse_cost_only'
+  | 'reimburse_plus_helper_fee'
+  | 'discuss_in_chat'
+
+interface PaymentSlot {
+  payment_mode: PaymentMode | null
+  payment_amount: string   // '' = not set; string for controlled input
+  helper_fee_amount: string
+}
+
+const EMPTY_PAYMENT: PaymentSlot = { payment_mode: null, payment_amount: '', helper_fee_amount: '' }
+
+interface PaymentOption {
+  mode: PaymentMode
+  label: string
+  description: string
+  needs_amount?: true
+  amount_label?: string
+  needs_helper_fee?: true
+}
+
+function getPaymentOptions(
+  category: ParsedRequest['category'],
+  isOffer: boolean,
+): PaymentOption[] {
+  if (category === 'errands') return [
+    { mode: 'free', label: '🤝 Free / favor', description: 'No money involved' },
+    {
+      mode: 'fixed_amount',
+      label: "💰 You'll pay the helper a fixed amount",
+      description: 'Order is already paid — you pay the helper for their time',
+      needs_amount: true,
+      amount_label: 'Helper fee ($)',
+    },
+    {
+      mode: 'reimburse_cost_only',
+      label: '🔄 Reimburse actual cost only',
+      description: 'Helper pays first, you pay back the exact item/food cost',
+    },
+    {
+      mode: 'reimburse_plus_helper_fee',
+      label: '🔄 Reimburse cost + helper fee',
+      description: 'Helper pays first, you pay back the cost plus extra for their time',
+      needs_helper_fee: true,
+    },
+  ]
+  if (category === 'rides' && !isOffer) return [
+    { mode: 'split_gas', label: '⛽ Split gas', description: 'Share gas costs evenly' },
+    {
+      mode: 'fixed_amount',
+      label: "💰 You'll pay a fixed amount",
+      description: 'Set amount for the ride',
+      needs_amount: true,
+      amount_label: "Amount you'll pay ($)",
+    },
+    { mode: 'free', label: '🎁 Free / favor', description: 'No payment expected' },
+  ]
+  if (category === 'moving') return [
+    { mode: 'free', label: '🤝 Free / favor', description: 'No payment' },
+    {
+      mode: 'fixed_amount',
+      label: "💰 You'll pay a fixed total",
+      description: 'Set amount for the whole job',
+      needs_amount: true,
+      amount_label: 'Total amount ($)',
+    },
+    {
+      mode: 'hourly',
+      label: '⏱️ Hourly rate',
+      description: 'Pay per hour of work',
+      needs_amount: true,
+      amount_label: 'Rate per hour ($)',
+    },
+  ]
+  if (category === 'peer_help') return [
+    { mode: 'free', label: '🤝 Free peer help', description: 'No payment expected' },
+    {
+      mode: 'fixed_amount',
+      label: "💰 You'll pay a fixed amount",
+      description: 'Set amount for the session',
+      needs_amount: true,
+      amount_label: 'Session fee ($)',
+    },
+    {
+      mode: 'hourly',
+      label: '⏱️ Per hour',
+      description: 'Pay per hour of tutoring',
+      needs_amount: true,
+      amount_label: 'Rate per hour ($)',
+    },
+  ]
+  if (category === 'borrow') return [
+    { mode: 'free', label: '🤝 Free favor', description: 'No payment' },
+    {
+      mode: 'fixed_amount',
+      label: '💰 Small thank-you payment',
+      description: 'Offer something small',
+      needs_amount: true,
+      amount_label: 'Amount ($)',
+    },
+    { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work it out with the lender' },
+  ]
+  return []
+}
+
+function isPaymentComplete(slot: PaymentSlot, opts: PaymentOption[]): boolean {
+  if (!slot.payment_mode) return false
+  const opt = opts.find(o => o.mode === slot.payment_mode)
+  if (!opt) return false
+  if (opt.needs_amount && !slot.payment_amount.trim()) return false
+  // helper_fee_amount must be filled (but can be '0')
+  if (opt.needs_helper_fee && slot.helper_fee_amount.trim() === '') return false
+  return true
+}
+
+function buildPaymentSummary(slot: PaymentSlot): string {
+  switch (slot.payment_mode) {
+    case 'free': return "🤝 Free favor — no payment"
+    case 'split_gas': return '⛽ Split gas'
+    case 'fixed_amount':
+      return slot.payment_amount
+        ? `💰 You'll pay $${slot.payment_amount}`
+        : "💰 You'll pay the helper a fixed amount"
+    case 'hourly':
+      return slot.payment_amount ? `💰 $${slot.payment_amount}/hour` : '⏱️ Hourly rate'
+    case 'reimburse_cost_only': return "🔄 You'll reimburse the actual cost"
+    case 'reimburse_plus_helper_fee': {
+      const fee = slot.helper_fee_amount || '0'
+      return `🔄 You'll reimburse actual cost + $${fee} helper fee`
+    }
+    case 'discuss_in_chat': return '💬 Discuss payment in chat'
+    default: return ''
+  }
+}
+
+function getTimeOptions(category: ParsedRequest['category']): { value: string; label: string }[] {
+  if (category === 'errands') return [
+    { value: 'ASAP', label: '⚡ ASAP' },
+    { value: 'Today', label: '📅 Today' },
+    { value: 'Tonight', label: '🌙 Tonight' },
+    { value: 'Tomorrow', label: '📆 Tomorrow' },
+  ]
+  if (category === 'rides') return [
+    { value: 'Right now', label: '⚡ Right now' },
+    { value: 'Later today', label: '📅 Later today' },
+    { value: 'Tomorrow', label: '📆 Tomorrow' },
+    { value: 'This weekend', label: '📌 Weekend' },
+  ]
+  return [
+    { value: 'ASAP', label: '⚡ ASAP' },
+    { value: 'This week', label: '📅 This week' },
+    { value: 'This weekend', label: '📌 Weekend' },
+    { value: 'Next week', label: '📆 Next week' },
+  ]
+}
+
+// Pre-populate paymentSlot from whatever the parser already extracted
+function paymentSlotFromParsed(data: ParsedRequest): PaymentSlot {
+  const rt = data.structured_data?.reimbursement_type as string | null | undefined
+  if (rt === 'free') return { payment_mode: 'free', payment_amount: '', helper_fee_amount: '' }
+  if (rt === 'reimburse') return { payment_mode: 'reimburse_cost_only', payment_amount: '', helper_fee_amount: '' }
+  if (rt === 'paid') return {
+    payment_mode: 'fixed_amount',
+    payment_amount: data.budget ? String(data.budget) : '',
+    helper_fee_amount: '',
+  }
+  // Rides passenger
+  if (data.category === 'rides' && data.is_driver === false) {
+    if (data.price_type === 'split') return { payment_mode: 'split_gas', payment_amount: '', helper_fee_amount: '' }
+    if (data.price_type === 'free') return { payment_mode: 'free', payment_amount: '', helper_fee_amount: '' }
+    if (data.price_type === 'fixed' && data.budget) {
+      return { payment_mode: 'fixed_amount', payment_amount: String(data.budget), helper_fee_amount: '' }
+    }
+  }
+  return { ...EMPTY_PAYMENT }
 }
 
 // ─── Slot-filling workflow engine ────────────────────────────────────────────
@@ -251,7 +418,6 @@ const UNSUPPORTED_MESSAGES: Partial<Record<IntentType, string>> = {
   general_social_unsupported: 'Social posts are coming soon. Use the feed to connect with requests that match your interests.',
 }
 
-// Maps a clarification option's appended_text to an intent without calling the parser.
 function inferIntentFromOption(
   appended_text: string,
   baseCategory: ParsedRequest['category'],
@@ -259,37 +425,30 @@ function inferIntentFromOption(
 ): { intentType: IntentType; category: ParsedRequest['category']; isOffer: boolean } {
   const t = appended_text.toLowerCase()
 
-  // Ride signals
   if (/\b(ride|lift|drive|carpool|seat|passenger|airport|pickup|dropoff)\b/.test(t)) {
     const isOffer = /\b(offer|giving|driving|have seats|driver)\b/.test(t)
     return { intentType: isOffer ? 'ride_offer' : 'ride_request', category: 'rides', isOffer }
   }
-  // Moving signals
   if (/\b(mov(e|ing)|haul|furni|couch|boxes?|dorm)\b/.test(t)) {
     const isOffer = /\b(offer|help(ing)?|assist)\b/.test(t) && !/\bneed\b/.test(t)
     return { intentType: isOffer ? 'moving_offer_unsupported' : 'moving_request', category: 'moving', isOffer }
   }
-  // Errand signals
   if (/\b(errands?|groceries?|grocery|heb|walmart|target|costco|pickup|delivery|package)\b/.test(t)) {
     const isOffer = /\boffer(ing)?\b/.test(t) || /run errands for/.test(t)
     return { intentType: isOffer ? 'errand_offer_unsupported' : 'errand_request', category: 'errands', isOffer }
   }
-  // Peer help signals
   if (/\b(tutor(ing)?|help with|study|homework|exam|class|course|subject|peer)\b/.test(t)) {
     const isOffer = /\boffer(ing)?\b/.test(t) && !/\bneed\b/.test(t)
     return { intentType: isOffer ? 'peer_help_offer_unsupported' : 'peer_help_request', category: 'peer_help', isOffer }
   }
-  // Borrow/lend signals
   if (/\b(borrow|lend(ing)?|loan(ing)?)\b/.test(t)) {
     const isOffer = /\b(lend(ing)?|loan(ing)?)\b/.test(t) && !/\bborrow\b/.test(t)
     return { intentType: isOffer ? 'lend_offer_unsupported' : 'borrow_request', category: 'borrow', isOffer }
   }
-  // Social/meal
   if (/\b(meal|lunch|dinner|breakfast|eat|hangout|social)\b/.test(t)) {
     return { intentType: 'social_meal_unsupported', category: baseCategory, isOffer: baseIsOffer }
   }
 
-  // Fallback: honour whatever the parser already determined
   if (baseIsOffer && baseCategory !== 'rides') {
     const map: Partial<Record<ParsedRequest['category'], IntentType>> = {
       errands: 'errand_offer_unsupported',
@@ -344,13 +503,14 @@ export default function RequestInput() {
   const [intentType, setIntentType] = useState<IntentType | null>(null)
   const [lockedIntent, setLockedIntent] = useState(false)
   const [clarificationCount, setClarificationCount] = useState(0)
+  const [paymentSlot, setPaymentSlot] = useState<PaymentSlot>(EMPTY_PAYMENT)
+  const [timeSlot, setTimeSlot] = useState<string | null>(null)
 
   const mergedSD = useMemo<Record<string, unknown>>(() => {
     if (!parsed) return {}
     return applyFollowupAnswers(parsed.structured_data ?? {}, followupAnswers)
   }, [parsed, followupAnswers])
 
-  // Follow-up questions to show: only those the parser didn't extract.
   const followupQuestionsToShow = useMemo<FollowUpQuestion[]>(() => {
     if (!parsed) return []
     const questions = FOLLOWUP_QUESTIONS[parsed.category] ?? []
@@ -359,33 +519,56 @@ export default function RequestInput() {
     return questions.filter(q => sd[q.key] === null || sd[q.key] === undefined)
   }, [parsed])
 
-  // Gates the Confirm button — all critical fields must be filled.
   const canConfirm = useMemo<boolean>(() => {
     if (!parsed) return false
+
+    // Time gate: if parser didn't extract a time, user must select one (except borrow)
+    const needsTimeGate = !parsed.scheduled_time && parsed.category !== 'borrow'
+    if (needsTimeGate && !timeSlot) return false
+
     if (parsed.category === 'rides') {
-      return pickupLocation !== null && dropoffLocation !== null
+      if (!pickupLocation || !dropoffLocation) return false
+      if (parsed.is_driver) {
+        // Driver offer: priceType always has a default (no payment gate)
+        return true
+      }
+      // Passenger request: needs payment
+      return isPaymentComplete(paymentSlot, getPaymentOptions('rides', false))
     }
+
     if (parsed.category === 'errands') {
       if (!pickupLocation) return false
       const errandType = mergedSD.errand_type as string | null | undefined
       if (!errandType) return false
       if (errandType !== 'food_pickup' && !mergedSD.task_details) return false
-      return true
+      return isPaymentComplete(paymentSlot, getPaymentOptions('errands', false))
     }
+
     if (parsed.category === 'moving') {
       if (!pickupLocation) return false
       if (!mergedSD.helpers_needed) return false
       const moveType = mergedSD.move_type as string | null | undefined
       if (moveType !== 'furniture' && !dropoffLocation) return false
-      return true
+      return isPaymentComplete(paymentSlot, getPaymentOptions('moving', false))
     }
+
+    if (parsed.category === 'peer_help') {
+      const criticals = CRITICAL_FIELDS['peer_help'] ?? []
+      if (!criticals.every(k => {
+        const val = mergedSD[k]
+        return val !== null && val !== undefined && val !== ''
+      })) return false
+      return isPaymentComplete(paymentSlot, getPaymentOptions('peer_help', false))
+    }
+
+    // borrow — payment optional
     const criticals = CRITICAL_FIELDS[parsed.category] ?? []
     if (criticals.length === 0) return true
-    return criticals.every(key => {
-      const val = mergedSD[key]
+    return criticals.every(k => {
+      const val = mergedSD[k]
       return val !== null && val !== undefined && val !== ''
     })
-  }, [parsed, mergedSD, followupAnswers, pickupLocation, dropoffLocation])
+  }, [parsed, mergedSD, pickupLocation, dropoffLocation, priceType, paymentSlot, timeSlot])
 
   // Typewriter placeholder animation
   const [phIdx, setPhIdx] = useState(0)
@@ -415,27 +598,23 @@ export default function RequestInput() {
     return () => clearTimeout(timer)
   }, [displayed, phase, phIdx, text, focused])
 
-  // ─── Shared parse handler (used by both initial submit and clarification re-parse) ──
+  // ─── Shared parse handler ─────────────────────────────────────────────────────
 
   function applyParsedResult(data: ParsedRequest) {
-    // Non-ride offer: show interstitial
     if (data.is_offer && data.category !== 'rides') {
       setParsed(data)
-      setStatus('confirm') // JSX checks is_offer to render interstitial
+      setStatus('confirm')
       return
     }
-    // Ambiguous intent: ask for clarification — but only once.
-    // If intent is already locked (user already chose a disambiguation option),
-    // skip disambiguation and proceed directly to confirm.
     if (data.ambiguous && data.clarification_options?.length && clarificationCount === 0) {
       setParsed(data)
       setClarificationCount(1)
       setStatus('disambiguating')
       return
     }
-    // Normal confirm flow
     setParsed(data)
     setPriceType(data.price_type ?? 'split')
+    setPaymentSlot(paymentSlotFromParsed(data))
     setStatus('confirm')
   }
 
@@ -452,6 +631,8 @@ export default function RequestInput() {
     setIntentType(null)
     setLockedIntent(false)
     setClarificationCount(0)
+    setPaymentSlot(EMPTY_PAYMENT)
+    setTimeSlot(null)
 
     const res = await fetch('/api/parse-request', {
       method: 'POST',
@@ -475,9 +656,6 @@ export default function RequestInput() {
     applyParsedResult(data)
   }
 
-  // State-machine transition for a disambiguation choice.
-  // Infers intent client-side and either shows the unsupported interstitial or
-  // transitions directly to the confirm card — never re-invokes the parser.
   function handleDisambigSelect(opt: { label: string; appended_text: string }) {
     if (!parsed) return
     setError(null)
@@ -486,15 +664,12 @@ export default function RequestInput() {
     setIntentType(inferred.intentType)
     setLockedIntent(true)
 
-    // Unsupported intent: show the interstitial (reuse is_offer interstitial slot).
     if (inferred.intentType in UNSUPPORTED_MESSAGES) {
       setParsed({ ...parsed, is_offer: true, category: inferred.category })
       setStatus('confirm')
       return
     }
 
-    // Supported intent: merge the chosen option into parsed state and show confirm.
-    // Override is_offer and category so the confirm card renders correctly.
     const updatedParsed: ParsedRequest = {
       ...parsed,
       category: inferred.category,
@@ -503,11 +678,19 @@ export default function RequestInput() {
     }
     setParsed(updatedParsed)
     setPriceType(updatedParsed.price_type ?? 'split')
+    setPaymentSlot(paymentSlotFromParsed(updatedParsed))
     setStatus('confirm')
   }
 
   async function handleConfirm() {
     if (!parsed) return
+
+    // Server-side guard — do not insert if slots are incomplete
+    if (!canConfirm) {
+      setError('Please complete all required fields before posting.')
+      return
+    }
+
     setError(null)
     setStatus('saving')
 
@@ -519,12 +702,26 @@ export default function RequestInput() {
       return
     }
 
-    // Merge parser summary into structured_data so it's persisted alongside other fields.
+    // Build payment data to persist in structured_data
+    const paymentData: Record<string, unknown> = {}
+    if (paymentSlot.payment_mode) {
+      paymentData.payment_mode = paymentSlot.payment_mode
+      const amt = parseFloat(paymentSlot.payment_amount)
+      if (!isNaN(amt)) paymentData.payment_amount = amt
+      if (paymentSlot.payment_mode === 'reimburse_plus_helper_fee') {
+        const fee = parseFloat(paymentSlot.helper_fee_amount)
+        paymentData.helper_fee_amount = isNaN(fee) ? 0 : fee
+      }
+    }
+    if (timeSlot && !parsed.scheduled_time) {
+      paymentData.deadline_text = timeSlot
+    }
+
     const sdBase = {
       ...(parsed.structured_data ?? {}),
       ...(parsed.summary ? { summary: parsed.summary } : {}),
+      ...paymentData,
     }
-    // Exclude ride location keys — they go to top-level columns, not structured_data.
     const sdFollowupAnswers = parsed.category === 'rides'
       ? Object.fromEntries(
           Object.entries(followupAnswers).filter(([k]) => k !== 'origin_city' && k !== 'destination_city')
@@ -593,6 +790,8 @@ export default function RequestInput() {
     setFollowupAnswers({})
     setPickupLocation(null)
     setDropoffLocation(null)
+    setPaymentSlot(EMPTY_PAYMENT)
+    setTimeSlot(null)
     setStatus('done')
     router.refresh()
     setTimeout(() => setStatus('idle'), 3000)
@@ -608,6 +807,8 @@ export default function RequestInput() {
     setIntentType(null)
     setLockedIntent(false)
     setClarificationCount(0)
+    setPaymentSlot(EMPTY_PAYMENT)
+    setTimeSlot(null)
   }
 
   function handleFollowupChange(key: string, value: string) {
@@ -618,6 +819,14 @@ export default function RequestInput() {
   const isOfferInterstitial = showCard && !!parsed?.is_offer && parsed.category !== 'rides'
   const showConfirmCard = showCard && !isOfferInterstitial
   const busy = status === 'parsing' || status === 'saving'
+
+  // Computed flags for new slot sections
+  const showTimeQuestion = showConfirmCard && !parsed?.scheduled_time && parsed?.category !== 'borrow'
+  const showPaymentQuestion = showConfirmCard && (
+    parsed?.category !== 'rides' || parsed?.is_driver !== true
+  )
+  const paymentOptions = parsed ? getPaymentOptions(parsed.category, parsed.is_offer) : []
+  const currentPaymentOpt = paymentOptions.find(o => o.mode === paymentSlot.payment_mode)
 
   return (
     <section className="flex flex-col items-center gap-7">
@@ -735,7 +944,7 @@ export default function RequestInput() {
         </div>
       )}
 
-      {/* ── Disambiguation card — parser flagged ambiguous intent ── */}
+      {/* ── Disambiguation card ── */}
       {status === 'disambiguating' && parsed && (
         <div data-testid="disambig-card" className="w-full max-w-2xl rounded-2xl border border-blue-500/20 bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
           <p className="text-sm font-semibold text-white mb-1">
@@ -765,7 +974,7 @@ export default function RequestInput() {
         </div>
       )}
 
-      {/* ── Offer interstitial — non-ride offer posts not yet supported ── */}
+      {/* ── Offer interstitial ── */}
       {isOfferInterstitial && (
         <div data-testid="offer-interstitial" className="w-full max-w-2xl rounded-2xl border border-purple-500/15 bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
           <p className="text-base font-semibold text-white mb-2">Looks like you&apos;re offering help</p>
@@ -795,9 +1004,9 @@ export default function RequestInput() {
       {showConfirmCard && (
         <div className="w-full max-w-2xl rounded-2xl border border-[#1e2d4a] bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
 
-          {/* Follow-up questions (non-rides, only when parser left fields null) */}
+          {/* Follow-up questions */}
           {followupQuestionsToShow.length > 0 && (
-            <div className="mb-6 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-4 py-4">
+            <div className="mb-5 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-4 py-4">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-400/70 mb-3">
                 A few details
               </p>
@@ -846,7 +1055,104 @@ export default function RequestInput() {
             </div>
           )}
 
-          {/* Parsed summary — natural language from parser */}
+          {/* ── Time / deadline question ── */}
+          {showTimeQuestion && (
+            <div data-testid="time-question" className="mb-5 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-4 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-400/70 mb-2">
+                {parsed!.category === 'errands' ? 'When do you need this by?' :
+                 parsed!.category === 'rides' ? 'When do you need the ride?' :
+                 parsed!.category === 'moving' ? 'When do you need help?' :
+                 'When do you need help?'}
+              </p>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {getTimeOptions(parsed!.category).map(opt => (
+                  <button
+                    key={opt.value}
+                    data-testid="time-option"
+                    type="button"
+                    onClick={() => setTimeSlot(prev => prev === opt.value ? null : opt.value)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                      timeSlot === opt.value
+                        ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
+                        : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Payment question ── */}
+          {showPaymentQuestion && (
+            <div data-testid="payment-question" className="mb-5 rounded-xl border border-emerald-500/15 bg-emerald-500/[0.04] px-4 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-400/70 mb-3">
+                How will payment work?
+              </p>
+              <div className="flex flex-col gap-2">
+                {paymentOptions.map(opt => (
+                  <button
+                    key={opt.mode}
+                    data-testid="payment-option"
+                    type="button"
+                    onClick={() => setPaymentSlot({ payment_mode: opt.mode, payment_amount: '', helper_fee_amount: '' })}
+                    className={`flex flex-col gap-0.5 rounded-xl border px-4 py-3 text-left text-xs transition-colors ${
+                      paymentSlot.payment_mode === opt.mode
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                        : 'border-[#1e2d4a] text-slate-400 hover:border-emerald-500/20 hover:text-slate-300'
+                    }`}
+                  >
+                    <span className="font-medium text-sm">{opt.label}</span>
+                    <span className="text-slate-500 text-[11px]">{opt.description}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Amount input */}
+              {currentPaymentOpt?.needs_amount && (
+                <div className="mt-3">
+                  <p className="text-xs font-medium text-slate-300 mb-1.5">
+                    {currentPaymentOpt.amount_label ?? 'Amount ($)'}
+                  </p>
+                  <input
+                    data-testid="payment-amount-input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={paymentSlot.payment_amount}
+                    onChange={e => setPaymentSlot(prev => ({ ...prev, payment_amount: e.target.value }))}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500/40"
+                  />
+                </div>
+              )}
+
+              {/* Helper fee input (reimburse_plus_helper_fee only) */}
+              {paymentSlot.payment_mode === 'reimburse_plus_helper_fee' && (
+                <div className="mt-3">
+                  <p className="text-xs font-medium text-slate-300 mb-1">
+                    How much helper fee will you add?
+                  </p>
+                  <p className="text-[10px] text-slate-600 mb-1.5">
+                    Enter $0 if reimbursing the exact cost only — no extra.
+                  </p>
+                  <input
+                    data-testid="payment-helper-fee-input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={paymentSlot.helper_fee_amount}
+                    onChange={e => setPaymentSlot(prev => ({ ...prev, helper_fee_amount: e.target.value }))}
+                    placeholder="0"
+                    className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500/40"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Parsed summary */}
           <p className="mb-1 text-sm font-medium text-slate-300">
             Here&apos;s what we understood — does this look right?
           </p>
@@ -863,7 +1169,6 @@ export default function RequestInput() {
             {/* ── RIDES-specific rows ── */}
             {parsed!.category === 'rides' && (
               <>
-                {/* Location pickers — both required before confirm unlocks */}
                 <div className="rounded-xl border border-amber-500/15 bg-amber-500/[0.04] px-4 py-4">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-400/60 mb-3">
                     Route — select specific locations
@@ -1075,13 +1380,6 @@ export default function RequestInput() {
                 {mergedSD.task_details && (
                   <Row label="Task" value={mergedSD.task_details as string} />
                 )}
-                {mergedSD.reimbursement_type && (
-                  <Row
-                    data-testid="payment-label"
-                    label="Payment"
-                    value={REIMBURSEMENT_LABELS[mergedSD.reimbursement_type as string] ?? String(mergedSD.reimbursement_type)}
-                  />
-                )}
               </>
             )}
 
@@ -1097,7 +1395,7 @@ export default function RequestInput() {
               </>
             )}
 
-            {/* ── Generic rows for all categories ── */}
+            {/* ── Generic rows ── */}
             {!parsed!.origin_city && parsed!.location && (
               <Row label="Location" value={parsed!.location} />
             )}
@@ -1110,12 +1408,25 @@ export default function RequestInput() {
                 })}
               />
             )}
+            {timeSlot && !parsed!.scheduled_time && (
+              <Row label="When" value={timeSlot} />
+            )}
             {parsed!.budget != null && !(parsed!.category === 'rides' && parsed!.is_driver) && (
               <Row label="Budget" value={`$${parsed!.budget}`} />
             )}
             {parsed!.helper_requirements && (
               <Row label="Requirements" value={parsed!.helper_requirements} />
             )}
+
+            {/* Payment summary — shown when payment mode is selected */}
+            {paymentSlot.payment_mode && (
+              <Row
+                data-testid="payment-label"
+                label="Payment"
+                value={buildPaymentSummary(paymentSlot)}
+              />
+            )}
+
             <div className="flex items-center justify-between">
               <span className="text-xs text-slate-500">Urgency</span>
               <span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${URGENCY_COLORS[parsed!.urgency]}`}>
@@ -1156,7 +1467,7 @@ export default function RequestInput() {
             </button>
           </div>
           {!canConfirm && status !== 'saving' && (
-            <p className="mt-2 text-center text-[11px] text-slate-600">
+            <p data-testid="confirm-gate-message" className="mt-2 text-center text-[11px] text-slate-600">
               Add the missing details above to post
             </p>
           )}
