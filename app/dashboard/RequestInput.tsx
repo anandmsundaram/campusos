@@ -815,11 +815,27 @@ export default function RequestInput() {
       return
     }
 
+    // For meal_meetup, replace ambiguous parser title/summary with resolved metadata
+    let titleOverride = parsed.title
+    let summaryOverride = parsed.summary
+    let sdOverride = parsed.structured_data
+    if (inferred.category === 'meal_meetup') {
+      const place = (parsed.structured_data?.restaurant_or_area as string | null) ?? null
+      titleOverride = place ? `${place} meetup` : 'Meal & Social meetup'
+      summaryOverride = place
+        ? `Looking for people to go for ${place}.`
+        : 'Looking for people to go together.'
+      sdOverride = { ...(parsed.structured_data ?? {}), restaurant_or_area: place }
+    }
+
     const updatedParsed: ParsedRequest = {
       ...parsed,
       category: inferred.category,
       is_offer: inferred.isOffer,
       ambiguous: false,
+      title: titleOverride,
+      summary: summaryOverride,
+      structured_data: sdOverride,
     }
     setParsed(updatedParsed)
     setPriceType(updatedParsed.price_type ?? 'split')

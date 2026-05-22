@@ -92,7 +92,7 @@ test.describe('Structured time picker + cancel/reset', () => {
     // Going together must still route to Meal & Social, not Errands
     await page.locator('[data-testid="disambig-option"]').filter({ hasText: /Going together/ }).click()
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
-    await expect(page.getByText('Meal & Social')).toBeVisible()
+    await expect(page.getByText('Meal & Social', { exact: true }).first()).toBeVisible()
     // Must NOT say "Errands"
     const cardText = await page.locator('[data-testid="confirm-post-btn"]').locator('..').locator('..').textContent()
     expect(cardText).not.toContain('Errands')
@@ -371,36 +371,58 @@ test.describe('Structured time picker + cancel/reset', () => {
     expect(rowText).not.toMatch(/morning|afternoon|evening/i)
   })
 
-  // ── 8: Specific time → front card shows concrete time ───────────────────────
-  // Uses errands category (in DB enum). Verifies deadline_text propagates to
-  // the front card after posting. meal_meetup UI is covered in spec 20.
-  test('specific time posts and front card shows concrete time (not vague day-part)', async ({ driverPage: page, runId }) => {
-    const originalText = `[E2E-${runId}] Food pickup for spec21`
+  // ── 8: Full meal_meetup flow via disambiguation ──────────────────────────────
+  // Parser returns ambiguous result → user selects "Going together" →
+  // handleDisambigSelect generates resolved title/summary → posts as meal_meetup.
+  // Verifies resolved metadata on both the confirm card and the front card.
+  test('meal_meetup: disambiguation → resolved title/summary → front card shows time + cost plan', async ({ driverPage: page, runId }) => {
+    // runId embedded in restaurant_or_area so the generated title starts with [E2E-{runId}]
+    // which is required by the E2E cleanup query (title LIKE '[E2E-{runId}]%')
+    const place = `[E2E-${runId}] Thai restaurant`
+    const ambiguousTitle = 'Thai food pickup'  // what the parser incorrectly returns
+    const resolvedTitle = `${place} meetup`    // what handleDisambigSelect should generate
 
     await mockParseRequest(page, {
-      ...errandMock(),
-      title: `[E2E-${runId}] Food pickup for spec21`,
-      scheduled_time: null,  // time gate active
-      structured_data: {
-        errand_type: 'food_pickup',
-        store_or_place: 'Chick-fil-A',
-        task_details: null,
-        reimbursement_type: 'paid', // payment pre-filled
-      },
+      category: 'errands' as const,
+      title: ambiguousTitle,
+      is_offer: false,
+      ambiguous: true,
+      clarification_question: 'What are you looking for?',
+      clarification_options: [
+        { label: '🚗 Ride there',    appended_text: 'I need a ride to a Thai restaurant' },
+        { label: '🛍️ Food pickup',   appended_text: 'I need someone to pick up Thai food' },
+        { label: '🍽️ Going together', appended_text: 'Anyone want to go together for Thai food' },
+      ],
+      summary: 'Unclear request about Thai food — could be asking for a ride, offering to pick something up, or going together.',
+      missing_fields: [],
+      scheduled_time: null,
+      structured_data: { restaurant_or_area: place },
     })
-    await mockLocationSearch(page, [CAMPUS_PLACE])
 
     await goToDashboard(page)
-    await page.locator('[data-testid="request-textarea"]').fill(originalText)
+    await page.locator('[data-testid="request-textarea"]').fill(`Anyone for Thai restaurant?`)
     await page.getByRole('button', { name: /Post request/ }).click()
+    await page.locator('[data-testid="disambig-card"]').waitFor({ timeout: 10_000 })
+
+    // Select "Going together"
+    await page.locator('[data-testid="disambig-option"]').filter({ hasText: /Going together/ }).click()
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
 
-    // Fill location
-    const picker = page.locator('[data-testid="location-picker-pickup"]')
-    await picker.locator('input').fill('Rudder')
-    await picker.locator('[data-testid="location-suggestion"]').first().waitFor({ timeout: 5_000 })
-    await picker.locator('[data-testid="location-suggestion"]').first().click()
-    await expect(picker.locator('[data-testid="location-chip"]')).toBeVisible()
+    // ── Confirm card assertions ──
+    // Category resolved to Meal & Social
+    await expect(page.getByText('Meal & Social', { exact: true }).first()).toBeVisible()
+
+    // Summary text is resolved — NOT the parser's ambiguous blurb
+    const summaryEl = page.locator('[data-testid="summary-text"]')
+    await expect(summaryEl).toBeVisible()
+    const summaryText = await summaryEl.textContent()
+    expect(summaryText).not.toMatch(/unclear request/i)
+    expect(summaryText).not.toMatch(/offering to pick something up/i)
+    expect(summaryText).not.toMatch(/Thai food pickup/i)
+    expect(summaryText).toMatch(/Looking for people to go/i)
+
+    // Resolved title ("meetup") is visible in the confirm card
+    await expect(page.getByText(/meetup/i).first()).toBeVisible()
 
     // Select Tomorrow → Specific time → 6:00 PM
     await page.locator('[data-testid="time-option"]').filter({ hasText: /Tomorrow/ }).click()
@@ -410,31 +432,44 @@ test.describe('Structured time picker + cancel/reset', () => {
     await page.locator('[data-testid="time-start-minute"]').selectOption('00')
     await page.locator('[data-testid="time-start-ampm-PM"]').click()
 
+    // Select cost plan: Everyone pays for themselves (dutch_treat)
+    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Everyone pays/ }).click()
+
     // Confirm enabled
     await expect(page.locator('[data-testid="confirm-post-btn"]')).not.toBeDisabled()
 
-    // When row shows concrete time, not vague
+    // When row shows concrete time
     await expect(page.locator('[data-testid="when-row"]')).toContainText('Tomorrow at 6:00 PM')
 
     // Post
     await page.locator('[data-testid="confirm-post-btn"]').click()
     await expect(page.getByText(/Request posted!/)).toBeVisible({ timeout: 8_000 })
 
-    // Go to My Requests and verify front card
+    // ── Front card assertions ──
     await page.goto('/dashboard')
     await page.getByRole('button', { name: /My Requests/ }).click()
 
-    const card = page.locator('[data-testid="request-card"]').filter({ hasText: `[E2E-${runId}]` })
+    const card = page.locator('[data-testid="request-card"]').filter({ hasText: runId })
     await expect(card).toBeVisible({ timeout: 10_000 })
 
-    // Front card: time shows the concrete time (not "morning/afternoon/evening")
+    // Category badge
+    await expect(card.getByText('Meal & Social')).toBeVisible()
+
+    // Title is resolved (contains "meetup"), NOT the parser's "Thai food pickup"
+    const cardText = await card.textContent()
+    expect(cardText).toMatch(/meetup/i)
+    expect(cardText).not.toMatch(/Thai food pickup/i)
+    expect(cardText).not.toMatch(/unclear request/i)
+
+    // Time meta: concrete time
     await expect(card.locator('[data-testid="card-time-meta"]')).toBeVisible()
     const timeMeta = await card.locator('[data-testid="card-time-meta"]').textContent()
     expect(timeMeta).toMatch(/Tomorrow at 6:00 PM/)
-    expect(timeMeta).not.toMatch(/morning|afternoon|evening/i)
 
-    // Front card: payment meta visible
+    // Payment meta: cost plan
     await expect(card.locator('[data-testid="card-payment-meta"]')).toBeVisible()
+    const payMeta = await card.locator('[data-testid="card-payment-meta"]').textContent()
+    expect(payMeta).toMatch(/Everyone pays/i)
   })
 
 })

@@ -51,7 +51,7 @@ test.describe('UX cleanup: P0 issues', () => {
       page.locator('[data-testid="summary-text"]').locator('..')
     )
     // The category Row label shows "Meal & Social"
-    await expect(page.getByText('Meal & Social')).toBeVisible()
+    await expect(page.getByText('Meal & Social', { exact: true }).first()).toBeVisible()
   })
 
   // ── 2: Casual activity phrase — no offer interstitial ────────────────────
@@ -293,7 +293,7 @@ test.describe('UX cleanup: P0 issues', () => {
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
 
     // Confirm card should show the category as Meal & Social
-    await expect(page.getByText('Meal & Social')).toBeVisible()
+    await expect(page.getByText('Meal & Social', { exact: true }).first()).toBeVisible()
   })
 
   // ── 10: meal_meetup payment options are social-appropriate ───────────────
