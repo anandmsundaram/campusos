@@ -170,10 +170,12 @@ const DEFAULT_LOCATION_DETAILS: ResolvedLocation = {
 /**
  * Intercept /api/location-search and return canned suggestions.
  * Must be called before the picker input is interacted with.
+ * Pass provider_ok: false to simulate a provider failure.
  */
 export async function mockLocationSearch(
   page: Page,
   results: Partial<LocationSuggestion>[],
+  { provider_ok = true }: { provider_ok?: boolean } = {},
 ): Promise<void> {
   await page.route(/\/api\/location-search/, async route => {
     await route.fulfill({
@@ -181,6 +183,7 @@ export async function mockLocationSearch(
       contentType: 'application/json',
       body: JSON.stringify({
         results: results.map(r => ({ ...DEFAULT_LOCATION_RESULT, ...r })),
+        provider_ok,
       }),
     })
   })

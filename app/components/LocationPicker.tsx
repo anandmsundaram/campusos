@@ -50,6 +50,7 @@ export function LocationPicker({
   const [isFetchingDetails, setIsFetchingDetails] = useState(false)
   const [hasInteracted, setHasInteracted] = useState(false)
   const [showWarning, setShowWarning] = useState(false)
+  const [providerOk, setProviderOk] = useState(true)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const sessionTokenRef = useRef<string>(crypto.randomUUID())
@@ -93,7 +94,14 @@ export function LocationPicker({
       if (res.ok) {
         const data = await res.json()
         setSuggestions(data.results ?? [])
+        setProviderOk(data.provider_ok !== false)
+      } else {
+        setSuggestions([])
+        setProviderOk(false)
       }
+    } catch {
+      setSuggestions([])
+      setProviderOk(false)
     } finally {
       setIsSearching(false)
     }
@@ -104,6 +112,7 @@ export function LocationPicker({
     setInputValue(q)
     setHasInteracted(true)
     setShowWarning(false)
+    setProviderOk(true) // Reset stale error state on new input
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => search(q), 400)
@@ -228,12 +237,17 @@ export function LocationPicker({
     !NO_MANUAL_TERMS.has(lower) &&
     !isSearching &&
     hasInteracted
+  const showProviderUnavailable =
+    isOpen && !isSearching && suggestions.length === 0 && !showManualOption &&
+    !providerOk && inputValue.trim().length >= 2
   const showEmptyState =
-    isOpen && !isSearching && suggestions.length === 0 && !showManualOption && inputValue.trim().length >= 2
+    isOpen && !isSearching && suggestions.length === 0 && !showManualOption &&
+    providerOk && inputValue.trim().length >= 2
   const showDropdown =
     isOpen &&
     inputValue.trim().length >= 2 &&
-    (isSearching || campusSuggestions.length > 0 || nearbySuggestions.length > 0 || showManualOption || showEmptyState)
+    (isSearching || campusSuggestions.length > 0 || nearbySuggestions.length > 0 ||
+     showManualOption || showEmptyState || showProviderUnavailable)
 
   return (
     <div ref={containerRef} data-testid={testId} className="relative">
@@ -331,6 +345,15 @@ export function LocationPicker({
               className="px-3 py-3 text-xs text-slate-500"
             >
               No matches. Try a more specific place, business, or address.
+            </div>
+          )}
+
+          {showProviderUnavailable && (
+            <div
+              data-testid="location-provider-unavailable"
+              className="px-3 py-3 text-xs text-amber-500/80"
+            >
+              Nearby place search is temporarily unavailable. Try a campus location or full address.
             </div>
           )}
         </div>
