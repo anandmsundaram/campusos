@@ -116,12 +116,6 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
       ],
     },
     {
-      key: 'store_or_place',
-      label: 'Where? (store or location)',
-      type: 'text',
-      placeholder: 'e.g. HEB, Walmart, post office, 24th St…',
-    },
-    {
       key: 'task_details',
       label: 'What should they pick up or do?',
       type: 'text',
@@ -194,8 +188,6 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
 // Fields that must be filled before the Confirm button unlocks.
 // Rides origin/destination are handled separately (inline inputs, top-level parsed fields).
 const CRITICAL_FIELDS: Partial<Record<ParsedRequest['category'], string[]>> = {
-  errands: ['errand_type', 'store_or_place', 'task_details'],
-  moving: ['helpers_needed'],
   peer_help: ['subject'],
   borrow: ['item'],
 }
@@ -286,6 +278,20 @@ export default function RequestInput() {
     if (!parsed) return false
     if (parsed.category === 'rides') {
       return pickupLocation !== null && dropoffLocation !== null
+    }
+    if (parsed.category === 'errands') {
+      if (!pickupLocation) return false
+      const errandType = mergedSD.errand_type as string | null | undefined
+      if (!errandType) return false
+      if (errandType !== 'food_pickup' && !mergedSD.task_details) return false
+      return true
+    }
+    if (parsed.category === 'moving') {
+      if (!pickupLocation) return false
+      if (!mergedSD.helpers_needed) return false
+      const moveType = mergedSD.move_type as string | null | undefined
+      if (moveType !== 'furniture' && !dropoffLocation) return false
+      return true
     }
     const criticals = CRITICAL_FIELDS[parsed.category] ?? []
     if (criticals.length === 0) return true
@@ -458,6 +464,13 @@ export default function RequestInput() {
         auto_accept: parsed.is_driver ? autoAccept : true,
         price_type: parsed.is_driver ? priceType : null,
         is_airport_ride: parsed.is_airport_ride ?? false,
+      }),
+      ...(parsed.category === 'errands' && {
+        pickup_location: pickupLocation ?? null,
+      }),
+      ...(parsed.category === 'moving' && {
+        pickup_location: pickupLocation ?? null,
+        dropoff_location: dropoffLocation ?? null,
       }),
     }
 
@@ -874,6 +887,33 @@ export default function RequestInput() {
             {/* ── MOVING structured rows ── */}
             {parsed!.category === 'moving' && (
               <>
+                <div className="rounded-xl border border-orange-500/15 bg-orange-500/[0.04] px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-orange-400/60 mb-3">
+                    Locations
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    <div>
+                      <p className="text-xs font-medium text-slate-300 mb-1.5">From — where items are now</p>
+                      <LocationPicker
+                        value={pickupLocation}
+                        onChange={setPickupLocation}
+                        placeholder="Search dorm, address, or building…"
+                        data-testid="location-picker-pickup"
+                      />
+                    </div>
+                    {(mergedSD.move_type as string | null | undefined) !== 'furniture' && (
+                      <div>
+                        <p className="text-xs font-medium text-slate-300 mb-1.5">To — where items are going</p>
+                        <LocationPicker
+                          value={dropoffLocation}
+                          onChange={setDropoffLocation}
+                          placeholder="Search destination address or building…"
+                          data-testid="location-picker-dropoff"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
                 {mergedSD.helpers_needed != null && (
                   <Row label="Helpers needed" value={`${mergedSD.helpers_needed}`} />
                 )}
@@ -910,12 +950,29 @@ export default function RequestInput() {
             {/* ── ERRANDS structured rows ── */}
             {parsed!.category === 'errands' && (
               <>
+                {mergedSD.errand_type === 'grocery' && (
+                  <div data-testid="grocery-scope-warning" className="rounded-lg border border-yellow-500/20 bg-yellow-500/[0.06] px-4 py-3">
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      <span className="font-medium text-yellow-400">Beta note:</span>{' '}
+                      CampusOS errands are for quick pickups — not full grocery shopping. Keep lists small and simple.
+                    </p>
+                  </div>
+                )}
                 {mergedSD.errand_type && (
                   <Row label="Errand type" value={ERRAND_TYPE_LABELS[mergedSD.errand_type as string] ?? String(mergedSD.errand_type)} />
                 )}
-                {mergedSD.store_or_place && (
-                  <Row label="Where" value={mergedSD.store_or_place as string} />
-                )}
+                <div className="rounded-xl border border-purple-500/15 bg-purple-500/[0.04] px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-purple-400/60 mb-3">
+                    Pickup location
+                  </p>
+                  <LocationPicker
+                    value={pickupLocation}
+                    onChange={setPickupLocation}
+                    hint={typeof mergedSD.store_or_place === 'string' ? mergedSD.store_or_place : undefined}
+                    placeholder="Search store, restaurant, or address…"
+                    data-testid="location-picker-pickup"
+                  />
+                </div>
                 {mergedSD.task_details && (
                   <Row label="Task" value={mergedSD.task_details as string} />
                 )}

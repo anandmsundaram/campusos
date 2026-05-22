@@ -11,7 +11,7 @@
  */
 
 import { test, expect } from '../helpers/fixtures'
-import { mockParseRequest } from '../helpers/auth'
+import { mockParseRequest, mockLocationSearch } from '../helpers/auth'
 import { goToDashboard } from '../helpers/fixtures'
 
 test.describe('Structured coordination fields', () => {
@@ -122,6 +122,14 @@ test.describe('Structured coordination fields', () => {
         reimbursement_type: null,
       },
     })
+    await mockLocationSearch(page, [
+      {
+        place_name: 'H-E-B College Station',
+        formatted_address: '1900 Texas Ave S, College Station, TX 77840',
+        source: 'campus_place',
+        needs_details: false,
+      },
+    ])
 
     await goToDashboard(page)
     await page.locator('[data-testid="request-textarea"]').fill('Need someone to go to HEB')
@@ -130,8 +138,19 @@ test.describe('Structured coordination fields', () => {
     // Wait for confirm card
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
 
-    // Confirm should be disabled — task_details missing
+    // Confirm should be disabled — no location and task_details missing
     const confirmBtn = page.locator('[data-testid="confirm-post-btn"]')
+    await expect(confirmBtn).toBeDisabled()
+
+    // Select pickup location (Phase B: location is now required for errands)
+    const picker = page.locator('[data-testid="location-picker-pickup"]')
+    await picker.locator('input').clear()
+    await picker.locator('input').fill('H-E-B')
+    await picker.locator('[data-testid="location-suggestion"]').first().waitFor({ timeout: 5_000 })
+    await picker.locator('[data-testid="location-suggestion"]').click()
+    await expect(picker.locator('[data-testid="location-chip"]')).toBeVisible()
+
+    // Confirm still disabled — grocery requires task_details even with location set
     await expect(confirmBtn).toBeDisabled()
 
     // Fill task_details text input
@@ -196,13 +215,28 @@ test.describe('Structured coordination fields', () => {
         estimated_duration: null,
       },
     })
+    await mockLocationSearch(page, [
+      {
+        place_name: 'Hullabaloo Hall',
+        formatted_address: '255 Houston St, College Station, TX 77840',
+        source: 'campus_place',
+        needs_details: false,
+      },
+    ])
 
     await goToDashboard(page)
     await page.locator('[data-testid="request-textarea"]').fill(originalText)
     await page.getByRole('button', { name: /Post request/ }).click()
 
-    // Wait for confirm, then post
+    // Wait for confirm card — select from location (Phase B: required for moving)
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
+    const fromPicker = page.locator('[data-testid="location-picker-pickup"]')
+    await fromPicker.locator('input').fill('Hulla')
+    await fromPicker.locator('[data-testid="location-suggestion"]').first().waitFor({ timeout: 5_000 })
+    await fromPicker.locator('[data-testid="location-suggestion"]').click()
+    await expect(fromPicker.locator('[data-testid="location-chip"]')).toBeVisible()
+
+    // Post
     await page.locator('[data-testid="confirm-post-btn"]').click()
     await expect(page.getByText('Request posted!')).toBeVisible({ timeout: 8_000 })
 

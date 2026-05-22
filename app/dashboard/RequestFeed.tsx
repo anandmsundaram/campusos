@@ -851,20 +851,52 @@ function RequestCard({
 
         {/* Meta row */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-4">
-          {/* Non-ride location */}
-          {!isRide && req.origin_city && req.destination_city ? (
-            <span className="flex items-center gap-1.5">
-              <span className="text-[11px]">🚗</span>
-              <span className="font-medium text-slate-300">{req.origin_city}</span>
-              <span className="text-slate-600">→</span>
-              <span className="font-medium text-slate-300">{req.destination_city}</span>
-            </span>
-          ) : !isRide && req.location ? (
-            <span className="flex items-center gap-1.5">
-              <span className="text-[11px]">📍</span>
-              {req.location}
-            </span>
-          ) : null}
+          {/* Non-ride location — prefer resolved pickup_location/dropoff_location */}
+          {!isRide && (() => {
+            if (req.category === 'errands') {
+              const loc = (req.pickup_location?.place_name as string | undefined)
+                ?? (req.structured_data?.store_or_place as string | undefined)
+              return loc ? (
+                <span data-testid="card-location-meta" className="flex items-center gap-1.5">
+                  <span className="text-[11px]">📍</span>
+                  <span>{loc}</span>
+                </span>
+              ) : null
+            }
+            if (req.category === 'moving') {
+              const from = req.pickup_location?.place_name as string | undefined
+              const to = req.dropoff_location?.place_name as string | undefined
+              if (from && to) return (
+                <span data-testid="card-location-meta" className="flex items-center gap-1.5">
+                  <span className="text-[11px]">📦</span>
+                  <span className="font-medium text-slate-300">{from}</span>
+                  <span className="text-slate-600">→</span>
+                  <span className="font-medium text-slate-300">{to}</span>
+                </span>
+              )
+              if (from) return (
+                <span data-testid="card-location-meta" className="flex items-center gap-1.5">
+                  <span className="text-[11px]">📍</span>
+                  <span>From: {from}</span>
+                </span>
+              )
+              return null
+            }
+            if (req.origin_city && req.destination_city) return (
+              <span className="flex items-center gap-1.5">
+                <span className="text-[11px]">🚗</span>
+                <span className="font-medium text-slate-300">{req.origin_city}</span>
+                <span className="text-slate-600">→</span>
+                <span className="font-medium text-slate-300">{req.destination_city}</span>
+              </span>
+            )
+            return req.location ? (
+              <span className="flex items-center gap-1.5">
+                <span className="text-[11px]">📍</span>
+                {req.location}
+              </span>
+            ) : null
+          })()}
           {req.scheduled_time && (
             <span className="flex items-center gap-1.5">
               <span className="text-[11px]">🕐</span>
