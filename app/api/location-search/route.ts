@@ -2,52 +2,68 @@ import { NextRequest, NextResponse } from 'next/server'
 import { CAMPUS_CONFIG, type CampusPlace } from '@/lib/campus-config'
 import type { LocationSuggestion } from '@/lib/location-types'
 
-// Maps short category/cuisine terms → richer queries for Google Autocomplete.
-// Only exact-match on the lowercased, trimmed query string.
-const QUERY_EXPANSIONS: Readonly<Record<string, string>> = {
-  // Cuisine categories
-  thai: 'Thai restaurant',
-  'thai food': 'Thai restaurant',
-  mexican: 'Mexican restaurant',
-  'mexican food': 'Mexican restaurant',
-  chinese: 'Chinese restaurant',
-  'chinese food': 'Chinese restaurant',
-  japanese: 'Japanese restaurant',
-  korean: 'Korean restaurant',
-  italian: 'Italian restaurant',
-  indian: 'Indian restaurant',
-  'indian food': 'Indian restaurant',
-  sushi: 'sushi restaurant',
-  ramen: 'ramen restaurant',
-  pho: 'pho restaurant',
-  burger: 'burger restaurant',
-  burgers: 'burger restaurant',
-  wings: 'wings restaurant',
-  bbq: 'BBQ restaurant',
-  barbeque: 'BBQ restaurant',
-  barbecue: 'BBQ restaurant',
-  pizza: 'pizza restaurant',
-  tacos: 'taco restaurant',
-  coffee: 'coffee shop',
-  cafe: 'cafe',
-  'ice cream': 'ice cream shop',
-  'fast food': 'fast food restaurant',
-  breakfast: 'breakfast restaurant',
-  // General place categories
-  grocery: 'grocery store',
-  groceries: 'grocery store',
-  pharmacy: 'pharmacy',
-  gym: 'gym',
-  bank: 'bank',
-  hotel: 'hotel',
-  hospital: 'hospital',
-  clinic: 'clinic',
-  'gas station': 'gas station',
+// ─── Category / cuisine detection ─────────────────────────────────────────────
+//
+// These terms trigger Google Places Text Search (finds actual places by category)
+// rather than Autocomplete (completes place names). Exact match on the lowercased,
+// trimmed user query. Brand names (Target, HEB) are NOT here — Autocomplete
+// handles them correctly since they're specific place names.
+const CATEGORY_TEXT_QUERIES: Readonly<Record<string, string>> = {
+  // Cuisine
+  thai: 'Thai restaurants',
+  'thai food': 'Thai restaurants',
+  mexican: 'Mexican restaurants',
+  'mexican food': 'Mexican restaurants',
+  chinese: 'Chinese restaurants',
+  'chinese food': 'Chinese restaurants',
+  japanese: 'Japanese restaurants',
+  korean: 'Korean restaurants',
+  italian: 'Italian restaurants',
+  indian: 'Indian restaurants',
+  'indian food': 'Indian restaurants',
+  vietnamese: 'Vietnamese restaurants',
+  mediterranean: 'Mediterranean restaurants',
+  sushi: 'sushi restaurants',
+  ramen: 'ramen restaurants',
+  pho: 'pho restaurants',
+  pizza: 'pizza restaurants',
+  burger: 'burger restaurants',
+  burgers: 'burger restaurants',
+  tacos: 'taco restaurants',
+  taco: 'taco restaurants',
+  wings: 'wings restaurants',
+  bbq: 'BBQ restaurants',
+  barbeque: 'BBQ restaurants',
+  barbecue: 'BBQ restaurants',
+  coffee: 'coffee shops',
+  cafe: 'cafes',
+  cafes: 'cafes',
+  breakfast: 'breakfast restaurants',
+  brunch: 'brunch restaurants',
+  'ice cream': 'ice cream shops',
+  'fast food': 'fast food restaurants',
+  restaurant: 'restaurants',
+  restaurants: 'restaurants',
+  // Place categories
+  grocery: 'grocery stores',
+  groceries: 'grocery stores',
+  'grocery store': 'grocery stores',
+  pharmacy: 'pharmacies',
+  drugstore: 'drugstores',
+  gym: 'gyms',
+  fitness: 'fitness centers',
+  bank: 'banks',
+  atm: 'ATM',
+  hotel: 'hotels',
+  motel: 'motels',
+  hospital: 'hospitals',
+  clinic: 'clinics',
+  'gas station': 'gas stations',
+  gas: 'gas stations',
+  airport: 'airports',
 }
 
-function expandQuery(query: string): string {
-  return QUERY_EXPANSIONS[query.toLowerCase().trim()] ?? query
-}
+// ─── Campus place fuzzy search ────────────────────────────────────────────────
 
 function scoreCampusPlace(place: CampusPlace, query: string): number {
   const q = query.toLowerCase().trim()
@@ -83,12 +99,103 @@ function searchCampusPlaces(query: string): LocationSuggestion[] {
     }))
 }
 
+// ─── Provider result shape ─────────────────────────────────────────────────────
+
 interface GoogleSearchResult {
   suggestions: LocationSuggestion[]
   provider_ok: boolean
 }
 
-async function searchGooglePlaces(
+// ─── Text Search — for category/cuisine queries ───────────────────────────────
+//
+// Uses /v1/places:searchText which accepts a natural-language query and returns
+// matching places with coordinates. This is the correct API for "Thai restaurants",
+// "coffee shops", "grocery stores" etc. Results include lat/lng so needs_details=false
+// — no second /api/location-details call is required when the user selects a result.
+
+async function searchGooglePlacesTextSearch(
+  textQuery: string,
+  originalQuery: string,
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<GoogleSearchResult> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY
+  if (!apiKey) {
+    console.warn('[location-search] GOOGLE_PLACES_API_KEY not set — provider search disabled')
+    return { suggestions: [], provider_ok: false }
+  }
+
+  let res: Response
+  try {
+    res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location',
+      },
+      body: JSON.stringify({
+        textQuery,
+        locationBias: {
+          circle: {
+            center: { latitude: lat, longitude: lng },
+            radius: radiusMeters,
+          },
+        },
+        maxResultCount: 5,
+      }),
+    })
+  } catch (err) {
+    console.error('[location-search] text-search fetch failed query=%j error=%s', originalQuery, String(err))
+    return { suggestions: [], provider_ok: false }
+  }
+
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '(unreadable)')
+    console.error('[location-search] text-search error http=%d query=%j text_query=%j body=%s',
+      res.status, originalQuery, textQuery, errBody.slice(0, 300))
+    return { suggestions: [], provider_ok: false }
+  }
+
+  const data = await res.json()
+  const places: Array<{
+    id?: string
+    displayName?: { text?: string }
+    formattedAddress?: string
+    location?: { latitude?: number; longitude?: number }
+  }> = data.places ?? []
+
+  const suggestions = places.slice(0, 5).reduce<LocationSuggestion[]>((acc, place) => {
+    const name = place.displayName?.text ?? ''
+    const address = place.formattedAddress ?? ''
+    if (!name) return acc
+    acc.push({
+      place_name: name,
+      formatted_address: address,
+      place_id: place.id,
+      lat: place.location?.latitude,
+      lng: place.location?.longitude,
+      source: 'places_provider',
+      needs_details: false, // Text Search includes lat/lng — no details call needed
+    })
+    return acc
+  }, [])
+
+  console.log('[location-search] text-search query=%j text_query=%j result_count=%d',
+    originalQuery, textQuery, suggestions.length)
+
+  return { suggestions, provider_ok: true }
+}
+
+// ─── Autocomplete — for brand names, addresses, specific places ───────────────
+//
+// Uses /v1/places:autocomplete which completes place names as the user types.
+// Correct for: "Target", "Walmart", "HEB", "124 Main St", "Zachry", etc.
+// NOT correct for category/cuisine searches (use Text Search instead).
+// Results require a /api/location-details call to get lat/lng (needs_details=true).
+
+async function searchGooglePlacesAutocomplete(
   query: string,
   lat: number,
   lng: number,
@@ -101,8 +208,6 @@ async function searchGooglePlaces(
     return { suggestions: [], provider_ok: false }
   }
 
-  const expandedQuery = expandQuery(query)
-
   let res: Response
   try {
     res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
@@ -112,7 +217,7 @@ async function searchGooglePlaces(
         'X-Goog-Api-Key': apiKey,
       },
       body: JSON.stringify({
-        input: expandedQuery,
+        input: query,
         sessionToken,
         locationBias: {
           circle: {
@@ -123,14 +228,14 @@ async function searchGooglePlaces(
       }),
     })
   } catch (err) {
-    console.error('[location-search] provider fetch failed query=%j error=%s', query, String(err))
+    console.error('[location-search] autocomplete fetch failed query=%j error=%s', query, String(err))
     return { suggestions: [], provider_ok: false }
   }
 
   if (!res.ok) {
     const errBody = await res.text().catch(() => '(unreadable)')
-    console.error('[location-search] provider error http=%d query=%j expanded=%j body=%s',
-      res.status, query, expandedQuery, errBody.slice(0, 300))
+    console.error('[location-search] autocomplete error http=%d query=%j body=%s',
+      res.status, query, errBody.slice(0, 300))
     return { suggestions: [], provider_ok: false }
   }
 
@@ -156,16 +261,17 @@ async function searchGooglePlaces(
         formatted_address: secondaryText ? `${mainText}, ${secondaryText}` : mainText,
         place_id: pred.placeId,
         source: 'places_provider',
-        needs_details: true,
+        needs_details: true, // Autocomplete has no lat/lng — details call required on selection
       })
       return acc
     }, [])
 
-  console.log('[location-search] provider_ok query=%j expanded=%j result_count=%d',
-    query, expandedQuery, suggestions.length)
+  console.log('[location-search] autocomplete query=%j result_count=%d', query, suggestions.length)
 
   return { suggestions, provider_ok: true }
 }
+
+// ─── Route handler ─────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
@@ -179,15 +285,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ results: [], provider_ok: true })
   }
 
+  const resolvedLat = isNaN(lat) ? CAMPUS_CONFIG.center_lat : lat
+  const resolvedLng = isNaN(lng) ? CAMPUS_CONFIG.center_lng : lng
+  const resolvedRadius = isNaN(radius) ? CAMPUS_CONFIG.search_radius_meters : radius
+
   const campusResults = searchCampusPlaces(query)
 
-  const { suggestions: googleResults, provider_ok } = await searchGooglePlaces(
-    query,
-    isNaN(lat) ? CAMPUS_CONFIG.center_lat : lat,
-    isNaN(lng) ? CAMPUS_CONFIG.center_lng : lng,
-    isNaN(radius) ? CAMPUS_CONFIG.search_radius_meters : radius,
-    sessionToken,
-  )
+  // Route to Text Search for category/cuisine terms, Autocomplete for everything else
+  const textQuery = CATEGORY_TEXT_QUERIES[query.toLowerCase().trim()]
+  const { suggestions: googleResults, provider_ok } = textQuery
+    ? await searchGooglePlacesTextSearch(textQuery, query, resolvedLat, resolvedLng, resolvedRadius)
+    : await searchGooglePlacesAutocomplete(query, resolvedLat, resolvedLng, resolvedRadius, sessionToken)
 
   const results: LocationSuggestion[] = [...campusResults, ...googleResults].slice(0, 8)
 
