@@ -226,6 +226,89 @@ const HELP_TYPE_LABELS: Record<string, string> = {
   study_session: '🤝 Study session',
 }
 
+// ─── Slot-filling workflow engine ────────────────────────────────────────────
+
+type IntentType =
+  | 'ride_request'
+  | 'ride_offer'
+  | 'errand_request'
+  | 'errand_offer_unsupported'
+  | 'moving_request'
+  | 'moving_offer_unsupported'
+  | 'peer_help_request'
+  | 'peer_help_offer_unsupported'
+  | 'borrow_request'
+  | 'lend_offer_unsupported'
+  | 'social_meal_unsupported'
+  | 'general_social_unsupported'
+
+const UNSUPPORTED_MESSAGES: Partial<Record<IntentType, string>> = {
+  errand_offer_unsupported: 'Offering to run errands for others is coming soon. Browse the feed to find errand requests you can help with.',
+  moving_offer_unsupported: 'Offering moving help is coming soon. Browse the feed to find move requests you can help with.',
+  peer_help_offer_unsupported: 'Offering tutoring or peer help is coming soon. Browse the feed to find students who need your help.',
+  lend_offer_unsupported: 'Offering to lend items is coming soon. Browse the feed to find borrow requests.',
+  social_meal_unsupported: 'Meal hangout posts are coming soon. For now, post a request in Peer Help to find study partners.',
+  general_social_unsupported: 'Social posts are coming soon. Use the feed to connect with requests that match your interests.',
+}
+
+// Maps a clarification option's appended_text to an intent without calling the parser.
+function inferIntentFromOption(
+  appended_text: string,
+  baseCategory: ParsedRequest['category'],
+  baseIsOffer: boolean,
+): { intentType: IntentType; category: ParsedRequest['category']; isOffer: boolean } {
+  const t = appended_text.toLowerCase()
+
+  // Ride signals
+  if (/\b(ride|lift|drive|carpool|seat|passenger|airport|pickup|dropoff)\b/.test(t)) {
+    const isOffer = /\b(offer|giving|driving|have seats|driver)\b/.test(t)
+    return { intentType: isOffer ? 'ride_offer' : 'ride_request', category: 'rides', isOffer }
+  }
+  // Moving signals
+  if (/\b(mov(e|ing)|haul|furni|couch|boxes?|dorm)\b/.test(t)) {
+    const isOffer = /\b(offer|help(ing)?|assist)\b/.test(t) && !/\bneed\b/.test(t)
+    return { intentType: isOffer ? 'moving_offer_unsupported' : 'moving_request', category: 'moving', isOffer }
+  }
+  // Errand signals
+  if (/\b(errands?|groceries?|grocery|heb|walmart|target|costco|pickup|delivery|package)\b/.test(t)) {
+    const isOffer = /\boffer(ing)?\b/.test(t) || /run errands for/.test(t)
+    return { intentType: isOffer ? 'errand_offer_unsupported' : 'errand_request', category: 'errands', isOffer }
+  }
+  // Peer help signals
+  if (/\b(tutor(ing)?|help with|study|homework|exam|class|course|subject|peer)\b/.test(t)) {
+    const isOffer = /\boffer(ing)?\b/.test(t) && !/\bneed\b/.test(t)
+    return { intentType: isOffer ? 'peer_help_offer_unsupported' : 'peer_help_request', category: 'peer_help', isOffer }
+  }
+  // Borrow/lend signals
+  if (/\b(borrow|lend(ing)?|loan(ing)?)\b/.test(t)) {
+    const isOffer = /\b(lend(ing)?|loan(ing)?)\b/.test(t) && !/\bborrow\b/.test(t)
+    return { intentType: isOffer ? 'lend_offer_unsupported' : 'borrow_request', category: 'borrow', isOffer }
+  }
+  // Social/meal
+  if (/\b(meal|lunch|dinner|breakfast|eat|hangout|social)\b/.test(t)) {
+    return { intentType: 'social_meal_unsupported', category: baseCategory, isOffer: baseIsOffer }
+  }
+
+  // Fallback: honour whatever the parser already determined
+  if (baseIsOffer && baseCategory !== 'rides') {
+    const map: Partial<Record<ParsedRequest['category'], IntentType>> = {
+      errands: 'errand_offer_unsupported',
+      moving: 'moving_offer_unsupported',
+      peer_help: 'peer_help_offer_unsupported',
+      borrow: 'lend_offer_unsupported',
+    }
+    return { intentType: map[baseCategory] ?? 'general_social_unsupported', category: baseCategory, isOffer: true }
+  }
+  const requestMap: Partial<Record<ParsedRequest['category'], IntentType>> = {
+    rides: 'ride_request',
+    errands: 'errand_request',
+    moving: 'moving_request',
+    peer_help: 'peer_help_request',
+    borrow: 'borrow_request',
+  }
+  return { intentType: requestMap[baseCategory] ?? 'general_social_unsupported', category: baseCategory, isOffer: baseIsOffer }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function applyFollowupAnswers(
@@ -258,6 +341,9 @@ export default function RequestInput() {
   const [followupAnswers, setFollowupAnswers] = useState<Record<string, string>>({})
   const [pickupLocation, setPickupLocation] = useState<ResolvedLocation | null>(null)
   const [dropoffLocation, setDropoffLocation] = useState<ResolvedLocation | null>(null)
+  const [intentType, setIntentType] = useState<IntentType | null>(null)
+  const [lockedIntent, setLockedIntent] = useState(false)
+  const [clarificationCount, setClarificationCount] = useState(0)
 
   const mergedSD = useMemo<Record<string, unknown>>(() => {
     if (!parsed) return {}
@@ -332,15 +418,18 @@ export default function RequestInput() {
   // ─── Shared parse handler (used by both initial submit and clarification re-parse) ──
 
   function applyParsedResult(data: ParsedRequest) {
-    // Non-ride offer: show interstitial instead of confirm card
+    // Non-ride offer: show interstitial
     if (data.is_offer && data.category !== 'rides') {
       setParsed(data)
       setStatus('confirm') // JSX checks is_offer to render interstitial
       return
     }
-    // Ambiguous intent: ask for clarification
-    if (data.ambiguous && data.clarification_options?.length) {
+    // Ambiguous intent: ask for clarification — but only once.
+    // If intent is already locked (user already chose a disambiguation option),
+    // skip disambiguation and proceed directly to confirm.
+    if (data.ambiguous && data.clarification_options?.length && clarificationCount === 0) {
       setParsed(data)
+      setClarificationCount(1)
       setStatus('disambiguating')
       return
     }
@@ -360,6 +449,9 @@ export default function RequestInput() {
     setFollowupAnswers({})
     setPickupLocation(null)
     setDropoffLocation(null)
+    setIntentType(null)
+    setLockedIntent(false)
+    setClarificationCount(0)
 
     const res = await fetch('/api/parse-request', {
       method: 'POST',
@@ -383,32 +475,35 @@ export default function RequestInput() {
     applyParsedResult(data)
   }
 
-  // Re-parse with the original text + a clarifying phrase chosen by the user.
-  async function handleClarificationPick(appendedText: string) {
+  // State-machine transition for a disambiguation choice.
+  // Infers intent client-side and either shows the unsupported interstitial or
+  // transitions directly to the confirm card — never re-invokes the parser.
+  function handleDisambigSelect(opt: { label: string; appended_text: string }) {
+    if (!parsed) return
     setError(null)
-    setStatus('parsing')
-    const clarifiedText = text.trim() + ' ' + appendedText
 
-    const res = await fetch('/api/parse-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: clarifiedText }),
-    })
+    const inferred = inferIntentFromOption(opt.appended_text, parsed.category, parsed.is_offer)
+    setIntentType(inferred.intentType)
+    setLockedIntent(true)
 
-    if (!res.ok) {
-      setError('Failed to process your selection. Please try again.')
-      setStatus('disambiguating')
+    // Unsupported intent: show the interstitial (reuse is_offer interstitial slot).
+    if (inferred.intentType in UNSUPPORTED_MESSAGES) {
+      setParsed({ ...parsed, is_offer: true, category: inferred.category })
+      setStatus('confirm')
       return
     }
 
-    const data = await res.json()
-    if (!data.category || !data.title) {
-      setError('Could not understand your request. Try being more specific.')
-      setStatus('idle')
-      return
+    // Supported intent: merge the chosen option into parsed state and show confirm.
+    // Override is_offer and category so the confirm card renders correctly.
+    const updatedParsed: ParsedRequest = {
+      ...parsed,
+      category: inferred.category,
+      is_offer: inferred.isOffer,
+      ambiguous: false,
     }
-
-    applyParsedResult(data)
+    setParsed(updatedParsed)
+    setPriceType(updatedParsed.price_type ?? 'split')
+    setStatus('confirm')
   }
 
   async function handleConfirm() {
@@ -510,6 +605,9 @@ export default function RequestInput() {
     setFollowupAnswers({})
     setPickupLocation(null)
     setDropoffLocation(null)
+    setIntentType(null)
+    setLockedIntent(false)
+    setClarificationCount(0)
   }
 
   function handleFollowupChange(key: string, value: string) {
@@ -650,7 +748,7 @@ export default function RequestInput() {
                 key={opt.appended_text}
                 data-testid="disambig-option"
                 type="button"
-                onClick={() => handleClarificationPick(opt.appended_text)}
+                onClick={() => handleDisambigSelect(opt)}
                 className="flex items-center gap-3 rounded-xl border border-[#1e2d4a] bg-white/[0.02] px-4 py-3 text-sm text-slate-300 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.05] hover:text-white"
               >
                 {opt.label}
@@ -672,7 +770,8 @@ export default function RequestInput() {
         <div data-testid="offer-interstitial" className="w-full max-w-2xl rounded-2xl border border-purple-500/15 bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
           <p className="text-base font-semibold text-white mb-2">Looks like you&apos;re offering help</p>
           <p className="text-sm text-slate-400 leading-relaxed mb-5">
-            Offer availability posts are launching soon. For now, browse the feed and respond directly to students who need what you can provide.
+            {(intentType && UNSUPPORTED_MESSAGES[intentType]) ??
+              'Offer availability posts are launching soon. For now, browse the feed and respond directly to students who need what you can provide.'}
           </p>
           <div className="flex gap-3">
             <a
