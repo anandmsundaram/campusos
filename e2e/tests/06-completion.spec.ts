@@ -54,10 +54,25 @@ test.describe('Completion flow', () => {
       // "Mark complete" button should be visible
       const completeBtn = card.locator('[data-testid="mark-complete-btn"]')
       await expect(completeBtn).toBeVisible({ timeout: 8_000 })
+
+      // Register the response listener BEFORE clicking so we don't miss it if
+      // the RPC completes before Playwright re-checks.
+      const rpcDone = driverPage.waitForResponse(
+        r => r.url().includes('complete_request_safe'),
+        { timeout: 15_000 },
+      )
       await completeBtn.click()
 
-      // After clicking, the button disappears and "Completed ✓" appears
-      await expect(card.getByText('Completed ✓')).toBeVisible({ timeout: 10_000 })
+      // Wait for the server to confirm the completion RPC succeeded.
+      // This ensures router.refresh() has been called and the server-side
+      // render of the updated status will follow — preventing a dangling
+      // server request from bleeding into the next test.
+      const rpcResponse = await rpcDone
+      expect(rpcResponse.status()).toBe(200)
+
+      // After RPC succeeds, router.refresh() updates the page data.
+      // Give a generous window for the RSC re-render in a loaded dev server.
+      await expect(card.getByText('Completed ✓')).toBeVisible({ timeout: 20_000 })
       await expect(completeBtn).not.toBeVisible()
     } finally {
       await cleanupRunData(runId)
