@@ -7,7 +7,7 @@ import { LocationPicker } from '@/app/components/LocationPicker'
 import type { ResolvedLocation } from '@/lib/location-types'
 
 interface ParsedRequest {
-  category: 'rides' | 'moving' | 'peer_help' | 'errands' | 'borrow'
+  category: 'rides' | 'moving' | 'peer_help' | 'errands' | 'borrow' | 'meal_meetup'
   title: string
   location: string | null
   scheduled_time: string | null
@@ -39,6 +39,7 @@ const CATEGORY_LABELS: Record<ParsedRequest['category'], string> = {
   peer_help: 'Peer Help',
   errands: 'Errands',
   borrow: 'Borrow',
+  meal_meetup: 'Meal & Social',
 }
 
 const URGENCY_COLORS: Record<ParsedRequest['urgency'], string> = {
@@ -61,6 +62,7 @@ const STARTERS: Record<ParsedRequest['category'], string> = {
   peer_help: 'I need peer help with ',
   errands: 'I need help running an errand ',
   borrow: 'I need to borrow ',
+  meal_meetup: 'Anyone want to grab food? ',
 }
 
 const PLACEHOLDERS = [
@@ -120,7 +122,7 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
       key: 'task_details',
       label: 'What should they pick up or do?',
       type: 'text',
-      placeholder: 'e.g. Milk and eggs; Pick up package from room 204…',
+      placeholder: 'e.g. Pick up my package, grab my prepaid food order, drop off a small item',
     },
   ],
   peer_help: [
@@ -173,6 +175,14 @@ const FOLLOWUP_QUESTIONS: Partial<Record<ParsedRequest['category'], FollowUpQues
       ],
     },
   ],
+  meal_meetup: [
+    {
+      key: 'restaurant_or_area',
+      label: 'Where or what cuisine? (optional)',
+      type: 'text',
+      placeholder: 'e.g. Fuego, Indian food near campus, any sushi place…',
+    },
+  ],
 }
 
 // Fields that must be filled before the Confirm button unlocks.
@@ -219,6 +229,9 @@ type PaymentMode =
   | 'reimburse_cost_only'
   | 'reimburse_plus_helper_fee'
   | 'discuss_in_chat'
+  | 'dutch_treat'
+  | 'split_bill'
+  | 'host_covers'
 
 interface PaymentSlot {
   payment_mode: PaymentMode | null
@@ -318,6 +331,12 @@ function getPaymentOptions(
     },
     { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work it out with the lender' },
   ]
+  if (category === 'meal_meetup') return [
+    { mode: 'dutch_treat', label: '🍽️ Everyone pays for themselves', description: 'Each person covers their own meal' },
+    { mode: 'split_bill', label: '➗ Split the bill evenly', description: 'Divide the total check equally' },
+    { mode: 'host_covers', label: '🎁 I\'ll cover everyone', description: 'Treating the group' },
+    { mode: 'discuss_in_chat', label: '💬 Figure it out together', description: 'Decide when the group is set' },
+  ]
   return []
 }
 
@@ -347,29 +366,50 @@ function buildPaymentSummary(slot: PaymentSlot): string {
       return `🔄 You'll reimburse actual cost + $${fee} helper fee`
     }
     case 'discuss_in_chat': return '💬 Discuss payment in chat'
+    case 'dutch_treat': return '🍽️ Everyone pays for themselves'
+    case 'split_bill': return '➗ Splitting the bill evenly'
+    case 'host_covers': return '🎁 Host covers everyone'
     default: return ''
   }
 }
 
-function getTimeOptions(category: ParsedRequest['category']): { value: string; label: string }[] {
-  if (category === 'errands') return [
-    { value: 'ASAP', label: '⚡ ASAP' },
-    { value: 'Today', label: '📅 Today' },
-    { value: 'Tonight', label: '🌙 Tonight' },
-    { value: 'Tomorrow', label: '📆 Tomorrow' },
-  ]
-  if (category === 'rides') return [
-    { value: 'Right now', label: '⚡ Right now' },
-    { value: 'Later today', label: '📅 Later today' },
-    { value: 'Tomorrow', label: '📆 Tomorrow' },
-    { value: 'This weekend', label: '📌 Weekend' },
-  ]
-  return [
-    { value: 'ASAP', label: '⚡ ASAP' },
-    { value: 'This week', label: '📅 This week' },
-    { value: 'This weekend', label: '📌 Weekend' },
-    { value: 'Next week', label: '📆 Next week' },
-  ]
+// ─── Two-step time slot system ───────────────────────────────────────────────
+
+interface TimeSlotState {
+  dateBucket: 'today' | 'tomorrow' | 'weekend' | 'later' | null
+  timeMode: 'morning' | 'afternoon' | 'evening' | 'flexible' | null
+}
+
+const EMPTY_TIME_SLOT: TimeSlotState = { dateBucket: null, timeMode: null }
+
+const DATE_BUCKET_OPTIONS: { value: TimeSlotState['dateBucket']; label: string }[] = [
+  { value: 'today', label: '📅 Today' },
+  { value: 'tomorrow', label: '📆 Tomorrow' },
+  { value: 'weekend', label: '📌 This weekend' },
+  { value: 'later', label: '🗓️ Later' },
+]
+
+const TIME_MODE_OPTIONS: { value: TimeSlotState['timeMode']; label: string }[] = [
+  { value: 'morning', label: '🌅 Morning' },
+  { value: 'afternoon', label: '☀️ Afternoon' },
+  { value: 'evening', label: '🌙 Evening' },
+  { value: 'flexible', label: '🔀 Flexible' },
+]
+
+function isTimeComplete(ts: TimeSlotState): boolean {
+  return ts.dateBucket !== null && ts.timeMode !== null
+}
+
+function buildTimeLabel(ts: TimeSlotState): string {
+  const dateLabel =
+    ts.dateBucket === 'today' ? 'Today' :
+    ts.dateBucket === 'tomorrow' ? 'Tomorrow' :
+    ts.dateBucket === 'weekend' ? 'This weekend' : 'Later'
+  const timeLabel =
+    ts.timeMode === 'morning' ? 'morning' :
+    ts.timeMode === 'afternoon' ? 'afternoon' :
+    ts.timeMode === 'evening' ? 'evening' : 'flexible time'
+  return `${dateLabel}, ${timeLabel}`
 }
 
 // Pre-populate paymentSlot from whatever the parser already extracted
@@ -406,7 +446,7 @@ type IntentType =
   | 'peer_help_offer_unsupported'
   | 'borrow_request'
   | 'lend_offer_unsupported'
-  | 'social_meal_unsupported'
+  | 'meal_meetup_request'
   | 'general_social_unsupported'
 
 const UNSUPPORTED_MESSAGES: Partial<Record<IntentType, string>> = {
@@ -414,7 +454,6 @@ const UNSUPPORTED_MESSAGES: Partial<Record<IntentType, string>> = {
   moving_offer_unsupported: 'Offering moving help is coming soon. Browse the feed to find move requests you can help with.',
   peer_help_offer_unsupported: 'Offering tutoring or peer help is coming soon. Browse the feed to find students who need your help.',
   lend_offer_unsupported: 'Offering to lend items is coming soon. Browse the feed to find borrow requests.',
-  social_meal_unsupported: 'Meal hangout posts are coming soon. For now, post a request in Peer Help to find study partners.',
   general_social_unsupported: 'Social posts are coming soon. Use the feed to connect with requests that match your interests.',
 }
 
@@ -428,6 +467,13 @@ function inferIntentFromOption(
   if (/\b(ride|lift|drive|carpool|seat|passenger|airport|pickup|dropoff)\b/.test(t)) {
     const isOffer = /\b(offer|giving|driving|have seats|driver)\b/.test(t)
     return { intentType: isOffer ? 'ride_offer' : 'ride_request', category: 'rides', isOffer }
+  }
+  // Meal/social must be checked BEFORE errands (food pickup != food meetup)
+  if (/\b(eat(ing)?|dining|dine|lunch|dinner|breakfast|brunch|food|restaurant|cafe|sushi|pizza|indian|mexican|chinese|thai|ramen|tacos?|burger|meetup|hang\s*out|get together|going for|together for)\b/.test(t)) {
+    const isOffer = /\b(offer|hosting|treat(ing)?)\b/.test(t)
+    if (!isOffer) {
+      return { intentType: 'meal_meetup_request', category: 'meal_meetup', isOffer: false }
+    }
   }
   if (/\b(mov(e|ing)|haul|furni|couch|boxes?|dorm)\b/.test(t)) {
     const isOffer = /\b(offer|help(ing)?|assist)\b/.test(t) && !/\bneed\b/.test(t)
@@ -445,9 +491,6 @@ function inferIntentFromOption(
     const isOffer = /\b(lend(ing)?|loan(ing)?)\b/.test(t) && !/\bborrow\b/.test(t)
     return { intentType: isOffer ? 'lend_offer_unsupported' : 'borrow_request', category: 'borrow', isOffer }
   }
-  if (/\b(meal|lunch|dinner|breakfast|eat|hangout|social)\b/.test(t)) {
-    return { intentType: 'social_meal_unsupported', category: baseCategory, isOffer: baseIsOffer }
-  }
 
   if (baseIsOffer && baseCategory !== 'rides') {
     const map: Partial<Record<ParsedRequest['category'], IntentType>> = {
@@ -464,6 +507,7 @@ function inferIntentFromOption(
     moving: 'moving_request',
     peer_help: 'peer_help_request',
     borrow: 'borrow_request',
+    meal_meetup: 'meal_meetup_request',
   }
   return { intentType: requestMap[baseCategory] ?? 'general_social_unsupported', category: baseCategory, isOffer: baseIsOffer }
 }
@@ -504,7 +548,7 @@ export default function RequestInput() {
   const [lockedIntent, setLockedIntent] = useState(false)
   const [clarificationCount, setClarificationCount] = useState(0)
   const [paymentSlot, setPaymentSlot] = useState<PaymentSlot>(EMPTY_PAYMENT)
-  const [timeSlot, setTimeSlot] = useState<string | null>(null)
+  const [timeSlot, setTimeSlot] = useState<TimeSlotState>(EMPTY_TIME_SLOT)
 
   const mergedSD = useMemo<Record<string, unknown>>(() => {
     if (!parsed) return {}
@@ -522,9 +566,9 @@ export default function RequestInput() {
   const canConfirm = useMemo<boolean>(() => {
     if (!parsed) return false
 
-    // Time gate: if parser didn't extract a time, user must select one (except borrow)
+    // Time gate: if parser didn't extract a time, user must complete two-step selection (except borrow)
     const needsTimeGate = !parsed.scheduled_time && parsed.category !== 'borrow'
-    if (needsTimeGate && !timeSlot) return false
+    if (needsTimeGate && !isTimeComplete(timeSlot)) return false
 
     if (parsed.category === 'rides') {
       if (!pickupLocation || !dropoffLocation) return false
@@ -559,6 +603,10 @@ export default function RequestInput() {
         return val !== null && val !== undefined && val !== ''
       })) return false
       return isPaymentComplete(paymentSlot, getPaymentOptions('peer_help', false))
+    }
+
+    if (parsed.category === 'meal_meetup') {
+      return isPaymentComplete(paymentSlot, getPaymentOptions('meal_meetup', false))
     }
 
     // borrow — payment optional
@@ -600,8 +648,21 @@ export default function RequestInput() {
 
   // ─── Shared parse handler ─────────────────────────────────────────────────────
 
+  // Explicit offer language — casual phrases like "Going for Indian food" must NOT match
+  const OFFER_MARKERS = /\b(i('m| am| can| will)?\s*(offer(ing)?|provid(e|ing)|giv(e|ing)|run(ning)?|do(ing)?|help(ing)? (with|anyone)|available( to)?)|anyone (want|need)s? (a|me to)|i have (a|an|extra|spare)|i('ll| will) (drive|pick up|run|go|do|get|bring|grab))\b/i
+
   function applyParsedResult(data: ParsedRequest) {
     if (data.is_offer && data.category !== 'rides') {
+      // Guard: only treat as offer if the original text has explicit offer language.
+      // Casual social phrases ("Going for Indian food?") must fall through to confirm.
+      if (!OFFER_MARKERS.test(text)) {
+        const overridden: ParsedRequest = { ...data, is_offer: false }
+        setParsed(overridden)
+        setPriceType(overridden.price_type ?? 'split')
+        setPaymentSlot(paymentSlotFromParsed(overridden))
+        setStatus('confirm')
+        return
+      }
       setParsed(data)
       setStatus('confirm')
       return
@@ -632,7 +693,7 @@ export default function RequestInput() {
     setLockedIntent(false)
     setClarificationCount(0)
     setPaymentSlot(EMPTY_PAYMENT)
-    setTimeSlot(null)
+    setTimeSlot(EMPTY_TIME_SLOT)
 
     const res = await fetch('/api/parse-request', {
       method: 'POST',
@@ -713,8 +774,11 @@ export default function RequestInput() {
         paymentData.helper_fee_amount = isNaN(fee) ? 0 : fee
       }
     }
-    if (timeSlot && !parsed.scheduled_time) {
-      paymentData.deadline_text = timeSlot
+    if (isTimeComplete(timeSlot) && !parsed.scheduled_time) {
+      paymentData.deadline_text = buildTimeLabel(timeSlot)
+    }
+    if (paymentSlot.payment_mode) {
+      paymentData.payment_summary = buildPaymentSummary(paymentSlot)
     }
 
     const sdBase = {
@@ -791,7 +855,7 @@ export default function RequestInput() {
     setPickupLocation(null)
     setDropoffLocation(null)
     setPaymentSlot(EMPTY_PAYMENT)
-    setTimeSlot(null)
+    setTimeSlot(EMPTY_TIME_SLOT)
     setStatus('done')
     router.refresh()
     setTimeout(() => setStatus('idle'), 3000)
@@ -808,7 +872,7 @@ export default function RequestInput() {
     setLockedIntent(false)
     setClarificationCount(0)
     setPaymentSlot(EMPTY_PAYMENT)
-    setTimeSlot(null)
+    setTimeSlot(EMPTY_TIME_SLOT)
   }
 
   function handleFollowupChange(key: string, value: string) {
@@ -984,7 +1048,7 @@ export default function RequestInput() {
           </p>
           <div className="flex gap-3">
             <a
-              href="#feed"
+              href="/dashboard"
               className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white text-center transition-colors hover:bg-blue-500"
             >
               Browse requests →
@@ -1055,24 +1119,29 @@ export default function RequestInput() {
             </div>
           )}
 
-          {/* ── Time / deadline question ── */}
+          {/* ── Time / deadline question — two-step ── */}
           {showTimeQuestion && (
             <div data-testid="time-question" className="mb-5 rounded-xl border border-blue-500/15 bg-blue-500/[0.05] px-4 py-4">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-400/70 mb-2">
                 {parsed!.category === 'errands' ? 'When do you need this by?' :
                  parsed!.category === 'rides' ? 'When do you need the ride?' :
                  parsed!.category === 'moving' ? 'When do you need help?' :
-                 'When do you need help?'}
+                 'When?'}
               </p>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {getTimeOptions(parsed!.category).map(opt => (
+              {/* Step 1: date bucket */}
+              <div className="flex flex-wrap gap-2">
+                {DATE_BUCKET_OPTIONS.map(opt => (
                   <button
-                    key={opt.value}
+                    key={opt.value!}
                     data-testid="time-option"
                     type="button"
-                    onClick={() => setTimeSlot(prev => prev === opt.value ? null : opt.value)}
+                    onClick={() => setTimeSlot(prev =>
+                      prev.dateBucket === opt.value
+                        ? EMPTY_TIME_SLOT
+                        : { dateBucket: opt.value!, timeMode: null }
+                    )}
                     className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                      timeSlot === opt.value
+                      timeSlot.dateBucket === opt.value
                         ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
                         : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
                     }`}
@@ -1081,6 +1150,29 @@ export default function RequestInput() {
                   </button>
                 ))}
               </div>
+              {/* Step 2: time of day — appears once date is picked */}
+              {timeSlot.dateBucket !== null && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {TIME_MODE_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value!}
+                      data-testid="time-mode"
+                      type="button"
+                      onClick={() => setTimeSlot(prev => ({
+                        ...prev,
+                        timeMode: prev.timeMode === opt.value ? null : opt.value!,
+                      }))}
+                      className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                        timeSlot.timeMode === opt.value
+                          ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
+                          : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1383,6 +1475,18 @@ export default function RequestInput() {
               </>
             )}
 
+            {/* ── MEAL & SOCIAL structured rows ── */}
+            {parsed!.category === 'meal_meetup' && (
+              <>
+                {mergedSD.restaurant_or_area && (
+                  <Row label="Where / cuisine" value={mergedSD.restaurant_or_area as string} />
+                )}
+                {mergedSD.group_size && (
+                  <Row label="Group size" value={`${mergedSD.group_size} people`} />
+                )}
+              </>
+            )}
+
             {/* ── BORROW structured rows ── */}
             {parsed!.category === 'borrow' && (
               <>
@@ -1408,8 +1512,8 @@ export default function RequestInput() {
                 })}
               />
             )}
-            {timeSlot && !parsed!.scheduled_time && (
-              <Row label="When" value={timeSlot} />
+            {isTimeComplete(timeSlot) && !parsed!.scheduled_time && (
+              <Row label="When" value={buildTimeLabel(timeSlot)} />
             )}
             {parsed!.budget != null && !(parsed!.category === 'rides' && parsed!.is_driver) && (
               <Row label="Budget" value={`$${parsed!.budget}`} />

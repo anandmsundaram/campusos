@@ -73,8 +73,11 @@ test.describe('Workflow gate: payment + time slots', () => {
     // Disabled — time gate still blocking (payment is pre-populated via reimbursement_type: 'paid' + budget)
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
 
-    // Select a time option
+    // Step 1: select date bucket
     await page.locator('[data-testid="time-option"]').first().click()
+    // Step 2: select time of day (two-step time flow)
+    await page.locator('[data-testid="time-mode"]').first().waitFor({ timeout: 3_000 })
+    await page.locator('[data-testid="time-mode"]').first().click()
 
     // Now all gates satisfied — confirm enabled
     await expect(page.locator('[data-testid="confirm-post-btn"]')).not.toBeDisabled()
@@ -389,8 +392,11 @@ test.describe('Workflow gate: payment + time slots', () => {
     // Disabled — time + payment both missing
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
 
-    // Select time
+    // Step 1: select date bucket
     await page.locator('[data-testid="time-option"]').first().click()
+    // Step 2: select time of day
+    await page.locator('[data-testid="time-mode"]').first().waitFor({ timeout: 3_000 })
+    await page.locator('[data-testid="time-mode"]').first().click()
 
     // Still disabled — payment still missing
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
@@ -479,8 +485,11 @@ test.describe('Workflow gate: payment + time slots', () => {
     // Still disabled — time + payment missing
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
 
-    // Select time
+    // Step 1: select date bucket
     await page.locator('[data-testid="time-option"]').first().click()
+    // Step 2: select time of day
+    await page.locator('[data-testid="time-mode"]').first().waitFor({ timeout: 3_000 })
+    await page.locator('[data-testid="time-mode"]').first().click()
 
     // Still disabled — payment missing
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()

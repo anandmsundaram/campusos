@@ -129,6 +129,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   peer_help: 'Peer Help',
   errands: 'Errands',
   borrow: 'Borrow',
+  meal_meetup: 'Meal & Social',
 }
 
 const CATEGORY_BADGE: Record<string, string> = {
@@ -137,6 +138,7 @@ const CATEGORY_BADGE: Record<string, string> = {
   peer_help: 'text-green-400 bg-green-500/10 border-green-500/20',
   errands: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
   borrow: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
+  meal_meetup: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
 }
 
 const CATEGORY_ACCENT: Record<string, string> = {
@@ -145,6 +147,7 @@ const CATEGORY_ACCENT: Record<string, string> = {
   peer_help: 'bg-green-500',
   errands: 'bg-purple-500',
   borrow: 'bg-pink-500',
+  meal_meetup: 'bg-rose-500',
 }
 
 const URGENCY_BADGE: Record<string, string> = {
@@ -898,19 +901,30 @@ function RequestCard({
             ) : null
           })()}
           {req.scheduled_time && (
-            <span className="flex items-center gap-1.5">
+            <span data-testid="card-time-meta" className="flex items-center gap-1.5">
               <span className="text-[11px]">🕐</span>
               {req.flexible_time
                 ? `${new Date(req.scheduled_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · Flexible`
                 : new Date(req.scheduled_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
             </span>
           )}
-          {req.budget != null && (
-            <span className="flex items-center gap-1.5">
+          {!req.scheduled_time && !!(req.structured_data as Record<string, unknown> | null)?.deadline_text && (
+            <span data-testid="card-time-meta" className="flex items-center gap-1.5">
+              <span className="text-[11px]">🕐</span>
+              {String((req.structured_data as Record<string, unknown>).deadline_text)}
+            </span>
+          )}
+          {!!(req.structured_data as Record<string, unknown> | null)?.payment_summary ? (
+            <span data-testid="card-payment-meta" className="flex items-center gap-1.5">
+              <span className="text-[11px]">💳</span>
+              {String((req.structured_data as Record<string, unknown>).payment_summary)}
+            </span>
+          ) : req.budget != null ? (
+            <span data-testid="card-payment-meta" className="flex items-center gap-1.5">
               <span className="text-[11px]">💵</span>
               ${req.budget}{isRide && req.is_driver ? ' / seat' : ''}
             </span>
-          )}
+          ) : null}
           {/* Driver info — shown to non-owners browsing ride cards */}
           {isRide && !isOwn && profile && (
             <span className="flex items-center gap-1.5 flex-wrap">
@@ -2120,6 +2134,11 @@ function StructuredDataMeta({ category, sd }: { category: string; sd: Record<str
     if (typeof item === 'string') chips.push(item)
     const dur = sd.borrow_duration
     if (typeof dur === 'string') chips.push(dur)
+  } else if (category === 'meal_meetup') {
+    const place = sd.restaurant_or_area
+    if (typeof place === 'string') chips.push(place)
+    const size = sd.group_size
+    if (size != null) chips.push(`${size} people`)
   }
 
   if (chips.length === 0) return null
