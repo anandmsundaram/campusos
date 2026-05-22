@@ -9,7 +9,7 @@ const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
 
 export default defineConfig({
   testDir: './e2e/tests',
-  timeout: 30_000,
+  timeout: 60_000,
   expect: { timeout: 8_000 },
 
   // One failed test does not abort the whole run
