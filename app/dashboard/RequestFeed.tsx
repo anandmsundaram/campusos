@@ -889,6 +889,23 @@ function RequestCard({
           {req.status === 'completed' && (
             <Badge text="Completed" color="text-emerald-400 bg-emerald-500/10 border-emerald-500/20" />
           )}
+          {/* Role / relationship badge */}
+          {isOwn ? (
+            <span data-testid="card-role-status" className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-300">
+              My request{inlineOffers.length > 0 ? ` · ${inlineOffers.length} offer${inlineOffers.length !== 1 ? 's' : ''}` : ''}
+            </span>
+          ) : myOfferStatus != null ? (
+            <span data-testid="card-role-status" className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${OFFER_STATUS_BADGE[myOfferStatus]}`}>
+              {myOfferStatus === 'accepted' ? '✓ Accepted'
+               : myOfferStatus === 'countered' ? '↩ Counter'
+               : myOfferStatus === 'rejected' ? 'Declined'
+               : 'Offered ✓'}
+            </span>
+          ) : hasOffered ? (
+            <span data-testid="card-role-status" className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-semibold leading-none text-yellow-400">
+              Offered ✓
+            </span>
+          ) : null}
         </div>
 
         {/* Title / Route heading */}
@@ -947,6 +964,27 @@ function RequestCard({
               )
               return null
             }
+            if (req.category === 'meal_meetup') {
+              const mmSd = req.structured_data as Record<string, unknown> | null
+              const mmPlace = (typeof mmSd?.restaurant_or_area === 'string' ? mmSd.restaurant_or_area : null)
+                ?? (req.pickup_location?.place_name as string | undefined)
+              return mmPlace ? (
+                <span data-testid="card-location-meta" className="flex items-center gap-1.5">
+                  <span className="text-[11px]">🍽️</span>
+                  <span>{mmPlace}</span>
+                </span>
+              ) : null
+            }
+            if (req.category === 'peer_help') return null
+            if (req.category === 'borrow') {
+              const borrowLoc = req.pickup_location?.place_name as string | undefined
+              return borrowLoc ? (
+                <span data-testid="card-location-meta" className="flex items-center gap-1.5">
+                  <span className="text-[11px]">📍</span>
+                  <span>{borrowLoc}</span>
+                </span>
+              ) : null
+            }
             if (req.origin_city && req.destination_city) return (
               <span className="flex items-center gap-1.5">
                 <span className="text-[11px]">🚗</span>
@@ -976,17 +1014,43 @@ function RequestCard({
               {String((req.structured_data as Record<string, unknown>).deadline_text)}
             </span>
           )}
-          {!!(req.structured_data as Record<string, unknown> | null)?.payment_summary ? (
-            <span data-testid="card-payment-meta" className="flex items-center gap-1.5">
-              <span className="text-[11px]">💳</span>
-              {String((req.structured_data as Record<string, unknown>).payment_summary)}
-            </span>
-          ) : req.budget != null ? (
-            <span data-testid="card-payment-meta" className="flex items-center gap-1.5">
-              <span className="text-[11px]">💵</span>
-              ${req.budget}{isRide && req.is_driver ? ' / seat' : ''}
-            </span>
-          ) : null}
+          {/* Money — priority: final agreed → counter from requester → payment summary → budget */}
+          {(() => {
+            const moneySd = req.structured_data as Record<string, unknown> | null
+            if (!isOwn && myOfferStatus === 'accepted' && myOfferAgreedPrice != null) {
+              return (
+                <span data-testid="card-final-price" className="flex items-center gap-1.5 text-emerald-400">
+                  <span className="text-[11px]">💰</span>
+                  <span className="font-medium">Final: ${myOfferAgreedPrice}</span>
+                </span>
+              )
+            }
+            if (!isOwn && myOfferStatus === 'countered' && myOfferCounter != null) {
+              return (
+                <span data-testid="card-counter-price" className="flex items-center gap-1.5 text-orange-400">
+                  <span className="text-[11px]">💳</span>
+                  <span>Counter: ${myOfferCounter}</span>
+                </span>
+              )
+            }
+            if (moneySd?.payment_summary) {
+              return (
+                <span data-testid="card-payment-meta" className="flex items-center gap-1.5">
+                  <span className="text-[11px]">💳</span>
+                  {String(moneySd.payment_summary)}
+                </span>
+              )
+            }
+            if (req.budget != null) {
+              return (
+                <span data-testid="card-payment-meta" className="flex items-center gap-1.5">
+                  <span className="text-[11px]">💵</span>
+                  ${req.budget}{isRide && req.is_driver ? ' / seat' : ''}
+                </span>
+              )
+            }
+            return null
+          })()}
           {/* Driver info — shown to non-owners browsing ride cards */}
           {isRide && !isOwn && profile && (
             <span className="flex items-center gap-1.5 flex-wrap">
@@ -1002,6 +1066,60 @@ function RequestCard({
               )}
             </span>
           )}
+          {/* Category-specific capacity / key-info chips */}
+          {req.category === 'moving' && (() => {
+            const mvHelpers = (req.structured_data as Record<string, unknown> | null)?.helpers_needed
+            return mvHelpers != null ? (
+              <span data-testid="card-capacity-meta" className="flex items-center gap-1.5">
+                <span className="text-[11px]">👥</span>
+                {Number(mvHelpers)} helper{Number(mvHelpers) !== 1 ? 's' : ''} needed
+              </span>
+            ) : null
+          })()}
+          {req.category === 'peer_help' && (() => {
+            const phSd = req.structured_data as Record<string, unknown> | null
+            const phSubject = typeof phSd?.subject === 'string' ? phSd.subject : null
+            return phSubject ? (
+              <span data-testid="card-subject-meta" className="flex items-center gap-1.5">
+                <span className="text-[11px]">📚</span>
+                {phSubject}
+              </span>
+            ) : null
+          })()}
+          {req.category === 'peer_help' && (() => {
+            const phVirtual = (req.structured_data as Record<string, unknown> | null)?.is_virtual
+            let phFmt: string | null = null
+            if (phVirtual === true || phVirtual === 'true') phFmt = 'Virtual'
+            else if (phVirtual === false || phVirtual === 'false') phFmt = 'In person'
+            else if (phVirtual === 'either') phFmt = 'Virtual or in person'
+            return phFmt ? (
+              <span data-testid="card-format-meta" className="flex items-center gap-1.5">
+                <span className="text-[11px]">💻</span>
+                {phFmt}
+              </span>
+            ) : null
+          })()}
+          {req.category === 'borrow' && (() => {
+            const bwSd = req.structured_data as Record<string, unknown> | null
+            const bwItem = typeof bwSd?.item === 'string' ? bwSd.item : null
+            return bwItem ? (
+              <span data-testid="card-item-meta" className="flex items-center gap-1.5">
+                <span className="text-[11px]">📦</span>
+                {bwItem}
+              </span>
+            ) : null
+          })()}
+          {req.category === 'borrow' && (() => {
+            const bwSd = req.structured_data as Record<string, unknown> | null
+            const bwDur = (typeof bwSd?.duration === 'string' ? bwSd.duration : null)
+              ?? (typeof bwSd?.borrow_duration === 'string' ? bwSd.borrow_duration : null)
+            return bwDur ? (
+              <span data-testid="card-duration-meta" className="flex items-center gap-1.5">
+                <span className="text-[11px]">📅</span>
+                {bwDur}
+              </span>
+            ) : null
+          })()}
         </div>
 
         {/* Structured data meta chips — non-ride categories only */}
@@ -2283,36 +2401,35 @@ function StructuredDataMeta({ category, sd }: { category: string; sd: Record<str
   const chips: string[] = []
 
   if (category === 'moving') {
-    const helpers = sd.helpers_needed
-    if (helpers != null) chips.push(`${helpers} helper${Number(helpers) !== 1 ? 's' : ''}`)
+    // helpers_needed and location now in meta row — show access_type only
     const access = sd.access_type
-    if (typeof access === 'string') chips.push(access.charAt(0).toUpperCase() + access.slice(1))
+    if (typeof access === 'string') {
+      const accessLabels: Record<string, string> = { elevator: 'Elevator', stairs: 'Stairs', ground_floor: 'Ground floor' }
+      chips.push(accessLabels[access] ?? (access.charAt(0).toUpperCase() + access.slice(1)))
+    }
+    if (sd.has_heavy_items === true) chips.push('Heavy items')
+    if (sd.truck_needed === true) chips.push('Truck needed')
   } else if (category === 'peer_help') {
-    const subject = sd.subject
-    if (typeof subject === 'string') chips.push(subject)
-    const virtual = sd.is_virtual
-    if (virtual === true) chips.push('Virtual')
-    else if (virtual === false) chips.push('In person')
-    else if (virtual === 'either') chips.push('Virtual or in person')
+    // subject and is_virtual now in meta row — show help_type and session_type only
     const helpType = sd.help_type
     const helpTypeLabels: Record<string, string> = { homework: 'Homework', exam_prep: 'Exam prep', concept: 'Concept help', coding: 'Coding', proofreading: 'Proofreading', study_session: 'Study group' }
     if (typeof helpType === 'string') chips.push(helpTypeLabels[helpType] ?? helpType)
+    if (sd.session_type === 'recurring') chips.push('Recurring')
   } else if (category === 'errands') {
     const type = sd.errand_type
     const typeLabels: Record<string, string> = { grocery: 'Grocery run', food_pickup: 'Food pickup', package: 'Package', delivery: 'Delivery', other: 'Errand' }
     if (typeof type === 'string') chips.push(typeLabels[type] ?? type)
-    const place = sd.store_or_place
-    if (typeof place === 'string') chips.push(place)
+    // store_or_place now in meta row — show task_details only
     const taskDetails = sd.task_details
     if (typeof taskDetails === 'string') chips.push(taskDetails.length > 25 ? taskDetails.slice(0, 25) + '…' : taskDetails)
   } else if (category === 'borrow') {
-    const item = sd.item
-    if (typeof item === 'string') chips.push(item)
-    const dur = sd.borrow_duration
-    if (typeof dur === 'string') chips.push(dur)
+    // item and duration now in meta row — show return_condition
+    const returnCond = sd.return_condition
+    if (typeof returnCond === 'string') chips.push(returnCond.length > 30 ? returnCond.slice(0, 30) + '…' : returnCond)
   } else if (category === 'meal_meetup') {
-    const place = sd.restaurant_or_area
-    if (typeof place === 'string') chips.push(place)
+    // restaurant_or_area now in meta row — show group_size and cuisine
+    const cuisine = sd.cuisine_preference
+    if (typeof cuisine === 'string') chips.push(cuisine)
     const size = sd.group_size
     if (size != null) chips.push(`${size} people`)
   }

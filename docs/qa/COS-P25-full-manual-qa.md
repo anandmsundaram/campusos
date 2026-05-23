@@ -1533,5 +1533,193 @@ Mark each item ✅ (pass) or ❌ (fail):
 
 ---
 
+---
+
+## SECTION Z — Front Card Information Hierarchy (COS-P25-FRONT-CARD-INFO-HIERARCHY-REDESIGN)
+
+**Goal:** Verify that every request card front face shows the operationally important info (what, where, when, money, seats/helpers, role) immediately — without requiring the user to open details. Raw free-text must not dominate when structured data is available.
+
+### Z.1 — Ride Card Scanability
+
+1. Open `/dashboard`.
+2. Create a ride request (or use an existing one): driver going from Zachry Engineering to Target, tomorrow, 2 seats, $5/seat.
+3. Without opening the card, verify the front shows:
+   - **Category badge:** Rides
+   - **Route:** Zachry Engineering → Target (in the title or meta row)
+   - **Time:** tomorrow reference (e.g., date or "Tomorrow")
+   - **Payment:** $5 or $5/seat
+   - **Seats:** "2 seats" or "2 of 2 seats left"
+4. Open the detail panel.
+5. Verify detail still shows location, time, payment, and original description.
+6. Close.
+7. Confirm front card is unchanged after close.
+
+**Negative check:** Route, time, and payment must NOT require opening the detail panel to see.
+
+---
+
+### Z.2 — Thai Food Pickup Scanability
+
+1. Create or find a food pickup errand: store = "Thai Palace", task = "Prepaid order #142", payment = "Reimburse actual cost".
+2. Without opening the card, verify front shows:
+   - **Category badge:** Errands (or Food pickup chip)
+   - **Store:** Thai Palace
+   - **Payment:** Reimburse actual cost (or "Reimburse")
+3. Verify front does NOT show: "Everyone pays for themselves", "Split the bill", "Host covers".
+4. Open details.
+5. Verify original request and task details appear.
+6. Close.
+
+---
+
+### Z.3 — Thai Restaurant Meetup Scanability
+
+1. Post or seed a meal & social request for a Thai restaurant meetup with cost plan "Everyone pays for themselves".
+2. Without opening the card, verify front shows:
+   - **Category badge:** Meal & Social
+   - **Title:** Thai restaurant meetup (or equivalent resolved title)
+   - **Cost plan:** Everyone pays for themselves
+3. Verify front does NOT show: "helper fee", "Reimburse", "Food pickup", "Unclear request".
+4. Open details.
+5. Verify original description appears there, not as the dominant front content.
+6. Close.
+
+---
+
+### Z.4 — Moving Help Scanability
+
+1. Post or seed a moving help request: 2 helpers, from Ion CS, $20.
+2. Without opening the card, verify front shows:
+   - **Category badge:** Moving Help
+   - **Helpers count:** "2 helpers needed" (or similar chip)
+   - **Payment:** $20 (or "$20 fixed")
+   - **Location:** Ion CS or the from address if available
+3. Open details.
+4. Verify full structured details (move type, access type, helpers, payment) appear.
+5. Close.
+
+---
+
+### Z.5 — Peer Help Scanability
+
+1. Post or seed a peer help request: subject = Calc II, format = In person, payment = $15/hr.
+2. Without opening the card, verify front shows:
+   - **Category badge:** Peer Help
+   - **Subject chip:** Calc II (📚)
+   - **Format chip:** In person (💻)
+   - **Payment:** $15 or $15/hr
+3. Open details.
+4. Verify session type, help format, and original description appear.
+5. Close.
+
+---
+
+### Z.6 — Borrow Request Scanability
+
+1. Post or seed a borrow request: item = TI-84 graphing calculator, duration = 2 days.
+2. Without opening the card, verify front shows:
+   - **Category badge:** Borrow
+   - **Item chip:** TI-84 graphing calculator (📦)
+   - **Duration chip:** 2 days (📅)
+3. Open details.
+4. Verify return condition and full borrow details appear.
+5. Close.
+
+---
+
+### Z.7 — Offer State: Your Price Appears on Front Card
+
+1. As User B, offer on an open request that has a price (e.g., $15 offered on a $20 request).
+2. View the card as User B (in the All Open tab or after refresh).
+3. Verify the front card shows:
+   - **Role badge:** "Offered ✓" or equivalent status (yellow chip)
+4. As User A, accept User B's offer.
+5. As User B, refresh the page.
+6. Verify the front card now shows:
+   - **Role badge:** "✓ Accepted" (green chip)
+   - **Final price chip:** "Final: $15" (or whatever the agreed price was) — visible without opening details.
+
+**Negative check:** Final price must NOT be hidden only inside the detail panel.
+
+---
+
+### Z.8 — Meal/Social Cards: No Marketplace Pricing Language
+
+1. Create or view a Meal & Social card.
+2. As another user, express interest (click "I'm interested").
+3. View the card as the other user.
+4. Verify front card shows:
+   - Interested status or "Offered ✓" indicator
+5. Verify front card does NOT show:
+   - "helper fee"
+   - "Reimburse"
+   - Counter amount (e.g., "Counter: $X")
+   - "You offered $X" pricing chip
+
+---
+
+### Z.9 — Open Each Card and Verify Detail Side Still Works
+
+1. For each card type (ride, meal, food pickup, moving, peer help, borrow):
+   a. Open the detail panel.
+   b. Verify original request text appears (in `request-card-original-text`).
+   c. Verify structured detail fields are still present.
+   d. Close the card.
+   e. Confirm front card info is unchanged.
+
+---
+
+### Z.10 — Mobile Scanability (390×844)
+
+1. Open DevTools → set viewport to 390×844.
+2. Navigate to `/dashboard`.
+3. For each visible card type, WITHOUT opening details, verify:
+   - Title is readable.
+   - Time chip (if present) is readable.
+   - Payment chip is readable.
+   - Subject/item/helpers chip (if applicable) is readable.
+   - No horizontal overflow (no scrollbar appears).
+4. Open one card.
+5. Verify close button is visible and tappable.
+6. Verify detail content is scrollable and readable on 390px.
+
+---
+
+### Z.11 — Raw Text Does Not Dominate
+
+1. Find any request card that has both structured data AND a raw description.
+2. Verify the card front does NOT show a multi-line raw paragraph as the main content.
+3. Raw original text should be ABSENT from the front, or shown only as a single muted line (if no summary is available).
+4. Verify the raw text IS visible inside the detail panel when opened.
+
+---
+
+### Z.12 — Section Z Summary Checklist
+
+Mark each ✅ (pass) or ❌ (fail):
+
+| Check | Result |
+|---|---|
+| Ride: route/time/payment/seats visible without opening details | |
+| Food pickup: store/time/payment visible without opening details | |
+| Meal meetup: title/time/cost plan visible without opening details | |
+| Moving: helpers/location/payment visible without opening details | |
+| Peer help: subject/format/payment visible without opening details | |
+| Borrow: item/duration visible without opening details | |
+| Role badge shows "My request" for requester | |
+| Role badge shows "Offered ✓" for helper who offered | |
+| Role badge shows "✓ Accepted" after offer acceptance | |
+| Final agreed price shows on front card (not just in details) | |
+| Meal/social front card has no marketplace pricing language | |
+| No raw text paragraph dominating front card when structured data exists | |
+| Detail panel still shows full structured info after front card changes | |
+| No horizontal overflow on 390px mobile | |
+| All category front cards readable on mobile without opening details | |
+
+**All 15 checks must be ✅ for Section Z to pass.**
+
+---
+
 *Generated for COS-P25-FULL-MANUAL-QA-SCRIPT-AND-VERIFICATION · 2026-05-23*  
-*Section Y appended for COS-P25-CARD-FLIP-UX-REFINEMENT · 2026-05-23*
+*Section Y appended for COS-P25-CARD-FLIP-UX-REFINEMENT · 2026-05-23*  
+*Section Z appended for COS-P25-FRONT-CARD-INFO-HIERARCHY-REDESIGN · 2026-05-23*
