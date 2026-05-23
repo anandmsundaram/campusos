@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { trackEvent } from '@/lib/analytics'
@@ -227,6 +227,12 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const [seatsRequested, setSeatsRequested] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Card expand state — only one card open at a time
+  const [openCardId, setOpenCardId] = useState<string | null>(null)
+  const toggleCard = useCallback((id: string) => {
+    setOpenCardId(prev => (prev === id ? null : id))
+  }, [])
   const [offeredIds, setOfferedIds] = useState<Set<string>>(new Set())
 
   const now = useMemo(() => new Date(), [])
@@ -510,6 +516,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                         req={req}
                         profile={profile}
                         isOwn={isOwn}
+                        isExpanded={openCardId === req.id}
+                        onToggle={() => toggleCard(req.id)}
                         hasOffered={offeredIds.has(req.id)}
                         onOffer={() => openOfferModal(req)}
                         onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null, errandType: (req.structured_data?.errand_type as string | null) ?? null })}
@@ -550,6 +558,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                           req={req}
                           profile={normalizeProfile(req.profiles)}
                           isOwn
+                          isExpanded={openCardId === req.id}
+                          onToggle={() => toggleCard(req.id)}
                           hasOffered={false}
                           onOffer={() => {}}
                           onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null, errandType: (req.structured_data?.errand_type as string | null) ?? null })}
@@ -583,6 +593,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 req={req}
                 profile={profile}
                 isOwn={isOwn}
+                isExpanded={openCardId === req.id}
+                onToggle={() => toggleCard(req.id)}
                 hasOffered={offeredIds.has(req.id)}
                 myOfferStatus={myOffersByRequestId.get(req.id)?.status ?? null}
                 myOfferCounter={myOffersByRequestId.get(req.id)?.requester_counter ?? null}
@@ -740,6 +752,8 @@ function RequestCard({
   req,
   profile,
   isOwn,
+  isExpanded = false,
+  onToggle,
   hasOffered,
   myOfferStatus = null,
   myOfferCounter = null,
@@ -762,6 +776,8 @@ function RequestCard({
   req: FeedRequest
   profile: ProfileInfo | null
   isOwn: boolean
+  isExpanded?: boolean
+  onToggle?: () => void
   hasOffered: boolean
   myOfferStatus?: 'pending' | 'countered' | 'accepted' | 'rejected' | null
   myOfferCounter?: number | null
@@ -789,7 +805,19 @@ function RequestCard({
   const isExpired = isPast && req.status === 'open' && !hasSeatsSold
   const isPastRide = isPast && !!hasSeatsSold
 
-  const [expanded, setExpanded] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // Close this card when user clicks outside it
+  useEffect(() => {
+    if (!isExpanded) return
+    const handleOutside = (e: MouseEvent) => {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        onToggle?.()
+      }
+    }
+    const id = setTimeout(() => document.addEventListener('mousedown', handleOutside), 0)
+    return () => { clearTimeout(id); document.removeEventListener('mousedown', handleOutside) }
+  }, [isExpanded, onToggle])
 
   // Trust signal derivations — used in card footer
   const completedTasksCount = profile?.completed_tasks ?? 0
@@ -805,11 +833,26 @@ function RequestCard({
     : (CATEGORY_ACCENT[req.category] ?? 'bg-slate-500')
 
   return (
-    <div data-testid="request-card" data-request-id={req.id} className="group relative overflow-hidden rounded-xl border border-[#1e2d4a] bg-[#0d1526] transition-all duration-200 hover:border-blue-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40">
+    <div
+      ref={cardRef}
+      data-testid="request-card"
+      data-request-id={req.id}
+      className={`group relative overflow-hidden rounded-xl border transition-all duration-300 ${
+        isExpanded
+          ? 'border-blue-500/25 bg-[#0d1830] shadow-xl shadow-black/50 -translate-y-0.5'
+          : 'border-[#1e2d4a] bg-[#0d1526] hover:border-blue-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40'
+      }`}
+    >
       {/* Left accent bar */}
       <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${accentClass}`} />
 
       <div className="pl-5 pr-4 pt-4 pb-4">
+        {/* FRONT FACE — clicking this area opens details */}
+        <div
+          data-testid="request-card-front"
+          onClick={() => onToggle?.()}
+          className="cursor-pointer select-none"
+        >
         {/* Top: badges */}
         <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
           <Badge text={CATEGORY_LABELS[req.category] ?? req.category} color={CATEGORY_BADGE[req.category]} />
@@ -865,14 +908,14 @@ function RequestCard({
         )}
 
         {/* Parser summary subtitle — non-ride skim hint */}
-        {!isRide && !expanded && typeof req.structured_data?.summary === 'string' && (
+        {!isRide && !isExpanded && typeof req.structured_data?.summary === 'string' && (
           <p data-testid="card-summary" className="text-xs text-slate-500 leading-relaxed -mt-1 mb-3 line-clamp-2">
             {req.structured_data.summary}
           </p>
         )}
 
         {/* Meta row */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-4">
+        <div data-testid="request-card-key-details" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-4">
           {/* Non-ride location — prefer resolved pickup_location/dropoff_location */}
           {!isRide && (() => {
             if (req.category === 'errands') {
@@ -964,21 +1007,25 @@ function RequestCard({
         {/* Structured data meta chips — non-ride categories only */}
         {!isRide && <StructuredDataMeta category={req.category} sd={req.structured_data} />}
 
-        {/* Expanded detail section */}
-        {expanded && (
-          <div
-            data-testid="request-card-details"
-            id={`detail-${req.id}`}
-            className="mt-3 mb-1 rounded-xl border border-[#1e2d4a] bg-white/[0.02] overflow-hidden"
-          >
+        </div>{/* end request-card-front */}
+
+        {/* Animated detail section — always rendered, animated in/out */}
+        <div
+          data-testid="request-card-details"
+          id={`detail-${req.id}`}
+          aria-hidden={!isExpanded}
+          style={{ maxHeight: isExpanded ? '1400px' : '0' }}
+          className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        >
+          <div className="mt-3 mb-1 rounded-xl border border-blue-500/20 bg-[#0a1220]/60">
             {/* Detail header with close button */}
             <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-[#1e2d4a]/50">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Details</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Details</span>
               <button
                 type="button"
                 data-testid="request-card-detail-close"
-                onClick={(e) => { e.stopPropagation(); setExpanded(false) }}
-                className="text-slate-600 hover:text-slate-400 transition-colors text-[13px] leading-none px-1"
+                onClick={(e) => { e.stopPropagation(); onToggle?.() }}
+                className="text-slate-500 hover:text-slate-300 transition-colors text-[13px] leading-none px-1"
                 aria-label="Close details"
               >
                 ✕
@@ -1064,7 +1111,7 @@ function RequestCard({
               )}
             </div>
           </div>
-        )}
+        </div>{/* end animated detail section */}
 
         {/* Passengers section — driver's own card with accepted bookings */}
         {isOwn && isRide && req.is_driver && acceptedOffers && acceptedOffers.length > 0 && (() => {
@@ -1112,7 +1159,7 @@ function RequestCard({
 
         {/* Inline pending offers — shown in My Requests tab for the requester */}
         {inlineOffers.length > 0 && (
-          <div className="mb-4 space-y-2">
+          <div className="mb-4 space-y-2" onClick={(e) => e.stopPropagation()}>
             <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
               {inlineOffers.length} pending offer{inlineOffers.length !== 1 ? 's' : ''}
             </p>
@@ -1179,13 +1226,13 @@ function RequestCard({
             <button
               type="button"
               data-testid="request-card-toggle"
-              aria-expanded={expanded}
+              aria-expanded={isExpanded}
               aria-controls={`detail-${req.id}`}
-              onClick={(e) => { e.stopPropagation(); setExpanded(v => !v) }}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setExpanded(v => !v) } }}
-              className="flex-shrink-0 text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onToggle?.() }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onToggle?.() } }}
+              className={`flex-shrink-0 text-[11px] font-medium transition-colors ${isExpanded ? 'text-blue-400 hover:text-blue-300' : 'text-slate-500 hover:text-slate-300'}`}
             >
-              {expanded ? 'Less ▴' : 'Details ▾'}
+              {isExpanded ? 'Less ▴' : 'Details ▾'}
             </button>
           </div>
 
@@ -1197,7 +1244,7 @@ function RequestCard({
                 <button
                   data-testid="mark-complete-btn"
                   type="button"
-                  onClick={onComplete}
+                  onClick={(e) => { e.stopPropagation(); onComplete() }}
                   disabled={completing}
                   className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
                 >
@@ -1209,7 +1256,7 @@ function RequestCard({
             <button
               data-testid="view-offers-btn"
               type="button"
-              onClick={onViewOffers}
+              onClick={(e) => { e.stopPropagation(); onViewOffers() }}
               className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-all hover:border-white/20 hover:text-slate-200"
             >
               View offers
@@ -1218,7 +1265,7 @@ function RequestCard({
             myOfferStatus === 'countered' ? (
               <button
                 type="button"
-                onClick={onGoToOffers}
+                onClick={(e) => { e.stopPropagation(); onGoToOffers?.() }}
                 className="flex items-center gap-1.5 rounded-lg border border-orange-500/30 bg-orange-500/[0.08] px-3 py-1.5 text-xs font-semibold text-orange-400 transition-all hover:bg-orange-500/15 active:scale-95"
               >
                 ↩ Counter{myOfferCounter != null ? ` $${myOfferCounter}` : ''} — tap to respond
@@ -1242,7 +1289,7 @@ function RequestCard({
             <button
               data-testid="offer-cta-btn"
               type="button"
-              onClick={onOffer}
+              onClick={(e) => { e.stopPropagation(); onOffer() }}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-blue-500 active:scale-95"
             >
               {ctaLabel}

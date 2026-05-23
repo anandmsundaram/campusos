@@ -1348,4 +1348,190 @@
 
 ---
 
-*Generated for COS-P25-FULL-MANUAL-QA-SCRIPT-AND-VERIFICATION · 2026-05-23*
+---
+
+## SECTION Y — Card Flip UX Refinement (COS-P25-CARD-FLIP-UX-REFINEMENT)
+
+**Goal:** Verify the enhanced expand/collapse UX: single-card-open enforcement, click-outside dismissal, front-face click-to-open, smooth animation, visual highlight, and mobile interaction.
+
+### Y.1 — Only One Card Open at a Time
+
+1. As User B on `/dashboard`, ensure at least two request cards are visible in the feed.
+2. Click **Details ▾** (or anywhere in the front face) on the first card.
+3. Confirm the first card expands (detail panel slides open with animation).
+4. Without closing the first card, click **Details ▾** on a second card.
+5. Confirm the **first card collapses** and the **second card expands** simultaneously.
+6. Confirm only one card is ever open at a time — no two detail panels visible together.
+
+**Negative check:** Opening card B must not leave card A partially open (partial max-height or lingering opacity).
+
+---
+
+### Y.2 — Click Outside Closes Card
+
+1. Expand a card by clicking its **Details ▾** button.
+2. Click somewhere on the page **outside** that card (e.g., the page header, an empty feed area, another card's *front face without expanding it*).
+3. Confirm the expanded card collapses.
+4. Confirm the card's front content (title, badges, CTA button) is still visible after collapse.
+
+**Negative check:** Clicking inside the open card's detail panel must NOT close the card.
+
+---
+
+### Y.3 — Clicking Inside the Detail Panel Does Not Close
+
+1. Expand a card.
+2. Click on text content inside the detail panel (original description text, structured field labels, values).
+3. Confirm the card remains open — the detail panel does not collapse.
+4. Click the **✕ Close** button in the detail panel header.
+5. Confirm the card collapses cleanly.
+
+---
+
+### Y.4 — Front-Face Click Opens the Card
+
+1. Locate a collapsed card in the feed.
+2. Click directly on the card's **title text**.
+3. Confirm the card expands (detail panel slides open).
+4. Collapse it by clicking the **Less ▴** toggle or **✕ Close**.
+5. Click on the card's **summary text** (if visible).
+6. Confirm it also expands.
+7. Click on a **category badge** on the card.
+8. Confirm it also expands.
+
+**Negative check:** The cursor should show `pointer` (hand cursor) when hovering over the card front area.
+
+---
+
+### Y.5 — CTA Buttons Do Not Accidentally Expand
+
+1. Locate a collapsed card for a request that User B has not yet offered on.
+2. Click the **Offer / Help** CTA button (primary teal button at card bottom).
+3. Confirm the **offer modal opens**.
+4. Confirm the card's detail panel is **NOT open** (no detail panel visible while modal is shown).
+5. Dismiss the modal (press Escape or click outside).
+6. Confirm the card is still collapsed.
+
+---
+
+### Y.6 — Visual Highlight When Card Is Open
+
+1. Note the card's border and background color when collapsed (dark background, subtle border).
+2. Click to expand the card.
+3. Confirm the card's border changes to blue (blue-500/25 tint) when expanded.
+4. Confirm the background is slightly different (darker) than the collapsed state.
+5. Collapse the card.
+6. Confirm the card returns to its original border and background.
+
+---
+
+### Y.7 — Animation Smoothness
+
+1. Click **Details ▾** to expand a card.
+2. Observe that the detail panel **slides down smoothly** (max-height transition, not a jump or instant appear).
+3. Observe that opacity transitions from transparent to opaque during the slide.
+4. Click **Less ▴** or **✕ Close** to collapse.
+5. Observe that the detail panel **slides back up** (reverse transition).
+6. Confirm no layout jank or content flicker during either transition.
+
+---
+
+### Y.8 — Toggle Button State
+
+1. On a collapsed card, locate the toggle button in the card footer.
+2. Confirm it shows **"Details ▾"** and uses muted text color (slate-500).
+3. Expand the card.
+4. Confirm the button now shows **"Less ▴"** and uses blue text color.
+5. Confirm the button has `aria-expanded="false"` when collapsed and `aria-expanded="true"` when expanded.
+   (Check via DevTools → Elements → inspect the toggle button.)
+
+---
+
+### Y.9 — Keyboard Accessibility
+
+1. Use **Tab** to navigate to a card's toggle button (or click it once to focus it).
+2. Confirm the toggle button is focusable and shows a visible focus ring.
+3. Press **Space** while the button is focused and collapsed.
+4. Confirm the card expands.
+5. Press **Space** again (button still focused).
+6. Confirm the card collapses.
+7. Press **Enter** to expand again.
+8. Confirm the card expands.
+9. Verify no other focus traps or unexpected behavior.
+
+---
+
+### Y.10 — Mobile Viewport (390×844)
+
+1. Open DevTools → Device toolbar → set viewport to **iPhone 14 Pro** (390×844) or equivalent.
+2. Reload `/dashboard`.
+3. Confirm no horizontal scrollbar appears (no content overflows the viewport width).
+4. Tap a card's front area to expand it.
+5. Confirm the detail panel slides open and is fully readable.
+6. Confirm the **✕ Close** button is visible and tappable within the detail panel header.
+7. Confirm the **Offer / Help** CTA is still tappable at card bottom.
+8. Tap outside the card (e.g., the page background) to close.
+9. Confirm the card collapses.
+
+**Negative check:** No text should overflow the card edges on mobile. No tappable element should be cut off.
+
+---
+
+### Y.11 — My Requests Tab
+
+1. Switch to the **My Requests** tab.
+2. Confirm the same expand/collapse behavior applies to the requester's own cards.
+3. Expand one of your own cards.
+4. Confirm the detail panel shows the original description text and structured fields.
+5. Confirm the **Mark Complete** button (if visible) does not trigger expand when clicked.
+6. Confirm the **View Offers** button (if visible) does not trigger expand when clicked.
+
+**Negative check:** Clicking the **Mark Complete** or **View Offers** buttons must not open or close the detail panel.
+
+---
+
+### Y.12 — No Regression: Core Front-Card Content
+
+1. With a card collapsed, confirm all of the following are visible:
+   - Category badge (e.g., "Rides", "Peer Help")
+   - Request title
+   - Urgency or status badge
+   - Time/schedule info (if applicable)
+   - Payment/budget line (if applicable)
+   - **Offer / Help** CTA button
+2. Click to expand the card.
+3. Confirm all of the above **remain visible** while expanded.
+4. Collapse the card.
+5. Confirm all of the above are still visible after collapse.
+
+---
+
+### Y.13 — Section Y Summary Checklist
+
+Mark each item ✅ (pass) or ❌ (fail):
+
+| Check | Result |
+|---|---|
+| Only one card open at a time | |
+| Opening second card closes first | |
+| Click outside collapses open card | |
+| Click inside detail panel keeps card open | |
+| Front-face click expands card | |
+| CTA button does not expand card | |
+| Visual border/bg highlight when expanded | |
+| Smooth slide animation both ways | |
+| Toggle shows "Details ▾" / "Less ▴" correctly | |
+| aria-expanded reflects state | |
+| Space / Enter keyboard toggle works | |
+| No horizontal overflow on 390px mobile | |
+| Close button visible on mobile | |
+| My Requests: Mark Complete doesn't toggle card | |
+| My Requests: View Offers doesn't toggle card | |
+| Front-card content visible during and after expand | |
+
+**All 16 checks must be ✅ for Section Y to pass.**
+
+---
+
+*Generated for COS-P25-FULL-MANUAL-QA-SCRIPT-AND-VERIFICATION · 2026-05-23*  
+*Section Y appended for COS-P25-CARD-FLIP-UX-REFINEMENT · 2026-05-23*
