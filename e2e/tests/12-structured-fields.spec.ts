@@ -259,16 +259,16 @@ test.describe('Structured coordination fields', () => {
     await expect(card).toBeVisible({ timeout: 10_000 })
 
     // Expand the card
-    const expandBtn = card.locator('[data-testid="card-expand-btn"]')
+    const expandBtn = card.locator('[data-testid="request-card-toggle"]')
     await expect(expandBtn).toBeVisible()
     await expandBtn.click()
 
     // Expanded detail section should appear
-    const detailSection = card.locator('[data-testid="card-detail-section"]')
+    const detailSection = card.locator('[data-testid="request-card-details"]')
     await expect(detailSection).toBeVisible()
 
     // Original description text should be shown
-    const descriptionEl = card.locator('[data-testid="card-description"]')
+    const descriptionEl = card.locator('[data-testid="request-card-original-text"]')
     await expect(descriptionEl).toBeVisible()
     await expect(descriptionEl).toContainText(`[E2E-${runId}]`)
 

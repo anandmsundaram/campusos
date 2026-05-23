@@ -966,13 +966,103 @@ function RequestCard({
 
         {/* Expanded detail section */}
         {expanded && (
-          <div data-testid="card-detail-section" className="mt-2 mb-3 rounded-lg border border-[#1e2d4a] bg-white/[0.02] p-3 space-y-2">
-            {req.description && (
-              <p data-testid="card-description" className="text-xs text-slate-400 italic leading-relaxed">
-                &ldquo;{req.description}&rdquo;
-              </p>
-            )}
-            {req.structured_data && <ExpandedStructuredData category={req.category} sd={req.structured_data} />}
+          <div
+            data-testid="request-card-details"
+            id={`detail-${req.id}`}
+            className="mt-3 mb-1 rounded-xl border border-[#1e2d4a] bg-white/[0.02] overflow-hidden"
+          >
+            {/* Detail header with close button */}
+            <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-[#1e2d4a]/50">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">Details</span>
+              <button
+                type="button"
+                data-testid="request-card-detail-close"
+                onClick={(e) => { e.stopPropagation(); setExpanded(false) }}
+                className="text-slate-600 hover:text-slate-400 transition-colors text-[13px] leading-none px-1"
+                aria-label="Close details"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="px-3 py-3 space-y-3">
+              {/* Original request text */}
+              {req.description && (
+                <p
+                  data-testid="request-card-original-text"
+                  className="text-xs text-slate-400 italic leading-relaxed border-l-2 border-[#1e2d4a] pl-3"
+                >
+                  &ldquo;{req.description}&rdquo;
+                </p>
+              )}
+
+              {/* Time row */}
+              {(!!req.scheduled_time || !!(req.structured_data as Record<string, unknown> | null)?.deadline_text) && (
+                <div data-testid="request-card-time" className="flex items-start gap-2">
+                  <span className="text-[11px] mt-0.5 flex-shrink-0">🕐</span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">When</p>
+                    <p className="text-xs text-slate-300">
+                      {req.scheduled_time
+                        ? req.flexible_time
+                          ? `${new Date(req.scheduled_time).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} · Flexible`
+                          : new Date(req.scheduled_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                        : String((req.structured_data as Record<string, unknown>).deadline_text)
+                      }
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Payment row */}
+              {(!!(req.structured_data as Record<string, unknown> | null)?.payment_summary || req.budget != null) && (
+                <div data-testid="request-card-payment" className="flex items-start gap-2">
+                  <span className="text-[11px] mt-0.5 flex-shrink-0">💳</span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">Payment</p>
+                    <p className="text-xs text-slate-300">
+                      {(req.structured_data as Record<string, unknown> | null)?.payment_summary
+                        ? String((req.structured_data as Record<string, unknown>).payment_summary)
+                        : `$${req.budget}${isRide && req.is_driver ? ' / seat' : ''}`
+                      }
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Location row (non-ride) */}
+              {!isRide && (!!(req.pickup_location?.place_name) || !!(req.dropoff_location?.place_name)) && (
+                <div data-testid="request-card-location" className="flex items-start gap-2">
+                  <span className="text-[11px] mt-0.5 flex-shrink-0">📍</span>
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">Location</p>
+                    {!!(req.pickup_location?.place_name) && (
+                      <p className="text-xs text-slate-300">{req.pickup_location!.place_name as string}</p>
+                    )}
+                    {!!(req.dropoff_location?.place_name) && (
+                      <p className="text-xs text-slate-400 mt-0.5">→ {req.dropoff_location!.place_name as string}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Enhanced category-specific structured fields */}
+              {req.structured_data && (
+                <ExpandedStructuredData category={req.category} sd={req.structured_data} />
+              )}
+
+              {/* Primary CTA mirrored inside detail panel for quick access */}
+              {!isOwn && !hasOffered && !myOfferStatus && !isPast && !isFull && !rideStarted && (
+                <button
+                  data-testid="request-card-primary-cta"
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onOffer?.() }}
+                  className="w-full rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-500 active:scale-95"
+                >
+                  {ctaLabel}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
@@ -1088,8 +1178,11 @@ function RequestCard({
             <span className="flex-shrink-0 text-xs text-slate-700">·</span>
             <button
               type="button"
-              data-testid="card-expand-btn"
+              data-testid="request-card-toggle"
+              aria-expanded={expanded}
+              aria-controls={`detail-${req.id}`}
               onClick={(e) => { e.stopPropagation(); setExpanded(v => !v) }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setExpanded(v => !v) } }}
               className="flex-shrink-0 text-[10px] text-slate-600 hover:text-slate-400 transition-colors"
             >
               {expanded ? 'Less ▴' : 'Details ▾'}
@@ -2196,36 +2289,73 @@ function ExpandedStructuredData({ category, sd }: { category: string; sd: Record
     const luggage = sd.has_luggage
     if (luggage === true) rows.push({ label: 'Luggage', value: 'Yes' })
     else if (luggage === false) rows.push({ label: 'Luggage', value: 'None' })
+    const meetupPt = sd.meetup_point
+    if (typeof meetupPt === 'string') rows.push({ label: 'Meet at', value: meetupPt })
+    const stops = sd.stops_allowed
+    if (stops === true) rows.push({ label: 'Stops', value: 'OK with stops' })
+    else if (stops === false) rows.push({ label: 'Stops', value: 'Direct only' })
   } else if (category === 'moving') {
     const moveType = sd.move_type
     const moveLabels: Record<string, string> = { move_in: 'Moving in', move_out: 'Moving out', furniture: 'Moving furniture', other: 'Other' }
     if (typeof moveType === 'string') rows.push({ label: 'Type', value: moveLabels[moveType] ?? moveType })
+    const helpers = sd.helpers_needed
+    if (typeof helpers === 'number') rows.push({ label: 'Helpers', value: `${helpers} needed` })
+    const access = sd.access_type
+    const accessLabels: Record<string, string> = { elevator: 'Elevator access', stairs: 'Stairs only', ground_floor: 'Ground floor' }
+    if (typeof access === 'string') rows.push({ label: 'Access', value: accessLabels[access] ?? access })
     if (sd.truck_needed === true) rows.push({ label: 'Needs', value: 'Truck or van' })
-    if (sd.has_heavy_items === true) rows.push({ label: 'Items', value: 'Heavy items' })
+    if (sd.has_heavy_items === true) rows.push({ label: 'Items', value: 'Includes heavy items' })
     const dur = sd.estimated_duration
-    if (typeof dur === 'string') rows.push({ label: 'Estimated', value: dur })
+    if (typeof dur === 'string') rows.push({ label: 'Duration', value: dur })
   } else if (category === 'peer_help') {
+    const subject = sd.subject
+    if (typeof subject === 'string') rows.push({ label: 'Subject', value: subject })
     const helpType = sd.help_type
     const helpLabels: Record<string, string> = { homework: 'Homework help', exam_prep: 'Exam prep', concept: 'Concept explanation', coding: 'Coding help', proofreading: 'Proofreading', study_session: 'Study session' }
-    if (typeof helpType === 'string') rows.push({ label: 'Type', value: helpLabels[helpType] ?? helpType })
+    if (typeof helpType === 'string') rows.push({ label: 'Format', value: helpLabels[helpType] ?? helpType })
+    const isVirtual = sd.is_virtual
+    if (isVirtual === true || isVirtual === 'true') rows.push({ label: 'Mode', value: 'Virtual / online' })
+    else if (isVirtual === false || isVirtual === 'false') rows.push({ label: 'Mode', value: 'In-person' })
     if (sd.session_type === 'recurring') rows.push({ label: 'Frequency', value: 'Weekly / recurring' })
+    else if (sd.session_type === 'one_time') rows.push({ label: 'Sessions', value: 'One-time' })
   } else if (category === 'errands') {
+    const errandType = sd.errand_type
+    const errandLabels: Record<string, string> = { grocery: 'Grocery run', food_pickup: 'Food pickup', pharmacy: 'Pharmacy', package: 'Package delivery', other: 'Other errand' }
+    if (typeof errandType === 'string') rows.push({ label: 'Type', value: errandLabels[errandType] ?? errandType })
+    const store = sd.store_or_place
+    if (typeof store === 'string') rows.push({ label: 'From', value: store })
     const taskDetails = sd.task_details
     if (typeof taskDetails === 'string') rows.push({ label: 'Task', value: taskDetails })
     const reimburse = sd.reimbursement_type
-    const reimburseLabels: Record<string, string> = { paid: "They'll pay you", reimburse: 'They reimburse your costs', free: 'Free favor' }
+    const reimburseLabels: Record<string, string> = { paid: "Requester pays you", reimburse: 'Costs reimbursed', free: 'Free favor' }
     if (typeof reimburse === 'string') rows.push({ label: 'Payment', value: reimburseLabels[reimburse] ?? reimburse })
   } else if (category === 'borrow') {
+    const item = sd.item
+    if (typeof item === 'string') rows.push({ label: 'Item', value: item })
+    const duration = sd.duration
+    if (typeof duration === 'string') rows.push({ label: 'Duration', value: duration })
+    const returnCond = sd.return_condition
+    if (typeof returnCond === 'string') rows.push({ label: 'Return', value: returnCond })
     if (sd.replacement_responsibility === true) rows.push({ label: 'Note', value: 'Will replace if damaged' })
+  } else if (category === 'meal_meetup') {
+    const cuisine = sd.cuisine_preference
+    if (typeof cuisine === 'string') rows.push({ label: 'Cuisine', value: cuisine })
+    const mealType = sd.meal_type
+    const mealLabels: Record<string, string> = { breakfast: 'Breakfast', lunch: 'Lunch', dinner: 'Dinner', coffee: 'Coffee / study', other: 'Other' }
+    if (typeof mealType === 'string') rows.push({ label: 'Meal', value: mealLabels[mealType] ?? mealType })
+    const groupSize = sd.group_size
+    if (typeof groupSize === 'number') rows.push({ label: 'Group', value: `Up to ${groupSize} people` })
+    const costRange = sd.cost_range
+    if (typeof costRange === 'string') rows.push({ label: 'Budget', value: costRange })
   }
 
   if (rows.length === 0) return null
   return (
-    <div className="flex flex-col gap-1.5 pt-1 border-t border-[#1e2d4a]/60">
+    <div className="flex flex-col gap-1.5 pt-2 border-t border-[#1e2d4a]/60">
       {rows.map(({ label, value }) => (
         <div key={label} className="flex items-baseline gap-2">
           <span className="text-[10px] uppercase tracking-wider text-slate-600 w-16 flex-shrink-0">{label}</span>
-          <span className="text-xs text-slate-400">{value}</span>
+          <span className="text-xs text-slate-300">{value}</span>
         </div>
       ))}
     </div>
