@@ -250,92 +250,61 @@ interface PaymentOption {
   needs_helper_fee?: true
 }
 
-function getPaymentOptions(
+function getPaymentOptionsForFlow(
+  intentType: IntentType | null,
   category: ParsedRequest['category'],
   isOffer: boolean,
+  errandType?: string | null,
 ): PaymentOption[] {
-  if (category === 'errands') return [
-    { mode: 'free', label: '🤝 Free / favor', description: 'No money involved' },
-    {
-      mode: 'fixed_amount',
-      label: "💰 You'll pay the helper a fixed amount",
-      description: 'Order is already paid — you pay the helper for their time',
-      needs_amount: true,
-      amount_label: 'Helper fee ($)',
-    },
-    {
-      mode: 'reimburse_cost_only',
-      label: '🔄 Reimburse actual cost only',
-      description: 'Helper pays first, you pay back the exact item/food cost',
-    },
-    {
-      mode: 'reimburse_plus_helper_fee',
-      label: '🔄 Reimburse cost + helper fee',
-      description: 'Helper pays first, you pay back the cost plus extra for their time',
-      needs_helper_fee: true,
-    },
-  ]
-  if (category === 'rides' && !isOffer) return [
+  // Rides
+  if (category === 'rides' && isOffer) return []
+  if (intentType === 'ride_request' || (category === 'rides' && !isOffer)) return [
     { mode: 'split_gas', label: '⛽ Split gas', description: 'Share gas costs evenly' },
-    {
-      mode: 'fixed_amount',
-      label: "💰 You'll pay a fixed amount",
-      description: 'Set amount for the ride',
-      needs_amount: true,
-      amount_label: "Amount you'll pay ($)",
-    },
+    { mode: 'fixed_amount', label: "💰 You'll pay a fixed amount", description: 'Set amount for the ride', needs_amount: true, amount_label: "Amount you'll pay ($)" },
     { mode: 'free', label: '🎁 Free / favor', description: 'No payment expected' },
+    { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work out payment with the driver' },
   ]
-  if (category === 'moving') return [
+  // Food pickup — no free (someone always pays for the food)
+  if (intentType === 'food_pickup_request' || (category === 'errands' && errandType === 'food_pickup')) return [
+    { mode: 'fixed_amount', label: '💰 Order already paid — pay helper for their time', description: "You placed the order; helper just picks it up", needs_amount: true, amount_label: 'Helper fee ($)' },
+    { mode: 'reimburse_cost_only', label: '🔄 Reimburse actual food cost only', description: 'Helper orders and pays first, you pay them back the exact food cost' },
+    { mode: 'reimburse_plus_helper_fee', label: '🔄 Reimburse food cost + helper fee', description: 'Helper orders and pays first, you pay them back cost plus extra for their time', needs_helper_fee: true },
+    { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work out details with the helper' },
+  ]
+  // General errands
+  if (intentType === 'errand_request' || category === 'errands') return [
+    { mode: 'free', label: '🤝 Free / favor', description: 'No money involved' },
+    { mode: 'fixed_amount', label: "💰 You'll pay the helper a fixed amount", description: 'Order is already paid — you pay the helper for their time', needs_amount: true, amount_label: 'Helper fee ($)' },
+    { mode: 'reimburse_cost_only', label: '🔄 Reimburse actual cost only', description: 'Helper pays first, you pay back the exact item/food cost' },
+    { mode: 'reimburse_plus_helper_fee', label: '🔄 Reimburse cost + helper fee', description: 'Helper pays first, you pay back the cost plus extra for their time', needs_helper_fee: true },
+    { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work it out with the helper' },
+  ]
+  // Moving
+  if (intentType === 'moving_request' || category === 'moving') return [
     { mode: 'free', label: '🤝 Free / favor', description: 'No payment' },
-    {
-      mode: 'fixed_amount',
-      label: "💰 You'll pay a fixed total",
-      description: 'Set amount for the whole job',
-      needs_amount: true,
-      amount_label: 'Total amount ($)',
-    },
-    {
-      mode: 'hourly',
-      label: '⏱️ Hourly rate',
-      description: 'Pay per hour of work',
-      needs_amount: true,
-      amount_label: 'Rate per hour ($)',
-    },
+    { mode: 'fixed_amount', label: "💰 You'll pay a fixed total", description: 'Set amount for the whole job', needs_amount: true, amount_label: 'Total amount ($)' },
+    { mode: 'hourly', label: '⏱️ Hourly rate', description: 'Pay per hour of work', needs_amount: true, amount_label: 'Rate per hour ($)' },
+    { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work out payment with helpers' },
   ]
-  if (category === 'peer_help') return [
+  // Peer help
+  if (intentType === 'peer_help_request' || category === 'peer_help') return [
     { mode: 'free', label: '🤝 Free peer help', description: 'No payment expected' },
-    {
-      mode: 'fixed_amount',
-      label: "💰 You'll pay a fixed amount",
-      description: 'Set amount for the session',
-      needs_amount: true,
-      amount_label: 'Session fee ($)',
-    },
-    {
-      mode: 'hourly',
-      label: '⏱️ Per hour',
-      description: 'Pay per hour of tutoring',
-      needs_amount: true,
-      amount_label: 'Rate per hour ($)',
-    },
+    { mode: 'fixed_amount', label: "💰 You'll pay a fixed amount", description: 'Set amount for the session', needs_amount: true, amount_label: 'Session fee ($)' },
+    { mode: 'hourly', label: '⏱️ Per hour', description: 'Pay per hour of tutoring', needs_amount: true, amount_label: 'Rate per hour ($)' },
+    { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work out payment with the helper' },
   ]
-  if (category === 'borrow') return [
-    { mode: 'free', label: '🤝 Free favor', description: 'No payment' },
-    {
-      mode: 'fixed_amount',
-      label: '💰 Small thank-you payment',
-      description: 'Offer something small',
-      needs_amount: true,
-      amount_label: 'Amount ($)',
-    },
-    { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work it out with the lender' },
-  ]
-  if (category === 'meal_meetup') return [
+  // Meal meetup / going together
+  if (intentType === 'meal_meetup_request' || category === 'meal_meetup') return [
     { mode: 'dutch_treat', label: '🍽️ Everyone pays for themselves', description: 'Each person covers their own meal' },
     { mode: 'split_bill', label: '➗ Split the bill evenly', description: 'Divide the total check equally' },
-    { mode: 'host_covers', label: '🎁 I\'ll cover everyone', description: 'Treating the group' },
+    { mode: 'host_covers', label: "🎁 I'll cover everyone", description: 'Treating the group' },
     { mode: 'discuss_in_chat', label: '💬 Figure it out together', description: 'Decide when the group is set' },
+  ]
+  // Borrow
+  if (intentType === 'borrow_request' || category === 'borrow') return [
+    { mode: 'free', label: '🤝 Free favor', description: 'No payment' },
+    { mode: 'fixed_amount', label: '💰 Small thank-you payment', description: 'Offer something small', needs_amount: true, amount_label: 'Amount ($)' },
+    { mode: 'discuss_in_chat', label: '💬 Discuss in chat', description: 'Work it out with the lender' },
   ]
   return []
 }
@@ -521,6 +490,7 @@ type IntentType =
   | 'ride_request'
   | 'ride_offer'
   | 'errand_request'
+  | 'food_pickup_request'
   | 'errand_offer_unsupported'
   | 'moving_request'
   | 'moving_offer_unsupported'
@@ -550,7 +520,11 @@ function inferIntentFromOption(
     const isOffer = /\b(offer|giving|driving|have seats|driver)\b/.test(t)
     return { intentType: isOffer ? 'ride_offer' : 'ride_request', category: 'rides', isOffer }
   }
-  // Meal/social must be checked BEFORE errands (food pickup != food meetup)
+  // Food pickup — must check before meal_meetup (pickup/delivery ≠ going together)
+  if (/\b(pick\s*up|pickup|deliver(y|ing)?|picking\s*up)\b/.test(t) && /\b(food|meal|thai|pizza|sushi|burger|taco|ramen|chinese|indian|boba|drinks?|lunch|dinner|breakfast)\b/.test(t)) {
+    return { intentType: 'food_pickup_request', category: 'errands', isOffer: false }
+  }
+  // Meal/social meetup — going together, NOT fetching food for someone
   if (/\b(eat(ing)?|dining|dine|lunch|dinner|breakfast|brunch|food|restaurant|cafe|sushi|pizza|indian|mexican|chinese|thai|ramen|tacos?|burger|meetup|hang\s*out|get together|going for|together for)\b/.test(t)) {
     const isOffer = /\b(offer|hosting|treat(ing)?)\b/.test(t)
     if (!isOffer) {
@@ -659,7 +633,7 @@ export default function RequestInput() {
         return true
       }
       // Passenger request: needs payment
-      return isPaymentComplete(paymentSlot, getPaymentOptions('rides', false))
+      return isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'rides', false))
     }
 
     if (parsed.category === 'errands') {
@@ -667,7 +641,7 @@ export default function RequestInput() {
       const errandType = mergedSD.errand_type as string | null | undefined
       if (!errandType) return false
       if (errandType !== 'food_pickup' && !mergedSD.task_details) return false
-      return isPaymentComplete(paymentSlot, getPaymentOptions('errands', false))
+      return isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'errands', false, errandType))
     }
 
     if (parsed.category === 'moving') {
@@ -675,7 +649,7 @@ export default function RequestInput() {
       if (!mergedSD.helpers_needed) return false
       const moveType = mergedSD.move_type as string | null | undefined
       if (moveType !== 'furniture' && !dropoffLocation) return false
-      return isPaymentComplete(paymentSlot, getPaymentOptions('moving', false))
+      return isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'moving', false))
     }
 
     if (parsed.category === 'peer_help') {
@@ -684,11 +658,11 @@ export default function RequestInput() {
         const val = mergedSD[k]
         return val !== null && val !== undefined && val !== ''
       })) return false
-      return isPaymentComplete(paymentSlot, getPaymentOptions('peer_help', false))
+      return isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'peer_help', false))
     }
 
     if (parsed.category === 'meal_meetup') {
-      return isPaymentComplete(paymentSlot, getPaymentOptions('meal_meetup', false))
+      return isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'meal_meetup', false))
     }
 
     // borrow — payment optional
@@ -698,7 +672,7 @@ export default function RequestInput() {
       const val = mergedSD[k]
       return val !== null && val !== undefined && val !== ''
     })
-  }, [parsed, mergedSD, pickupLocation, dropoffLocation, priceType, paymentSlot, timeSlot])
+  }, [parsed, mergedSD, pickupLocation, dropoffLocation, priceType, paymentSlot, timeSlot, intentType])
 
   // Typewriter placeholder animation
   const [phIdx, setPhIdx] = useState(0)
@@ -989,7 +963,8 @@ export default function RequestInput() {
   const showPaymentQuestion = showConfirmCard && (
     parsed?.category !== 'rides' || parsed?.is_driver !== true
   )
-  const paymentOptions = parsed ? getPaymentOptions(parsed.category, parsed.is_offer) : []
+  const errandTypeForPayment = mergedSD.errand_type as string | null | undefined
+  const paymentOptions = parsed ? getPaymentOptionsForFlow(intentType, parsed.category, parsed.is_offer, errandTypeForPayment) : []
   const currentPaymentOpt = paymentOptions.find(o => o.mode === paymentSlot.payment_mode)
 
   return (

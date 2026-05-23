@@ -122,8 +122,8 @@ test.describe('Workflow gate: payment + time slots', () => {
     // Disabled — payment not yet selected
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
 
-    // Select free payment option
-    await page.locator('[data-testid="payment-option"]').first().click()
+    // Select reimburse (no amount required) — food_pickup doesn't have a "free" option
+    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Reimburse actual food cost only/ }).click()
 
     // Now enabled
     await expect(page.locator('[data-testid="confirm-post-btn"]')).not.toBeDisabled()
@@ -140,7 +140,8 @@ test.describe('Workflow gate: payment + time slots', () => {
       available_seats: null,
       summary: 'Need an errand run.',
       missing_fields: [],
-      structured_data: { errand_type: 'food_pickup', store_or_place: 'Test', task_details: null, reimbursement_type: null },
+      // Use grocery errand (not food_pickup) so general errand options show with "You'll pay" labels
+      structured_data: { errand_type: 'grocery', store_or_place: 'HEB', task_details: 'Buy some groceries', reimbursement_type: null },
     })
 
     await goToDashboard(page)
@@ -184,8 +185,8 @@ test.describe('Workflow gate: payment + time slots', () => {
     await picker.locator('[data-testid="location-suggestion"]').first().click()
     await expect(picker.locator('[data-testid="location-chip"]')).toBeVisible()
 
-    // Select 'Reimburse cost + helper fee' option (last errand payment option)
-    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Reimburse cost \+ helper fee/ }).click()
+    // Select 'Reimburse food cost + helper fee' option
+    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Reimburse food cost \+ helper fee/ }).click()
 
     // Helper fee input appears
     const feeInput = page.locator('[data-testid="payment-helper-fee-input"]')
@@ -217,8 +218,8 @@ test.describe('Workflow gate: payment + time slots', () => {
     await page.getByRole('button', { name: /Post request/ }).click()
     await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
 
-    // Select reimburse cost + helper fee option
-    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Reimburse cost \+ helper fee/ }).click()
+    // Select reimburse food cost + helper fee option
+    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Reimburse food cost \+ helper fee/ }).click()
 
     // Enter $5 helper fee
     const feeInput = page.locator('[data-testid="payment-helper-fee-input"]')
@@ -494,8 +495,8 @@ test.describe('Workflow gate: payment + time slots', () => {
     // Still disabled — payment missing
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
 
-    // Select free payment option
-    await page.locator('[data-testid="payment-option"]').first().click()
+    // Select reimburse (no amount required) — food_pickup doesn't have a "free" option
+    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Reimburse actual food cost only/ }).click()
 
     // All gates satisfied — confirm enabled
     await expect(page.locator('[data-testid="confirm-post-btn"]')).not.toBeDisabled()
@@ -546,8 +547,8 @@ test.describe('Workflow gate: payment + time slots', () => {
     // Gate message still visible — payment still missing
     await expect(page.locator('[data-testid="confirm-gate-message"]')).toBeVisible()
 
-    // Select payment
-    await page.locator('[data-testid="payment-option"]').first().click()
+    // Select reimburse (no amount required) — food_pickup doesn't have a "free" option
+    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Reimburse actual food cost only/ }).click()
 
     // Gate message gone — all gates satisfied
     await expect(page.locator('[data-testid="confirm-gate-message"]')).not.toBeVisible()

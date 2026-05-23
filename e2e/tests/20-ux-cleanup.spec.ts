@@ -364,8 +364,8 @@ test.describe('UX cleanup: P0 issues', () => {
     await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).waitFor({ timeout: 3_000 })
     await page.locator('[data-testid="time-mode"]').filter({ hasText: /Flexible/ }).click()
 
-    // Select free payment
-    await page.locator('[data-testid="payment-option"]').first().click()
+    // Select reimburse (no amount required) — food_pickup doesn't have a "free" option
+    await page.locator('[data-testid="payment-option"]').filter({ hasText: /Reimburse actual food cost only/ }).click()
 
     // Post
     await page.locator('[data-testid="confirm-post-btn"]').click()

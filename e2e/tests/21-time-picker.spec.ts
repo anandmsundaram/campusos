@@ -99,7 +99,7 @@ test.describe('Structured time picker + cancel/reset', () => {
   })
 
   // ── 2: Today specific time — future time unlocks confirm ──────────────────
-  test('Today + specific time (11:00 PM) unlocks confirm', async ({ driverPage: page }) => {
+  test('Tomorrow + specific time unlocks confirm', async ({ driverPage: page }) => {
     await mockParseRequest(page, errandMock())
     await mockLocationSearch(page, [CAMPUS_PLACE])
 
@@ -115,8 +115,8 @@ test.describe('Structured time picker + cancel/reset', () => {
     await picker.locator('[data-testid="location-suggestion"]').first().click()
     await expect(picker.locator('[data-testid="location-chip"]')).toBeVisible()
 
-    // Step 1: Today
-    await page.locator('[data-testid="time-option"]').filter({ hasText: /Today/ }).click()
+    // Step 1: Tomorrow (avoids past-time validation — any specific time tomorrow is valid)
+    await page.locator('[data-testid="time-option"]').filter({ hasText: /Tomorrow/ }).click()
 
     // Step 2: Specific time
     await page.locator('[data-testid="time-mode"]').filter({ hasText: /Specific/ }).waitFor({ timeout: 3_000 })
@@ -128,7 +128,7 @@ test.describe('Structured time picker + cancel/reset', () => {
     // Confirm still disabled — no time selected yet
     await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
 
-    // Select 11:00 PM — definitely in the future for any time of day
+    // Select 11:00 PM
     await page.locator('[data-testid="time-start-hour"]').selectOption('11')
     await page.locator('[data-testid="time-start-minute"]').selectOption('00')
     await page.locator('[data-testid="time-start-ampm-PM"]').click()
@@ -137,7 +137,7 @@ test.describe('Structured time picker + cancel/reset', () => {
     await expect(page.locator('[data-testid="confirm-post-btn"]')).not.toBeDisabled()
 
     // When row shows concrete time
-    await expect(page.getByText(/Today at 11:00 PM/)).toBeVisible()
+    await expect(page.getByText(/Tomorrow at 11:00 PM/)).toBeVisible()
   })
 
   // ── 3: Today past time — 12:00 AM blocked ────────────────────────────────
@@ -328,8 +328,8 @@ test.describe('Structured time picker + cancel/reset', () => {
     // Confirm now enabled
     await expect(page.locator('[data-testid="confirm-post-btn"]')).not.toBeDisabled()
 
-    // When row shows the date
-    const monthDay = future.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    // Derive expected label the same way the app does (futureDate at noon local)
+    const monthDay = new Date(futureDate + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
     const whenRow6 = page.locator('[data-testid="when-row"]')
     await expect(whenRow6).toBeVisible()
     await expect(whenRow6).toContainText(monthDay)
