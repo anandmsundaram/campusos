@@ -129,6 +129,111 @@ export async function seedDriverRide(opts: SeedRideOptions): Promise<string> {
   return data.id
 }
 
+export interface SeedRequestOptions {
+  requesterId: string
+  runId: string
+  category: string
+  title?: string
+  urgency?: 'low' | 'medium' | 'high'
+  budget?: number | null
+  location?: string
+  structuredData?: Record<string, unknown>
+}
+
+/**
+ * Insert a non-ride request (errand, moving, peer_help, borrow, meal_meetup, etc.)
+ * directly, bypassing the AI parser. Returns the new request id.
+ */
+export async function seedRequest(opts: SeedRequestOptions): Promise<string> {
+  const {
+    requesterId,
+    runId,
+    category,
+    title,
+    urgency = 'medium',
+    budget = null,
+    location = null,
+    structuredData,
+  } = opts
+
+  const { data, error } = await adminClient()
+    .from('requests')
+    .insert({
+      requester_id: requesterId,
+      category,
+      title: title ?? `[E2E-${runId}] ${category} request`,
+      urgency,
+      status: 'open',
+      budget,
+      location,
+      structured_data: structuredData ?? null,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw error
+  return data.id
+}
+
+export interface SeedPassengerRideOptions {
+  requesterId: string
+  runId: string
+  originCity?: string
+  destinationCity?: string
+  budget?: number | null
+}
+
+/**
+ * Insert a passenger ride request (is_driver=false) — someone who needs a ride.
+ * Returns the new request id.
+ */
+export async function seedPassengerRide(opts: SeedPassengerRideOptions): Promise<string> {
+  const {
+    requesterId,
+    runId,
+    originCity = 'Austin',
+    destinationCity = 'Dallas',
+    budget = null,
+  } = opts
+
+  const scheduledTime = new Date(Date.now() + 7200 * 1000).toISOString()
+
+  const { data, error } = await adminClient()
+    .from('requests')
+    .insert({
+      requester_id: requesterId,
+      category: 'rides',
+      title: `[E2E-${runId}] Need a ride ${originCity} → ${destinationCity}`,
+      urgency: 'medium',
+      status: 'open',
+      origin_city: originCity,
+      destination_city: destinationCity,
+      is_driver: false,
+      budget,
+      scheduled_time: scheduledTime,
+      price_type: 'fixed',
+      flexible_time: false,
+      is_airport_ride: false,
+    })
+    .select('id')
+    .single()
+
+  if (error) throw error
+  return data.id
+}
+
+/**
+ * Set an offer to countered state with a requester_counter amount.
+ * Used to simulate the requester countering without going through the UI.
+ */
+export async function seedCounterOffer(offerId: string, requesterCounter: number | null): Promise<void> {
+  const { error } = await adminClient()
+    .from('request_offers')
+    .update({ status: 'countered', requester_counter: requesterCounter })
+    .eq('id', offerId)
+  if (error) throw error
+}
+
 export interface SeedOfferOptions {
   requestId: string
   helperId: string

@@ -5,6 +5,14 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { trackEvent } from '@/lib/analytics'
 import ReportModal from '@/app/components/ReportModal'
+import {
+  type OfferSubflow,
+  subflowFromCategory,
+  getDefaultOfferMessage,
+  getOfferNotificationMessage,
+  getCounterLabel,
+  getStatusLabel,
+} from '@/lib/offerText'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,6 +89,7 @@ interface RequestInfo {
   is_driver: boolean | null
   available_seats: number | null
   seats_filled: number | null
+  structured_data: Record<string, unknown> | null
 }
 
 interface ProfileInfo {
@@ -111,14 +120,17 @@ interface OfferTarget {
   isDriver: boolean | null
   availableSeats: number | null
   seatsFilled: number | null
+  errandType: string | null
 }
 
 interface OffersTarget {
   requestId: string
   title: string
+  category: string
   isDriver: boolean | null
   availableSeats: number | null
   seatsFilled: number | null
+  errandType: string | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -330,7 +342,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   }, [pastMyRequests, catFilter, urgencyFilter])
 
   function openOfferModal(req: FeedRequest) {
-    setOfferTarget({ requestId: req.id, title: req.title, budget: req.budget, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })
+    setOfferTarget({ requestId: req.id, title: req.title, budget: req.budget, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null, errandType: (req.structured_data?.errand_type as string | null) ?? null })
     setOfferMessage('')
     setCounterBudget('')
     setSeatsRequested(1)
@@ -369,14 +381,14 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       return
     }
 
-    // Notify the requester with ride-aware message
+    // Notify the requester with subflow-aware message
     const reqData = [...requests, ...localMyRequests].find(r => r.id === offerTarget.requestId)
     if (reqData?.requester_id) {
-      const notifMsg = offerTarget.category === 'rides' && offerTarget.isDriver
+      const notifSubflow = subflowFromCategory(offerTarget.category, offerTarget.errandType)
+      const isDriveRequest = offerTarget.category === 'rides' && offerTarget.isDriver === true
+      const notifMsg = isDriveRequest
         ? `New seat request for your ride "${offerTarget.title}"`
-        : offerTarget.category === 'rides'
-        ? `Someone offered a ride for "${offerTarget.title}"`
-        : `You received a new offer on "${offerTarget.title}"`
+        : getOfferNotificationMessage('offer_received', notifSubflow, { title: offerTarget.title })
       await supabase.from('notifications').insert({
         user_id: reqData.requester_id,
         type: 'offer_received',
@@ -500,7 +512,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                         isOwn={isOwn}
                         hasOffered={offeredIds.has(req.id)}
                         onOffer={() => openOfferModal(req)}
-                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
+                        onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null, errandType: (req.structured_data?.errand_type as string | null) ?? null })}
                         inlineOffers={
                           isOwn && 'request_offers' in req
                             ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending' || o.status === 'countered')
@@ -540,7 +552,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                           isOwn
                           hasOffered={false}
                           onOffer={() => {}}
-                          onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
+                          onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null, errandType: (req.structured_data?.errand_type as string | null) ?? null })}
                           inlineOffers={[]}
                             acceptedOffers={acceptedOffersForCard}
                           isPast
@@ -579,7 +591,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 hasWorkedWithRequester={!isOwn && priorRequesterIds.has(req.requester_id)}
                 onGoToOffers={() => setTab('offers')}
                 onOffer={() => openOfferModal(req)}
-                onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null })}
+                onViewOffers={() => setOffersTarget({ requestId: req.id, title: req.title, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null, errandType: (req.structured_data?.errand_type as string | null) ?? null })}
                 onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
                 onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
                 onReport={!isOwn ? () => setReportTarget({ type: 'request', id: req.id, name: req.title }) : undefined}
@@ -593,13 +605,17 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       {offerTarget && (() => {
         const driverPostingSeats = offerTarget.category === 'rides' && offerTarget.isDriver === true
         const passengerNeedsRide = offerTarget.category === 'rides' && offerTarget.isDriver === false
-        const modalTitle = driverPostingSeats ? 'Request a seat' : passengerNeedsRide ? 'Offer a ride' : 'Offer to help'
+        const offerSubflow = subflowFromCategory(offerTarget.category, offerTarget.errandType)
+        const modalTitle = driverPostingSeats ? 'Request a seat'
+          : passengerNeedsRide ? 'Offer a ride'
+          : offerTarget.category === 'meal_meetup' ? 'Express interest'
+          : 'Offer to help'
         const msgPlaceholder = driverPostingSeats
           ? 'e.g. I need 1 seat, happy to split gas…'
           : passengerNeedsRide
           ? 'e.g. I have a car and can pick you up…'
-          : 'e.g. I\'m free Saturday morning and have a large car…'
-        const priceLabelShown = !driverPostingSeats // driver sets the price; passenger just requests
+          : getDefaultOfferMessage(offerSubflow)
+        const priceLabelShown = !driverPostingSeats && offerTarget.category !== 'meal_meetup'
         const seatsRemaining = driverPostingSeats && offerTarget.availableSeats != null
           ? offerTarget.availableSeats - (offerTarget.seatsFilled ?? 0)
           : null
@@ -690,6 +706,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
         <OffersModal
           requestId={offersTarget.requestId}
           title={offersTarget.title}
+          category={offersTarget.category}
+          errandType={offersTarget.errandType}
           isDriver={offersTarget.isDriver}
           availableSeats={offersTarget.availableSeats}
           seatsFilled={offersTarget.seatsFilled}
@@ -780,6 +798,7 @@ function RequestCard({
   // Context-aware action label
   const ctaLabel = isRide
     ? (req.is_driver ? 'Request a seat' : 'Offer a ride')
+    : req.category === 'meal_meetup' ? "I'm interested"
     : 'I can help'
   const accentClass = isRide
     ? (req.is_driver ? 'bg-blue-500' : 'bg-purple-500')
@@ -1012,6 +1031,8 @@ function RequestCard({
                 key={offer.id}
                 offer={offer}
                 requestId={req.id}
+                category={req.category}
+                errandType={(req.structured_data?.errand_type as string | null) ?? null}
                 isDriver={req.is_driver}
                 availableSeats={req.available_seats}
                 seatsFilled={req.seats_filled}
@@ -1145,6 +1166,8 @@ function RequestCard({
 function InlineOfferRow({
   offer,
   requestId,
+  category,
+  errandType,
   isDriver,
   availableSeats,
   seatsFilled,
@@ -1154,6 +1177,8 @@ function InlineOfferRow({
 }: {
   offer: OfferOnCard
   requestId: string
+  category: string
+  errandType: string | null
   isDriver: boolean | null
   availableSeats: number | null
   seatsFilled: number | null
@@ -1166,6 +1191,8 @@ function InlineOfferRow({
   const [showCounter, setShowCounter] = useState(false)
   const [counterAmt, setCounterAmt] = useState('')
   const profile = normalizeProfile(offer.profiles)
+  const rowSubflow = subflowFromCategory(category, errandType)
+  const isMealMeetup = category === 'meal_meetup'
 
   async function accept() {
     setActing(true)
@@ -1185,7 +1212,7 @@ function InlineOfferRow({
     await supabase.from('notifications').insert({
       user_id: offer.helper_id,
       type: 'offer_accepted',
-      message: 'Your offer was accepted!',
+      message: getOfferNotificationMessage('offer_accepted', rowSubflow),
       related_request_id: requestId,
     })
     await supabase.from('messages').insert({
@@ -1209,7 +1236,7 @@ function InlineOfferRow({
     await supabase.from('notifications').insert({
       user_id: offer.helper_id,
       type: 'offer_rejected',
-      message: 'Your offer was declined.',
+      message: getOfferNotificationMessage('offer_declined', rowSubflow),
       related_request_id: requestId,
     })
     setActing(false)
@@ -1230,7 +1257,7 @@ function InlineOfferRow({
     await supabase.from('notifications').insert({
       user_id: offer.helper_id,
       type: 'counter_offer',
-      message: `Counter-offer received${amt != null ? ` — $${amt}` : ''}`,
+      message: getOfferNotificationMessage('counter_sent', rowSubflow, { amount: amt }),
       related_request_id: requestId,
     })
     setActing(false)
@@ -1287,15 +1314,17 @@ function InlineOfferRow({
             >
               {acting ? '…' : 'Decline'}
             </button>
-            <button
-              data-testid="counter-inline-btn"
-              type="button"
-              onClick={() => setShowCounter(v => !v)}
-              disabled={acting}
-              className="rounded-lg border border-[#1e2d4a] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
-            >
-              Counter
-            </button>
+            {!isMealMeetup && (
+              <button
+                data-testid="counter-inline-btn"
+                type="button"
+                onClick={() => setShowCounter(v => !v)}
+                disabled={acting}
+                className="rounded-lg border border-[#1e2d4a] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
+              >
+                Counter
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1383,6 +1412,12 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
     router.refresh()
   }
 
+  function subflowForOffer(offerId: string): OfferSubflow {
+    const o = offers.find(x => x.id === offerId)
+    const r = o ? (Array.isArray(o.requests) ? o.requests[0] : o.requests) : null
+    return r ? subflowFromCategory(r.category, r.structured_data?.errand_type as string | null) : 'unknown'
+  }
+
   async function acceptCounter(offerId: string, requestId: string, requesterId: string) {
     setActing(offerId)
     setActError(null)
@@ -1399,7 +1434,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
     await supabase.from('notifications').insert({
       user_id: requesterId,
       type: 'offer_accepted',
-      message: 'Your counter-offer was accepted!',
+      message: getOfferNotificationMessage('counter_accepted', subflowForOffer(offerId)),
       related_request_id: requestId,
     })
     await supabase.from('messages').insert({
@@ -1424,7 +1459,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
     await supabase.from('notifications').insert({
       user_id: requesterId,
       type: 'offer_rejected',
-      message: 'Your counter-offer was declined.',
+      message: getOfferNotificationMessage('counter_declined', subflowForOffer(offerId)),
       related_request_id: requestId,
     })
     setOffers(prev => prev.map(o => o.id === offerId ? { ...o, status: 'rejected' as const } : o))
@@ -1456,12 +1491,8 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
 
         const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
         const seats = offer.seats_requested ?? 1
-        const statusLabel =
-          offer.status === 'pending' ? '● Pending'
-          : offer.status === 'countered' ? '↩ Counter received'
-          : offer.status === 'accepted'
-            ? `✓ Accepted${agreedPrice != null ? ` · ${seats > 1 ? `${seats}× ` : ''}$${agreedPrice}` : ''}`
-          : 'Declined'
+        const offerSubflow = subflowFromCategory(req.category, req.structured_data?.errand_type as string | null)
+        const statusLabel = getStatusLabel(offer.status, offerSubflow, { agreedPrice, seats })
 
         return (
           <div
@@ -1520,7 +1551,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
               {/* Requester's counter */}
               {isCountered && offer.requester_counter != null && (
                 <div className="mb-3 rounded-lg border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2.5">
-                  <p className="text-[11px] font-medium text-orange-400 mb-1">Counter-offer from requester</p>
+                  <p className="text-[11px] font-medium text-orange-400 mb-1" data-testid="counter-label">{getCounterLabel(offerSubflow, req.is_driver)}</p>
                   <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-300">
                     ${offer.requester_counter}
                   </span>
@@ -1603,6 +1634,8 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
 function OffersModal({
   requestId,
   title,
+  category,
+  errandType,
   isDriver,
   availableSeats,
   seatsFilled,
@@ -1611,6 +1644,8 @@ function OffersModal({
 }: {
   requestId: string
   title: string
+  category: string
+  errandType: string | null
   isDriver: boolean | null
   availableSeats: number | null
   seatsFilled: number | null
@@ -1618,6 +1653,7 @@ function OffersModal({
   onAccepted: () => void
 }) {
   const router = useRouter()
+  const modalSubflow = subflowFromCategory(category, errandType)
   const [offers, setOffers] = useState<OfferRow[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -1671,7 +1707,7 @@ function OffersModal({
       await supabase.from('notifications').insert({
         user_id: helperOffer.helper_id,
         type: 'offer_accepted',
-        message: `Your offer was accepted for "${title}"`,
+        message: getOfferNotificationMessage('offer_accepted', modalSubflow, { title }),
         related_request_id: requestId,
       })
       await supabase.from('messages').insert({
@@ -1706,7 +1742,7 @@ function OffersModal({
       await supabase.from('notifications').insert({
         user_id: helperOffer.helper_id,
         type: 'offer_rejected',
-        message: `Your offer was declined for "${title}"`,
+        message: getOfferNotificationMessage('offer_declined', modalSubflow, { title }),
         related_request_id: requestId,
       })
     }
@@ -1731,7 +1767,7 @@ function OffersModal({
       await supabase.from('notifications').insert({
         user_id: helperOffer.helper_id,
         type: 'counter_offer',
-        message: `Counter-offer received for "${title}"${amount != null ? ` — $${amount}` : ''}`,
+        message: getOfferNotificationMessage('counter_sent', modalSubflow, { title, amount }),
         related_request_id: requestId,
       })
     }
@@ -1766,7 +1802,7 @@ function OffersModal({
             canAccept={isMultiSeat ? !allSeatsFilled : !hasAccepted}
             onAccept={handleAccept}
             onDecline={handleDecline}
-            onCounter={handleCounter}
+            onCounter={modalSubflow !== 'meal_meetup_request' ? handleCounter : undefined}
           />
         ))}
 

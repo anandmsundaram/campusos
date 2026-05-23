@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { subflowFromCategory, getCounterLabel, getStatusLabel } from '@/lib/offerText'
 
 interface RequesterProfile {
   name: string | null
@@ -21,6 +22,8 @@ interface RequestInfo {
   destination_city: string | null
   scheduled_time: string | null
   created_at: string
+  is_driver: boolean | null
+  structured_data: Record<string, unknown> | null
   profiles: RequesterProfile | RequesterProfile[] | null
 }
 
@@ -30,6 +33,7 @@ interface MyOffer {
   counter_budget: number | null
   requester_counter: number | null
   final_agreed_price: number | null
+  seats_requested: number | null
   status: 'pending' | 'accepted' | 'rejected' | 'countered'
   created_at: string
   requests: RequestInfo | RequestInfo[] | null
@@ -92,8 +96,8 @@ export default function MyOffersPage() {
     const { data: offersData } = await supabase
       .from('request_offers')
       .select(`
-        id, message, counter_budget, requester_counter, final_agreed_price, status, created_at,
-        requests(id, title, category, urgency, status, budget, location, origin_city, destination_city, scheduled_time, created_at, profiles!requester_id(name, rating))
+        id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, created_at,
+        requests(id, title, category, urgency, status, budget, location, origin_city, destination_city, scheduled_time, created_at, is_driver, structured_data, profiles!requester_id(name, rating))
       `)
       .eq('helper_id', user.id)
       .order('created_at', { ascending: false })
@@ -151,6 +155,10 @@ export default function MyOffersPage() {
             const statusInfo = OFFER_STATUS[offer.status] ?? OFFER_STATUS.pending
             const isRejected = offer.status === 'rejected'
             const isRide = req.category === 'rides'
+            const pageSubflow = subflowFromCategory(req.category, req.structured_data?.errand_type as string | null)
+            const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
+            const seats = offer.seats_requested ?? 1
+            const statusLabelText = getStatusLabel(offer.status, pageSubflow, { agreedPrice, seats })
 
             return (
               <div
@@ -173,7 +181,7 @@ export default function MyOffersPage() {
                       </span>
                     )}
                     <span className={`ml-auto rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusInfo.cls}`}>
-                      {statusInfo.label}
+                      {statusLabelText}
                     </span>
                   </div>
 
@@ -210,7 +218,7 @@ export default function MyOffersPage() {
                         </span>
                       ) : offer.requester_counter != null ? (
                         <span className="inline-flex rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-400">
-                          Counter from requester: ${offer.requester_counter}
+                          {getCounterLabel(pageSubflow, req.is_driver)}: ${offer.requester_counter}
                         </span>
                       ) : offer.counter_budget != null ? (
                         <span className="inline-flex rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">
