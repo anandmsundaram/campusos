@@ -16,11 +16,17 @@ function validatePassword(password: string): string | null {
   return null
 }
 
-const EDU_BYPASSES = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com', 'anand.slate@gmail.com'])
-
 function isEduEmail(email: string) {
+  return email.trim().toLowerCase().endsWith('.edu')
+}
+
+async function isAllowedEmail(email: string): Promise<boolean> {
+  const { createClient } = await import('@/lib/supabase/client')
   const normalized = email.trim().toLowerCase()
-  return EDU_BYPASSES.has(normalized) || normalized.endsWith('.edu')
+  if (normalized.endsWith('.edu')) return true
+  const supabase = createClient()
+  const { data } = await supabase.rpc('is_email_whitelisted', { p_email: normalized })
+  return !!data
 }
 
 export default function SignupPage() {
@@ -50,19 +56,21 @@ export default function SignupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setLoading(true)
 
-    if (!isEduEmail(form.email)) {
+    if (!(await isAllowedEmail(form.email))) {
       setError('Only .edu email addresses are allowed.')
+      setLoading(false)
       return
     }
 
     const pwdError = validatePassword(form.password)
     if (pwdError) {
       setError(pwdError)
+      setLoading(false)
       return
     }
 
-    setLoading(true)
     const supabase = createClient()
 
     const { error } = await supabase.auth.signUp({
@@ -156,7 +164,7 @@ export default function SignupPage() {
                 ].join(' ')}
               />
               {eduError && (
-                <p className="text-xs text-red-400">Must be a .edu email address</p>
+                <p className="text-xs text-red-400">Must be a .edu address or pre-approved email</p>
               )}
             </div>
 
