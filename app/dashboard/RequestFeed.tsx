@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { trackEvent } from '@/lib/analytics'
 import ReportModal from '@/app/components/ReportModal'
+import TermsModal from '@/app/components/TermsModal'
+import { getGateStatus } from '@/lib/terms'
 import {
   type OfferSubflow,
   subflowFromCategory,
@@ -227,6 +229,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const [seatsRequested, setSeatsRequested] = useState(1)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [showTermsGate, setShowTermsGate] = useState(false)
+  const [pendingOfferReq, setPendingOfferReq] = useState<FeedRequest | null>(null)
 
   // Card expand state — only one card open at a time
   const [openCardId, setOpenCardId] = useState<string | null>(null)
@@ -347,12 +351,28 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     return items
   }, [pastMyRequests, catFilter, urgencyFilter])
 
-  function openOfferModal(req: FeedRequest) {
+  async function openOfferModal(req: FeedRequest) {
+    const supabase = createClient()
+    const gate = await getGateStatus(supabase)
+    if (gate.mustAcceptTerms) {
+      setPendingOfferReq(req)
+      setShowTermsGate(true)
+      return
+    }
     setOfferTarget({ requestId: req.id, title: req.title, budget: req.budget, category: req.category, isDriver: req.is_driver ?? null, availableSeats: req.available_seats ?? null, seatsFilled: req.seats_filled ?? null, errandType: (req.structured_data?.errand_type as string | null) ?? null })
     setOfferMessage('')
     setCounterBudget('')
     setSeatsRequested(1)
     setSubmitError(null)
+  }
+
+  function handleTermsAccepted() {
+    setShowTermsGate(false)
+    if (pendingOfferReq) {
+      const req = pendingOfferReq
+      setPendingOfferReq(null)
+      openOfferModal(req)
+    }
   }
 
   function closeOfferModal() {
@@ -740,6 +760,15 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
           targetId={reportTarget.id}
           displayName={reportTarget.name}
           onClose={() => setReportTarget(null)}
+        />
+      )}
+
+      {/* Terms gate */}
+      {showTermsGate && (
+        <TermsModal
+          source="offer_help"
+          onAccepted={handleTermsAccepted}
+          onDismiss={() => { setShowTermsGate(false); setPendingOfferReq(null) }}
         />
       )}
     </>

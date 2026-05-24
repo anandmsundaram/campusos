@@ -387,3 +387,89 @@ export async function cancelRequestDirect(
     .eq('id', requestId)
   if (error) throw error
 }
+
+// ─── Terms acceptance helpers ─────────────────────────────────────────────────
+
+const TERMS_VERSION      = '2026-05-terms-v1'
+const PRIVACY_VERSION    = '2026-05-privacy-v1'
+const GUIDELINES_VERSION = '2026-05-guidelines-v1'
+
+export interface SeedTermsOptions {
+  /** Override with old version strings to simulate outdated acceptance. */
+  termsVersion?:      string
+  privacyVersion?:    string
+  guidelinesVersion?: string
+}
+
+/** Set terms_accepted in user_metadata so the user has already accepted. */
+export async function seedTermsAcceptance(userId: string, opts: SeedTermsOptions = {}): Promise<void> {
+  const { error } = await adminClient().auth.admin.updateUserById(userId, {
+    user_metadata: {
+      terms_accepted: {
+        terms_version:      opts.termsVersion      ?? TERMS_VERSION,
+        privacy_version:    opts.privacyVersion    ?? PRIVACY_VERSION,
+        guidelines_version: opts.guidelinesVersion ?? GUIDELINES_VERSION,
+        accepted_at:        new Date().toISOString(),
+        accepted_from:      'e2e_seed',
+      },
+    },
+  })
+  if (error) throw error
+}
+
+/** Set terms_accepted to clearly invalid versions so the gate triggers. */
+export async function cleanupTermsAcceptance(userId: string): Promise<void> {
+  const { error } = await adminClient().auth.admin.updateUserById(userId, {
+    user_metadata: {
+      terms_accepted: {
+        terms_version:      'cleared',
+        privacy_version:    'cleared',
+        guidelines_version: 'cleared',
+      },
+    },
+  })
+  if (error) throw error
+}
+
+export interface SeedBypassOptions {
+  bypassTermsAcceptance?: boolean
+  bypassGuidedTour?:      boolean
+  bypassOnboarding?:      boolean
+  isActive?:              boolean
+  /** ISO string — defaults to 30 days from now */
+  expiresAt?:             string
+  reason?:                string
+}
+
+/** Set qa_bypass in user_metadata to enable test bypass flags. */
+export async function seedBypassUser(userId: string, opts: SeedBypassOptions = {}): Promise<void> {
+  const expiresAt = opts.expiresAt ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  const { error } = await adminClient().auth.admin.updateUserById(userId, {
+    user_metadata: {
+      qa_bypass: {
+        bypass_terms_acceptance: opts.bypassTermsAcceptance ?? true,
+        bypass_guided_tour:      opts.bypassGuidedTour      ?? false,
+        bypass_onboarding:       opts.bypassOnboarding      ?? false,
+        is_active:               opts.isActive               ?? true,
+        expires_at:              expiresAt,
+        reason:                  opts.reason ?? 'e2e_test',
+      },
+    },
+  })
+  if (error) throw error
+}
+
+/** Deactivate qa_bypass so the gate triggers again. */
+export async function cleanupBypass(userId: string): Promise<void> {
+  const { error } = await adminClient().auth.admin.updateUserById(userId, {
+    user_metadata: {
+      qa_bypass: {
+        is_active:               false,
+        bypass_terms_acceptance: false,
+        bypass_guided_tour:      false,
+        bypass_onboarding:       false,
+      },
+    },
+  })
+  if (error) throw error
+}

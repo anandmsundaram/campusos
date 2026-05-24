@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LocationPicker } from '@/app/components/LocationPicker'
 import type { ResolvedLocation } from '@/lib/location-types'
+import TermsModal from '@/app/components/TermsModal'
+import { getGateStatus } from '@/lib/terms'
 
 interface ParsedRequest {
   category: 'rides' | 'moving' | 'peer_help' | 'errands' | 'borrow' | 'meal_meetup'
@@ -605,6 +607,7 @@ export default function RequestInput() {
   const [clarificationCount, setClarificationCount] = useState(0)
   const [paymentSlot, setPaymentSlot] = useState<PaymentSlot>(EMPTY_PAYMENT)
   const [timeSlot, setTimeSlot] = useState<TimeSlotState>(EMPTY_TIME_SLOT)
+  const [showTermsGate, setShowTermsGate] = useState(false)
 
   const mergedSD = useMemo<Record<string, unknown>>(() => {
     if (!parsed) return {}
@@ -740,6 +743,14 @@ export default function RequestInput() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!text.trim() || status === 'parsing') return
+
+    const supabase = createClient()
+    const gate = await getGateStatus(supabase)
+    if (gate.mustAcceptTerms) {
+      setShowTermsGate(true)
+      return
+    }
+
     setError(null)
     setStatus('parsing')
     setParsed(null)
@@ -1831,6 +1842,13 @@ export default function RequestInput() {
             </p>
           )}
         </div>
+      )}
+      {showTermsGate && (
+        <TermsModal
+          source="post_request"
+          onAccepted={() => setShowTermsGate(false)}
+          onDismiss={() => setShowTermsGate(false)}
+        />
       )}
     </section>
   )

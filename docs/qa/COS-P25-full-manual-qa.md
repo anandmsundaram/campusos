@@ -1722,4 +1722,171 @@ Mark each ✅ (pass) or ❌ (fail):
 
 *Generated for COS-P25-FULL-MANUAL-QA-SCRIPT-AND-VERIFICATION · 2026-05-23*  
 *Section Y appended for COS-P25-CARD-FLIP-UX-REFINEMENT · 2026-05-23*  
-*Section Z appended for COS-P25-FRONT-CARD-INFO-HIERARCHY-REDESIGN · 2026-05-23*
+*Section Z appended for COS-P25-FRONT-CARD-INFO-HIERARCHY-REDESIGN · 2026-05-23*  
+*Section AA appended for COS-P25-FIRST-LOGIN-TERMS-ACCEPTANCE-AND-QA-BYPASS · 2026-05-23*
+
+---
+
+## SECTION AA — First-login Terms Acceptance & QA Bypass
+
+**Goal:** Confirm the terms gate blocks new users from marketplace actions, accepted users can proceed freely, and QA bypass flags work as documented.
+
+**Prerequisite:** Two test accounts ready (User A = no prior acceptance, User B = has accepted). You may need to clear `terms_accepted` from `auth.users.user_metadata` via Supabase Dashboard → Authentication → Users → Edit User → delete the `terms_accepted` key from the JSON metadata.
+
+---
+
+### AA-1: New user sees terms modal on "Post request"
+
+1. Sign in as User A (no prior acceptance).
+2. Navigate to `/dashboard`.
+3. Type any request in the text area and click **Post request**.
+4. **Expect:** A modal titled "Before you continue" appears over the page.
+5. Confirm the modal contains:
+   - The text "CampusOS is a peer-to-peer coordination platform. Payments are handled directly between students during beta — CampusOS does not process or guarantee any payments."
+   - A "Terms of Service" link (opens `/terms` in a new tab).
+   - A "Privacy Policy" link (opens `/privacy` in a new tab).
+   - A "Community Guidelines" link (opens `/guidelines` in a new tab).
+   - A checkbox: "I agree to the Terms of Service, Privacy Policy, and Community Guidelines."
+   - An **Accept & Continue** button (disabled until checkbox is checked).
+   - A **Cancel** button.
+6. Confirm the request did NOT submit (no parsing spinner, no confirm card).
+
+| Check | Result |
+|---|---|
+| Modal appears immediately on Post request | |
+| Title is "Before you continue" | |
+| Beta payment disclaimer present | |
+| Three links present (Terms / Privacy / Guidelines) | |
+| Accept button disabled before checkbox | |
+| Cancel button present | |
+| Request did not submit | |
+
+---
+
+### AA-2: Dismiss without accepting shows blocked state
+
+1. With the modal open (from AA-1), click **Cancel**.
+2. **Expect:** The modal closes.
+3. The "Please accept the Terms to post or respond." message is visible below the action buttons area of the modal (it is always visible — not a toast).
+4. The request was not submitted.
+
+| Check | Result |
+|---|---|
+| Modal closes on Cancel | |
+| Request not submitted | |
+
+---
+
+### AA-3: Accepting terms allows posting to proceed
+
+1. Open the terms modal again (Post request with User A).
+2. Check the checkbox.
+3. Click **Accept & Continue**.
+4. **Expect:** The modal closes and the request is submitted normally (parsing spinner, then confirm card).
+5. Reload the page and try posting again — the modal should NOT appear this time.
+
+| Check | Result |
+|---|---|
+| Accept button enables after checkbox | |
+| Modal closes after acceptance | |
+| Request proceeds to confirm card | |
+| Second post does not show modal | |
+
+---
+
+### AA-4: New user sees terms modal on "I can help" (offer path)
+
+1. Sign in as User A (clear `terms_accepted` again if needed).
+2. Navigate to `/dashboard`.
+3. Find any open request from another user in the feed.
+4. Click **I can help** (or **Request a seat** / **Express interest**).
+5. **Expect:** Terms modal appears; offer modal does NOT open behind it.
+
+| Check | Result |
+|---|---|
+| Terms modal appears on I can help | |
+| Offer modal not shown behind terms | |
+
+---
+
+### AA-5: Accepting terms from offer path proceeds to offer modal
+
+1. With the terms modal open from AA-4, check the checkbox and click **Accept & Continue**.
+2. **Expect:** Terms modal closes; offer modal opens for the same request immediately.
+
+| Check | Result |
+|---|---|
+| Offer modal opens after acceptance from offer path | |
+
+---
+
+### AA-6: Accepted user can post and offer without terms modal
+
+1. Sign in as User B (has accepted terms, or use User A after AA-3).
+2. Post a new request.
+3. **Expect:** No terms modal; request goes directly to parsing.
+4. Click **I can help** on another request.
+5. **Expect:** Offer modal opens directly; no terms modal.
+
+| Check | Result |
+|---|---|
+| Post request bypasses terms modal for accepted user | |
+| I can help bypasses terms modal for accepted user | |
+
+---
+
+### AA-7: QA bypass user skips gate without accepting
+
+**Requires:** Admin access to Supabase Dashboard → Authentication → Users → Edit User.
+
+1. For a test user, add this JSON to their `user_metadata` in Supabase:
+   ```json
+   {
+     "qa_bypass": {
+       "bypass_terms_acceptance": true,
+       "is_active": true,
+       "expires_at": "2027-01-01T00:00:00.000Z",
+       "reason": "manual QA tester"
+     }
+   }
+   ```
+2. Sign in as that user (do NOT set `terms_accepted`).
+3. Post a request and click **I can help**.
+4. **Expect:** No terms modal in either case.
+
+| Check | Result |
+|---|---|
+| Post request bypasses terms modal for bypass user | |
+| I can help bypasses terms modal for bypass user | |
+
+---
+
+### AA-8: Expired or inactive bypass does NOT skip gate
+
+1. Change the `qa_bypass` for the same user to have `"is_active": false` (or `"expires_at"` in the past).
+2. Reload and try posting.
+3. **Expect:** Terms modal appears.
+
+| Check | Result |
+|---|---|
+| Expired bypass shows terms modal | |
+| Inactive bypass shows terms modal | |
+
+---
+
+### AA-9: Future SQL migration files are present (schema review)
+
+1. Confirm these migration files exist in the repo (no need to apply them):
+   - `supabase/migrations/026_terms_acceptance.sql`
+   - `supabase/migrations/027_qa_bypass.sql`
+2. Open `026_terms_acceptance.sql` and confirm it creates `user_terms_acceptances` with columns: `user_id`, `terms_version`, `privacy_version`, `guidelines_version`, `accepted_at`.
+3. Open `027_qa_bypass.sql` and confirm it creates `qa_bypass_users` with `bypass_terms_acceptance`, `is_active`, `expires_at`, and the `get_my_bypass_flags()` RPC.
+
+| Check | Result |
+|---|---|
+| Migration 026 file present and correct columns | |
+| Migration 027 file present with RPC definition | |
+
+---
+
+**All 25 checks must be ✅ for Section AA to pass.**

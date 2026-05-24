@@ -107,6 +107,24 @@ async function setup(_config: FullConfig) {
     }
   }
 
+  // ── Seed terms acceptance for all test users (avoids breaking existing specs) ──
+  const TERMS_VERSION      = '2026-05-terms-v1'
+  const PRIVACY_VERSION    = '2026-05-privacy-v1'
+  const GUIDELINES_VERSION = '2026-05-guidelines-v1'
+  for (const authUser of updatedUsers.filter(au => users.some(u => u.email === au.email))) {
+    await admin.auth.admin.updateUserById(authUser.id, {
+      user_metadata: {
+        terms_accepted: {
+          terms_version:      TERMS_VERSION,
+          privacy_version:    PRIVACY_VERSION,
+          guidelines_version: GUIDELINES_VERSION,
+          accepted_at:        new Date().toISOString(),
+          accepted_from:      'global_setup',
+        },
+      },
+    })
+  }
+
   // ── Log each user in via the browser and save storage state ──────────────
   const browser = await chromium.launch()
 
