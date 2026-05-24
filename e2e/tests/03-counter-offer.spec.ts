@@ -30,7 +30,7 @@ test.describe('Counter-offer flow', () => {
     })
 
     // Seed: pax1's pending offer at $20
-    const offerId = await seedOffer({
+    await seedOffer({
       requestId,
       helperId: pax1Id,
       counterBudget: 20,
@@ -72,7 +72,7 @@ test.describe('Counter-offer flow', () => {
 
       // The counter amount should be visible
       await expect(offerCard.first().getByText('$25')).toBeVisible()
-      await expect(offerCard.first().getByText(/Counter-offer from requester/)).toBeVisible()
+      await expect(offerCard.first().getByText(/Counter from driver/)).toBeVisible()
 
       // ── Step 3: Passenger accepts the counter ─────────────────────────────
       await offerCard.first().locator('[data-testid="accept-counter-btn"]').click()
