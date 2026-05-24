@@ -44,3 +44,13 @@ next-env.d.ts
 playwright-report/
 playwright/.auth/
 test-results/
+e2e/verify-screenshots/
+
+# Supabase
+supabase/.temp/
+
+# Claude / IDE
+.claude/settings.local.json
+
+# Logs
+*.log
