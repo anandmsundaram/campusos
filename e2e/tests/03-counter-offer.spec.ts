@@ -72,7 +72,7 @@ test.describe('Counter-offer flow', () => {
 
       // The counter amount should be visible
       await expect(offerCard.first().getByText('$25')).toBeVisible()
-      await expect(offerCard.first().getByText(/Counter from driver/)).toBeVisible()
+      await expect(offerCard.first().locator('[data-testid="counter-label"]')).toContainText('Counter from driver')
 
       // ── Step 3: Passenger accepts the counter ─────────────────────────────
       await offerCard.first().locator('[data-testid="accept-counter-btn"]').click()
