@@ -39,6 +39,7 @@ Output schema (all fields required in output, use null/false for unknown):
 
 General rules:
 - category must be exactly one of: rides, moving, peer_help, errands, borrow
+- RIDE INTENT ALWAYS WINS: If the request contains explicit ride-request language ("I need a ride to", "need a ride to", "can someone give me a ride", "can someone drive me to", "looking for a ride to", "need a lift to", "can I get a ride", "ride to [place]", "take me to", "drive me to"), classify as "rides" regardless of destination. The destination is the dropoff point — NOT an errand pickup location. Use "errands" ONLY when the user wants someone else to go somewhere and bring something back (e.g., "Can someone pick up milk from HEB?", "I need someone to grab my package from the post office"). If someone says "I need a ride to Walmart", that is a ride request to Walmart — not an errand.
 - title: short imperative phrase, max 60 chars, e.g. "Ride to SFO on Friday 9am"
 - scheduled_time: ISO 8601 if inferable, otherwise null
 - urgency: default "medium"; use "high" for "urgent", "ASAP", "emergency"
@@ -66,8 +67,9 @@ Ride-specific rules (category "rides" only):
 Category-specific structured_data — extract all fields you can, null for anything not mentioned:
 
 category "rides":
-  structured_data: { "has_luggage": boolean | null }
+  structured_data: { "has_luggage": boolean | null, "passengers_count": number | null }
   has_luggage: true if luggage/bags/suitcase mentioned; false if "no luggage"; null if not mentioned
+  passengers_count: when is_driver=false, total passengers (including requester) inferred from phrasing. "me and my friend" → 2, "along with my friend" → 2, "myself and a friend" → 2, "me and 2 friends" → 3, "for 2 people" → 2, "just me" → 1. null if not mentioned.
 
 category "moving":
   structured_data: {

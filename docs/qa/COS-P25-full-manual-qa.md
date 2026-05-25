@@ -2122,3 +2122,141 @@ During any tour session, verify:
 ---
 
 **All checks in AC-1 through AC-11 must be ✅ for Section AC to pass.**
+
+---
+
+## Section AD — Ride intent routing, seat inference, location gating, confirm-gate messaging
+
+**Prompt ID:** COS-P25-RIDE-INTENT-WALMART-LOCATION-SEATS-CONFIRM-HOTFIX
+
+---
+
+### AD-1: "I need a ride to Walmart" routes to Rides
+
+1. Go to `/dashboard`.
+2. Submit: `I need a ride to Walmart along with my friend`
+3. **Expect:** Confirm card appears with Category = **Rides** (not Errands).
+4. **Expect:** Title contains "Walmart" or "ride"-related wording.
+5. **Expect:** Errands category label is NOT shown.
+
+| Check | Result |
+|---|---|
+| Category = Rides | |
+| Title is ride-related | |
+| Errands label absent | |
+
+---
+
+### AD-2: "along with my friend" infers 2 seats
+
+1. Submit: `I need a ride to Walmart along with my friend`
+2. **Expect:** Confirm card shows **Seats needed: 2**.
+
+| Check | Result |
+|---|---|
+| "Seats needed" row visible | |
+| Value is 2 | |
+
+---
+
+### AD-3: Confirm button disabled until both locations selected
+
+1. Submit the Walmart ride request (no time selected).
+2. **Expect:** Confirm button is disabled immediately.
+3. Select only the pickup location.
+4. **Expect:** Confirm button still disabled (dropoff missing).
+5. Select the dropoff location.
+6. **Expect:** Confirm button moves toward enabled once time and payment are also filled.
+
+| Check | Result |
+|---|---|
+| Disabled before locations | |
+| Disabled after only pickup | |
+
+---
+
+### AD-4: Confirm-gate message lists specific missing fields
+
+1. Submit the Walmart ride request (no time, no locations, no payment).
+2. **Expect:** Below the disabled Confirm button, the gate message lists specific items such as:
+   - "Choose a time"
+   - "Select a pickup location"
+   - "Choose a specific Walmart dropoff"
+   - "Choose a payment method"
+3. **Expect:** The message does NOT read only: *"Add the missing details above to post"*
+
+| Check | Result |
+|---|---|
+| Gate message not generic only | |
+| Mentions time / pickup / dropoff / payment | |
+
+---
+
+### AD-5: Ride confirm card does not show errand questions
+
+1. Submit: `I need a ride to Walmart along with my friend`
+2. **Expect:** The confirm card does NOT show "What type of errand?" or "What should they pick up or do?"
+
+| Check | Result |
+|---|---|
+| No errand_type question shown | |
+| No task_details question shown | |
+
+---
+
+### AD-6: Category and title are consistent
+
+1. Submit the Walmart ride request.
+2. **Expect:** Both the Category row ("Rides") and the Title row describe a ride — no mismatch like "Errands" + "Ride to Walmart".
+
+| Check | Result |
+|---|---|
+| Category and title both ride-related | |
+
+---
+
+### AD-7: Food pickup regression — routes to Errands
+
+1. Submit: `Can someone pick up food from McDonald's?`
+2. **Expect:** Confirm card shows Category = **Errands**.
+3. **Expect:** A pickup location picker is shown (not ride route pickers).
+
+| Check | Result |
+|---|---|
+| Category = Errands | |
+| Location picker shows for errand | |
+
+---
+
+### AD-8: Grocery errand regression — routes to Errands
+
+1. Submit: `Can someone grab milk from HEB?`
+2. **Expect:** Confirm card shows Category = **Errands**.
+3. **Expect:** Rides category label is NOT shown.
+
+| Check | Result |
+|---|---|
+| Category = Errands | |
+| Rides label absent | |
+
+---
+
+### AD-9: Full ride flow — confirm enables after all fields
+
+1. Submit: `I need a ride to Walmart along with my friend`
+2. Select **Today** + **Flexible** time.
+3. Select a pickup location via LocationPicker.
+4. Select a Walmart dropoff location via LocationPicker.
+5. Select a payment method (e.g., Split gas).
+6. **Expect:** Confirm button becomes enabled.
+7. Confirm the post.
+8. **Expect:** Post appears in the feed.
+
+| Check | Result |
+|---|---|
+| Confirm enabled after all fields | |
+| Post appears in feed | |
+
+---
+
+**All checks in AD-1 through AD-9 must be ✅ for Section AD to pass.**

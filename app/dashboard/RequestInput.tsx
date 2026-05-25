@@ -1521,7 +1521,7 @@ export default function RequestInput() {
           )}
 
           <div className="mb-5 flex flex-col gap-3">
-            <Row label="Category" value={CATEGORY_LABELS[parsed!.category]} />
+            <Row data-testid="category-row" label="Category" value={CATEGORY_LABELS[parsed!.category]} />
             <Row label="Title" value={parsed!.title} />
 
             {/* ── RIDES-specific rows ── */}
@@ -1569,6 +1569,9 @@ export default function RequestInput() {
                 )}
                 {parsed!.is_driver && parsed!.available_seats != null && (
                   <Row label="Seats available" value={String(parsed!.available_seats)} />
+                )}
+                {!parsed!.is_driver && mergedSD.passengers_count != null && (
+                  <Row label="Seats needed" value={String(mergedSD.passengers_count)} />
                 )}
                 {parsed!.is_round_trip && (
                   <div className="flex items-center justify-between">
@@ -1836,11 +1839,14 @@ export default function RequestInput() {
               Edit
             </button>
           </div>
-          {!canConfirm && status !== 'saving' && (
-            <p data-testid="confirm-gate-message" className="mt-2 text-center text-[11px] text-slate-600">
-              Add the missing details above to post
-            </p>
-          )}
+          {!canConfirm && status !== 'saving' && (() => {
+            const missing = getMissingFieldLabels(parsed!, pickupLocation, dropoffLocation, paymentSlot, timeSlot, mergedSD, intentType)
+            return (
+              <p data-testid="confirm-gate-message" className="mt-2 text-center text-[11px] text-slate-600">
+                {missing.length > 0 ? missing.join(' · ') : 'Add the missing details above to post'}
+              </p>
+            )
+          })()}
         </div>
       )}
       {showTermsGate && (
@@ -1852,6 +1858,72 @@ export default function RequestInput() {
       )}
     </section>
   )
+}
+
+function getMissingFieldLabels(
+  parsed: ParsedRequest,
+  pickupLocation: ResolvedLocation | null,
+  dropoffLocation: ResolvedLocation | null,
+  paymentSlot: PaymentSlot,
+  timeSlot: TimeSlotState,
+  mergedSD: Record<string, unknown>,
+  intentType: IntentType | null,
+): string[] {
+  const labels: string[] = []
+
+  if (!parsed.scheduled_time && parsed.category !== 'borrow' && !isTimeComplete(timeSlot)) {
+    labels.push('Choose a time')
+  }
+
+  if (parsed.category === 'rides') {
+    if (!pickupLocation) labels.push('Select a pickup location')
+    if (!dropoffLocation) {
+      const dest = parsed.destination_city
+      labels.push(dest ? `Choose a specific ${dest} dropoff` : 'Select a dropoff location')
+    }
+    if (!parsed.is_driver) {
+      if (!isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'rides', false))) {
+        labels.push('Choose a payment method')
+      }
+    }
+  } else if (parsed.category === 'errands') {
+    if (!pickupLocation) labels.push('Select a pickup location')
+    const errandType = mergedSD.errand_type as string | null | undefined
+    if (!errandType) labels.push('Choose an errand type')
+    if (errandType !== 'food_pickup' && !mergedSD.task_details) labels.push('Describe what to pick up or do')
+    if (!isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'errands', false, errandType))) {
+      labels.push('Choose a payment method')
+    }
+  } else if (parsed.category === 'moving') {
+    if (!pickupLocation) labels.push('Select a pickup location')
+    if (!mergedSD.helpers_needed) labels.push('Choose number of helpers')
+    const moveType = mergedSD.move_type as string | null | undefined
+    if (moveType !== 'furniture' && !dropoffLocation) labels.push('Select a dropoff location')
+    if (!isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'moving', false))) {
+      labels.push('Choose a payment method')
+    }
+  } else if (parsed.category === 'peer_help') {
+    for (const k of (CRITICAL_FIELDS['peer_help'] ?? [])) {
+      const val = mergedSD[k]
+      if (val === null || val === undefined || val === '') {
+        labels.push(k === 'subject' ? 'Add subject or course' : `Add ${k}`)
+      }
+    }
+    if (!isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'peer_help', false))) {
+      labels.push('Choose a payment method')
+    }
+  } else if (parsed.category === 'meal_meetup') {
+    if (!isPaymentComplete(paymentSlot, getPaymentOptionsForFlow(intentType, 'meal_meetup', false))) {
+      labels.push('Choose a payment method')
+    }
+  } else {
+    for (const k of (CRITICAL_FIELDS[parsed.category] ?? [])) {
+      const val = mergedSD[k]
+      if (val === null || val === undefined || val === '') labels.push(`Add ${k}`)
+    }
+  }
+
+  return labels
 }
 
 function Row({ label, value, 'data-testid': testId }: { label: string; value: string; 'data-testid'?: string }) {
