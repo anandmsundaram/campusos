@@ -14,11 +14,15 @@ export const PRIVACY_VERSION    = '2026-05-privacy-v1'
 export const GUIDELINES_VERSION = '2026-05-guidelines-v1'
 
 export interface GateStatus {
-  hasAcceptedTerms:     boolean
+  hasAcceptedTerms:      boolean
   bypassTermsAcceptance: boolean
-  bypassGuidedTour:     boolean
-  bypassOnboarding:     boolean
-  mustAcceptTerms:      boolean
+  bypassGuidedTour:      boolean
+  bypassOnboarding:      boolean
+  mustAcceptTerms:       boolean
+  /** True when terms_accepted has never been set (null/missing). Used by
+   *  FirstLoginGate to show the proactive modal only on genuine first logins,
+   *  not when a returning user simply needs to re-accept a newer version. */
+  isFirstLogin:          boolean
 }
 
 type MinimalSupabaseClient = {
@@ -31,7 +35,7 @@ type MinimalSupabaseClient = {
 export async function getGateStatus(supabase: MinimalSupabaseClient): Promise<GateStatus> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
-    return { hasAcceptedTerms: false, bypassTermsAcceptance: false, bypassGuidedTour: false, bypassOnboarding: false, mustAcceptTerms: true }
+    return { hasAcceptedTerms: false, bypassTermsAcceptance: false, bypassGuidedTour: false, bypassOnboarding: false, mustAcceptTerms: true, isFirstLogin: true }
   }
 
   const meta = (user.user_metadata ?? {}) as Record<string, unknown>
@@ -57,6 +61,7 @@ export async function getGateStatus(supabase: MinimalSupabaseClient): Promise<Ga
     bypassGuidedTour,
     bypassOnboarding,
     mustAcceptTerms: !hasAcceptedTerms && !bypassTermsAcceptance,
+    isFirstLogin:    ta == null,
   }
 }
 

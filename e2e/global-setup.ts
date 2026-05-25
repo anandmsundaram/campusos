@@ -107,10 +107,12 @@ async function setup(_config: FullConfig) {
     }
   }
 
-  // ── Seed terms acceptance for all test users (avoids breaking existing specs) ──
+  // ── Seed terms acceptance + tour completion for all test users ───────────────
+  // Without this, FirstLoginGate would show TermsModal / guided tour in every spec.
   const TERMS_VERSION      = '2026-05-terms-v1'
   const PRIVACY_VERSION    = '2026-05-privacy-v1'
   const GUIDELINES_VERSION = '2026-05-guidelines-v1'
+  const TOUR_VERSION       = 'campusos-first-login-tour-v1'
   for (const authUser of updatedUsers.filter(au => users.some(u => u.email === au.email))) {
     await admin.auth.admin.updateUserById(authUser.id, {
       user_metadata: {
@@ -120,6 +122,16 @@ async function setup(_config: FullConfig) {
           guidelines_version: GUIDELINES_VERSION,
           accepted_at:        new Date().toISOString(),
           accepted_from:      'global_setup',
+        },
+      },
+    })
+    await admin.auth.admin.updateUserById(authUser.id, {
+      user_metadata: {
+        tour_state: {
+          tour_version:   TOUR_VERSION,
+          completed_at:   new Date().toISOString(),
+          skipped_at:     null,
+          last_seen_step: 10,
         },
       },
     })

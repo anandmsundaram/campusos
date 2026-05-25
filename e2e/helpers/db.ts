@@ -417,6 +417,19 @@ export async function seedTermsAcceptance(userId: string, opts: SeedTermsOptions
   if (error) throw error
 }
 
+/**
+ * Set terms_accepted to null, simulating a brand-new user who has never seen
+ * the Terms modal. Unlike cleanupTermsAcceptance (which sets old version
+ * strings), this makes isFirstLogin=true so FirstLoginGate shows the
+ * proactive modal.
+ */
+export async function clearTermsForNewUserState(userId: string): Promise<void> {
+  const { error } = await adminClient().auth.admin.updateUserById(userId, {
+    user_metadata: { terms_accepted: null },
+  })
+  if (error) throw error
+}
+
 /** Set terms_accepted to clearly invalid versions so the gate triggers. */
 export async function cleanupTermsAcceptance(userId: string): Promise<void> {
   const { error } = await adminClient().auth.admin.updateUserById(userId, {
@@ -472,4 +485,72 @@ export async function cleanupBypass(userId: string): Promise<void> {
     },
   })
   if (error) throw error
+}
+
+// ─── Tour state helpers ───────────────────────────────────────────────────────
+// Tour state is stored in user_metadata.tour_state (consistent with
+// terms_accepted and qa_bypass patterns for the v1 beta).
+
+const TOUR_VERSION_SEED = 'campusos-first-login-tour-v1'
+
+/** Mark the guided tour as completed in user_metadata. */
+export async function seedTourCompleted(userId: string): Promise<void> {
+  const { error } = await adminClient().auth.admin.updateUserById(userId, {
+    user_metadata: {
+      tour_state: {
+        tour_version:   TOUR_VERSION_SEED,
+        completed_at:   new Date().toISOString(),
+        skipped_at:     null,
+        last_seen_step: 10,
+      },
+    },
+  })
+  if (error) throw error
+}
+
+/** Mark the guided tour as skipped at the given 1-based step in user_metadata. */
+export async function seedTourSkipped(userId: string, step = 1): Promise<void> {
+  const { error } = await adminClient().auth.admin.updateUserById(userId, {
+    user_metadata: {
+      tour_state: {
+        tour_version:   TOUR_VERSION_SEED,
+        completed_at:   null,
+        skipped_at:     new Date().toISOString(),
+        last_seen_step: step,
+      },
+    },
+  })
+  if (error) throw error
+}
+
+/** Reset tour state so the user sees the tour again on next dashboard load. */
+export async function clearTourState(userId: string): Promise<void> {
+  const { error } = await adminClient().auth.admin.updateUserById(userId, {
+    user_metadata: { tour_state: null },
+  })
+  if (error) throw error
+}
+
+export interface TourMetadata {
+  tourVersion:   string | null
+  completedAt:   string | null
+  skippedAt:     string | null
+  lastSeenStep:  number | null
+}
+
+/** Read tour_state from user_metadata via the admin API. */
+export async function getTourMetadata(userId: string): Promise<TourMetadata | null> {
+  const result = await adminClient().auth.admin.getUserById(userId)
+  if (result.error || !result.data?.user) return null
+
+  const meta = (result.data.user.user_metadata ?? {}) as Record<string, unknown>
+  const ts   = meta.tour_state as Record<string, unknown> | null | undefined
+  if (!ts) return null
+
+  return {
+    tourVersion:  (ts.tour_version   as string)  ?? null,
+    completedAt:  (ts.completed_at   as string)  ?? null,
+    skippedAt:    (ts.skipped_at     as string)  ?? null,
+    lastSeenStep: (ts.last_seen_step  as number) ?? null,
+  }
 }

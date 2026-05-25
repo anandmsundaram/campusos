@@ -1890,3 +1890,235 @@ Mark each ✅ (pass) or ❌ (fail):
 ---
 
 **All 25 checks must be ✅ for Section AA to pass.**
+
+
+---
+
+## Section AC — First Login Guided Tour
+
+**Feature:** COS-P25-FIRST-LOGIN-GUIDED-TOUR  
+**Tour version:** `campusos-first-login-tour-v1`  
+**Implementation:** `app/components/FirstLoginGate.tsx`, `app/components/FirstLoginTour.tsx`, `lib/tour.ts`
+
+---
+
+### AC-1: Terms gate precedes tour (new user flow)
+
+1. Create a new test user with no terms acceptance and no tour state (or use an existing test user after calling `cleanupTermsAcceptance` and `clearTourState` on it).
+2. Log in as that user.
+3. Navigate to `/dashboard`.
+4. **Expect:** Terms modal (`[data-testid="terms-modal"]`) appears automatically — NOT triggered by a post action.
+5. **Expect:** Guided tour (`[data-testid="first-login-tour"]`) is NOT visible.
+6. Check the checkbox (`[data-testid="terms-checkbox"]`).
+7. Click **Accept & Continue** (`[data-testid="terms-accept-btn"]`).
+8. **Expect:** Terms modal closes.
+9. **Expect:** Guided tour appears immediately.
+10. **Expect:** Step title contains "CampusOS helps students coordinate real campus help".
+
+| Check | Result |
+|---|---|
+| Terms modal appears on dashboard load (proactive, not action-gated) | |
+| Tour not visible before terms accepted | |
+| Tour appears after terms accepted | |
+| Step 1 title correct | |
+
+---
+
+### AC-2: Tour navigation (Next / Back / progress)
+
+1. Set up a user with accepted terms and no tour state.
+2. Log in and navigate to `/dashboard`.
+3. Tour appears automatically.
+4. **Expect:** Progress indicator shows "1 of 10".
+5. **Expect:** Back button is NOT visible on step 1.
+6. Click **Next**.
+7. **Expect:** Step title is "Rides". Progress shows "2 of 10".
+8. Click **Next**.
+9. **Expect:** Step title is "Pickups & errands". Progress shows "3 of 10".
+10. Click **Back**.
+11. **Expect:** Step title returns to "Rides". Progress shows "2 of 10".
+
+| Check | Result |
+|---|---|
+| Progress indicator shows "1 of 10" on first step | |
+| Back button hidden on step 1 | |
+| Next advances to Rides step | |
+| Next advances to Pickups & errands step | |
+| Back returns to Rides | |
+
+---
+
+### AC-3: Continue through all 10 steps
+
+1. Continue from AC-2. Navigate through all remaining steps with **Next**.
+2. Verify step titles appear in order:
+   - Step 1: Welcome / CampusOS helps students…
+   - Step 2: Rides
+   - Step 3: Pickups & errands
+   - Step 4: Moving help
+   - Step 5: Peer help
+   - Step 6: Borrow
+   - Step 7: Meal & Social
+   - Step 8: Clear details before posting
+   - Step 9: Trust and safety
+   - Step 10: You are ready
+3. On step 10, **Expect:** **Start using CampusOS** button is visible (`[data-testid="tour-finish"]`) instead of Next.
+
+| Check | Result |
+|---|---|
+| All 10 step titles present and correct | |
+| Finish button visible on step 10 | |
+| Next button absent on step 10 | |
+
+---
+
+### AC-4: Legal and positioning wording
+
+During any tour session, verify:
+
+1. Text contains: "peer-to-peer coordination"
+2. Text contains: "Payments are external during beta"
+3. Text contains: "Not a transportation provider" (or equivalent note on Rides step)
+4. Text does NOT contain: "CampusOS provides rides"
+5. Text does NOT contain: "CampusOS employs"
+6. Text does NOT contain: "CampusOS processes payments"
+
+| Check | Result |
+|---|---|
+| "peer-to-peer coordination" present | |
+| "Payments are external during beta" present | |
+| Forbidden wording absent | |
+
+---
+
+### AC-5: Skip stores state and suppresses tour
+
+1. Set up a user with accepted terms and no tour state.
+2. Log in and navigate to `/dashboard`. Tour appears.
+3. Click **Skip tour**.
+4. **Expect:** Tour closes immediately.
+5. Check user_metadata in Supabase: `tour_state.skipped_at` must be non-null.
+6. Refresh the page.
+7. **Expect:** Tour does NOT reappear.
+8. Log out and log back in.
+9. Navigate to `/dashboard`.
+10. **Expect:** Tour does NOT reappear.
+
+| Check | Result |
+|---|---|
+| Tour closes on Skip | |
+| `skipped_at` is set in user_metadata | |
+| Tour absent on page refresh | |
+| Tour absent after logout/login | |
+
+---
+
+### AC-6: Finish stores state and suppresses tour
+
+1. Set up a fresh user with accepted terms and no tour state.
+2. Log in and navigate to `/dashboard`. Tour appears.
+3. Click through all 10 steps with Next.
+4. On step 10, click **Start using CampusOS**.
+5. **Expect:** Tour closes.
+6. Check user_metadata: `tour_state.completed_at` must be non-null, `skipped_at` null.
+7. Refresh the page.
+8. **Expect:** Tour does NOT reappear.
+
+| Check | Result |
+|---|---|
+| Tour closes on Finish | |
+| `completed_at` is set, `skipped_at` null | |
+| Tour absent on refresh | |
+
+---
+
+### AC-7: QA bypass suppresses tour
+
+1. Insert a row in `qa_bypass_users` for the test user with `bypass_guided_tour = true`, `is_active = true`, `expires_at` in the future (or null).
+   ```sql
+   INSERT INTO public.qa_bypass_users (email, bypass_guided_tour, is_active, reason)
+   VALUES ('testuser@example.com', true, true, 'AC-7 manual QA');
+   ```
+2. Ensure the user has accepted terms but has NO completed/skipped tour state.
+3. Log in and navigate to `/dashboard`.
+4. **Expect:** Tour does NOT appear.
+5. **Expect:** Dashboard and request input are usable.
+
+| Check | Result |
+|---|---|
+| Tour suppressed with active bypass_guided_tour | |
+| Dashboard usable without tour | |
+
+---
+
+### AC-8: Expired or inactive bypass does NOT suppress tour
+
+1. Change the `qa_bypass_users` row from AC-7 to have `expires_at` in the past (e.g., yesterday).
+2. Clear the user's `tour_state` (or use a fresh user with no tour state).
+3. Navigate to `/dashboard`.
+4. **Expect:** Tour appears (expired bypass ignored).
+5. Set `is_active = false` instead (and `expires_at` back to future).
+6. Repeat navigation.
+7. **Expect:** Tour appears (inactive bypass ignored).
+
+| Check | Result |
+|---|---|
+| Expired bypass → tour appears | |
+| Inactive bypass → tour appears | |
+
+---
+
+### AC-9: Tour does not block posting after completion/skip
+
+1. Use a user with accepted terms and completed or skipped tour state.
+2. Navigate to `/dashboard`.
+3. **Expect:** Tour does NOT appear.
+4. Type a request in the input: `Need a ride to Target from my dorm tomorrow at 10`
+5. Click **Post request**.
+6. **Expect:** Normal request flow starts (confirm card or workflow gate, no tour).
+7. **Expect:** Tour does not reappear during posting.
+
+| Check | Result |
+|---|---|
+| No tour modal during posting after completion | |
+| Normal posting flow unaffected | |
+
+---
+
+### AC-10: Mobile layout
+
+1. Open DevTools → device toolbar → set viewport to 390×844 (iPhone 14 equivalent).
+2. Set up user with accepted terms, no tour state.
+3. Navigate to `/dashboard`.
+4. **Expect:** Tour appears.
+5. **Expect:** No horizontal scroll bar.
+6. **Expect:** Next, Back, and Skip buttons all visible and tappable.
+7. Click through at least 3 steps.
+8. **Expect:** Step body text is readable (no overflow).
+9. Click Skip.
+10. **Expect:** Tour closes, dashboard usable.
+
+| Check | Result |
+|---|---|
+| Tour appears on mobile viewport | |
+| No horizontal overflow | |
+| All buttons visible/tappable | |
+| Text readable | |
+| Dashboard usable after skip | |
+
+---
+
+### AC-11: Migration file present (schema review)
+
+1. Confirm the file exists: `supabase/migrations/029_user_onboarding_state.sql`
+2. Open it and confirm it creates `user_onboarding_state` with columns: `user_id`, `tour_version`, `completed_at`, `skipped_at`, `last_seen_step`.
+3. Confirm RLS policies for `SELECT`, `INSERT`, `UPDATE` are defined.
+
+| Check | Result |
+|---|---|
+| Migration 029 file present with correct schema | |
+| RLS policies defined | |
+
+---
+
+**All checks in AC-1 through AC-11 must be ✅ for Section AC to pass.**
