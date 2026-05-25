@@ -39,14 +39,15 @@ if (!rawUrl) {
   process.exit(1)
 }
 
-// Parse URL manually to handle passwords containing '@'
+// Parse URL manually to handle passwords containing '@' or percent-encoded chars
 // Format: postgresql://user:password@host:port/database
-const withoutProto = rawUrl.replace(/^postgresql:\/\/|^postgres:\/\//, '')
+const decoded = rawUrl.replace(/%40/g, '@').replace(/%23/g, '#').replace(/%3A/gi, ':')
+const withoutProto = decoded.replace(/^postgresql:\/\/|^postgres:\/\//, '')
 const firstColon = withoutProto.indexOf(':')
 const lastAt = withoutProto.lastIndexOf('@')
 const user = withoutProto.slice(0, firstColon)
 const password = withoutProto.slice(firstColon + 1, lastAt)
-const rest = withoutProto.slice(lastAt + 1)   // host:port/database
+const rest = withoutProto.slice(lastAt + 1) // host:port/database
 const [hostPort, database] = rest.split('/')
 const [host, portStr] = hostPort.split(':')
 const port = parseInt(portStr ?? '5432', 10)
