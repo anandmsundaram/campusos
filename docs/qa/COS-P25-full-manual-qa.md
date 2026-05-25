@@ -2127,7 +2127,7 @@ During any tour session, verify:
 
 ## Section AD — Ride intent routing, seat inference, location gating, confirm-gate messaging
 
-**Prompt ID:** COS-P25-RIDE-INTENT-WALMART-LOCATION-SEATS-CONFIRM-HOTFIX
+**Prompt IDs:** COS-P25-RIDE-INTENT-WALMART-LOCATION-SEATS-CONFIRM-HOTFIX · COS-P25-POST-WALMART-RIDE-HOTFIX-QA-AND-FIXES
 
 ---
 
@@ -2259,4 +2259,38 @@ During any tour session, verify:
 
 ---
 
-**All checks in AD-1 through AD-9 must be ✅ for Section AD to pass.**
+### AD-10: Restaurant ride — explicit ride intent beats restaurant heuristic
+
+1. Submit: `Looking for a ride to Thai restaurant`
+2. **Expect:** Confirm card shows Category = **Rides** (not Meal & Social or Errands).
+3. **Expect:** Ride route pickers (pickup + dropoff) appear, NOT a social meetup UI.
+4. **Expect:** Meal & Social category label is NOT shown.
+
+| Check | Result |
+|---|---|
+| Category = Rides | |
+| Pickup + dropoff pickers visible | |
+| Meal & Social label absent | |
+
+---
+
+### AD-11: Edit/cancel/retry — deterministic, no state leak
+
+1. Submit: `I need a ride to Walmart along with my friend`
+2. **Expect:** Confirm card shows Rides, Seats needed: 2.
+3. Click **Edit** to return to the textarea.
+4. Submit the same text again.
+5. **Expect:** Confirm card shows Rides again (not Errands), Seats needed: 2.
+6. **Expect:** Confirm button is still disabled (prior payment/location selections do not leak).
+7. **Expect:** No errand follow-up questions appear.
+
+| Check | Result |
+|---|---|
+| Second submission still routes to Rides | |
+| Seats needed: 2 on second submission | |
+| Confirm disabled (no state leak from first) | |
+| No errand questions | |
+
+---
+
+**All checks in AD-1 through AD-11 must be ✅ for Section AD to pass.**

@@ -27,6 +27,7 @@ import {
   seedBypassUser,
   cleanupBypass,
   authenticatedClient,
+  seedTourCompleted,
 } from '../helpers/db'
 
 // Minimal mock request that doesn't need time/location gates
@@ -70,6 +71,13 @@ test.describe('Terms acceptance gate and QA bypass', () => {
   test.beforeAll(async () => {
     driverUserId = await getUserId(driverCreds().email)
     pax1UserId   = await getUserId(pax1Creds().email)
+  })
+
+  test.beforeEach(async () => {
+    await Promise.all([
+      seedTourCompleted(driverUserId),
+      seedTourCompleted(pax1UserId),
+    ])
   })
 
   test.afterEach(async ({ runId }) => {

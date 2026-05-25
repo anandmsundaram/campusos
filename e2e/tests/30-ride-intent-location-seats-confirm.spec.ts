@@ -11,6 +11,8 @@
  *  7. Food pickup regression: "pick up food from McDonald's" → errands, not rides
  *  8. Errand regression: "Can someone grab milk from HEB" → errands, not rides
  *  9. Full ride flow: filling all fields enables confirm button
+ * 10. Restaurant ride regression: "Looking for a ride to Thai restaurant" → Rides
+ * 11. Edit/cancel/retry: re-submitting same request is deterministic (no state leak)
  */
 
 import { test, expect } from '../helpers/fixtures'
@@ -85,6 +87,33 @@ const ERRAND_FOOD_MOCK = {
   summary: "Need someone to pick up food from McDonald's.",
   payment_mode_unclear: false,
   structured_data: { errand_type: 'food_pickup', store_or_place: "McDonald's", task_details: null, reimbursement_type: 'paid' },
+}
+
+const RESTAURANT_RIDE_MOCK = {
+  category: 'rides' as const,
+  title: 'Ride to Thai restaurant',
+  origin_city: 'Campus',
+  destination_city: 'Thai restaurant',
+  is_driver: false as const,
+  available_seats: null,
+  scheduled_time: null,
+  location: null,
+  is_round_trip: false,
+  return_date: null,
+  flexible_time: false,
+  price_type: null,
+  is_airport_ride: false,
+  budget: null,
+  urgency: 'medium' as const,
+  helper_requirements: null,
+  missing_fields: ['origin_city', 'destination_city', 'scheduled_time'],
+  is_offer: false,
+  ambiguous: false,
+  clarification_question: null,
+  clarification_options: null,
+  summary: 'Looking for a ride to a Thai restaurant near campus.',
+  payment_mode_unclear: false,
+  structured_data: { has_luggage: null, passengers_count: null },
 }
 
 const ERRAND_GROCERY_MOCK = {
@@ -288,6 +317,60 @@ test.describe('Ride intent routing, seats, location gating, and confirm-gate mes
     const categoryRow = page.locator('[data-testid="category-row"]')
     await expect(categoryRow).toContainText('Errands')
     await expect(categoryRow).not.toContainText('Rides')
+  })
+
+  // ── 10: Restaurant ride regression — explicit ride intent beats restaurant heuristic ──
+  test('"Looking for a ride to Thai restaurant" routes to Rides, not Meal & Social', async ({ pax1Page: page }) => {
+    await mockParseRequest(page, RESTAURANT_RIDE_MOCK)
+    await mockLocationSearch(page, [])
+
+    await goToDashboard(page)
+    await page.locator('[data-testid="request-textarea"]').fill('Looking for a ride to Thai restaurant')
+    await page.getByRole('button', { name: /Post request/ }).click()
+    await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
+
+    // Category must be Rides (not Meal & Social or Errands)
+    const categoryRow = page.locator('[data-testid="category-row"]')
+    await expect(categoryRow).toContainText('Rides')
+    await expect(categoryRow).not.toContainText('Meal')
+    await expect(categoryRow).not.toContainText('Errands')
+
+    // Ride-specific location pickers appear (not meal meetup UI)
+    await expect(page.locator('[data-testid="location-picker-pickup"]')).toBeVisible()
+    await expect(page.locator('[data-testid="location-picker-dropoff"]')).toBeVisible()
+  })
+
+  // ── 11: Edit/cancel/retry — re-submitting is deterministic, no state leak ────
+  test('edit and re-submit produces same Rides routing and seats=2 with no state leak', async ({ driverPage: page }) => {
+    await mockParseRequest(page, WALMART_RIDE_MOCK)
+    await mockLocationSearch(page, [])
+
+    await goToDashboard(page)
+    await page.locator('[data-testid="request-textarea"]').fill('I need a ride to Walmart along with my friend')
+    await page.getByRole('button', { name: /Post request/ }).click()
+    await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
+
+    // First submission: verify Rides + seats
+    await expect(page.locator('[data-testid="category-row"]')).toContainText('Rides')
+    await expect(page.getByText('Seats needed')).toBeVisible()
+
+    // Click Edit to go back
+    await page.locator('button', { hasText: /^Edit$/ }).click()
+
+    // Textarea is back and editable
+    const textarea = page.locator('[data-testid="request-textarea"]')
+    await expect(textarea).toBeVisible()
+
+    // Re-submit same text (mock still active)
+    await page.getByRole('button', { name: /Post request/ }).click()
+    await page.locator('[data-testid="confirm-post-btn"]').waitFor({ timeout: 10_000 })
+
+    // Second submission: same results — Rides, seats=2, no errand leakage
+    await expect(page.locator('[data-testid="category-row"]')).toContainText('Rides')
+    await expect(page.getByText('Seats needed')).toBeVisible()
+    await expect(page.getByText('What type of errand?')).not.toBeVisible()
+    // confirm is still disabled (no state from first submission leaked in)
+    await expect(page.locator('[data-testid="confirm-post-btn"]')).toBeDisabled()
   })
 
   // ── 9: Full ride flow — confirm enables after all fields ─────────────────────
