@@ -11,6 +11,8 @@ function isSchemaErr(msg?: string | null) {
   return !!msg && /schema cache|Could not find the|more than one relationship/i.test(msg)
 }
 
+interface CampusRow { id: string; name: string; city: string; slug: string }
+
 // ─── Types for next-ride widget ───────────────────────────────────────────────
 
 interface DriverRideRow {
@@ -86,6 +88,21 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const now = new Date().toISOString()
 
+  // ── Campus context (for campus-scoped feed and display) ───────────────────
+  // RLS already enforces campus scoping on all queries; this fetch provides
+  // the campus name for UI display and enables the defense-in-depth filter.
+  const { data: profileRow } = await supabase
+    .from('profiles')
+    .select('campus_id, campuses!campus_id(id, name, city, slug)')
+    .eq('id', user!.id)
+    .single()
+
+  const userCampusId = (profileRow?.campus_id as string | null | undefined) ?? null
+  const campusInfo = profileRow
+    ? (Array.isArray(profileRow.campuses) ? profileRow.campuses[0] : profileRow.campuses) as CampusRow | null
+    : null
+  const campusName = campusInfo?.name ?? null
+
   // ── Auto-complete past rides (1 h after scheduled_time) ──────────────────
   // Threshold: 1 h grace period after ride time, then auto-complete
   const oneHourAgo = new Date(Date.now() - 3_600_000).toISOString()
@@ -115,12 +132,13 @@ export default async function DashboardPage() {
       .lt('scheduled_time', oneHourAgo)
   }
 
-  // ── Step 1: fetch all open requests (STEP 3 from debug spec) ──────────────
-  const { data: requests, error: requestsError } = await supabase
-    .from('requests')
-    .select(FULL_SELECT)
-    .eq('status', 'open')
-    .order('created_at', { ascending: false })
+  // ── Step 1: fetch campus-scoped open requests ────────────────────────────
+  // RLS enforces campus_id = viewer's campus; explicit filter adds defense-in-depth.
+  // userCampusId may be null pre-migration (migration 030) — skip filter in that case.
+  const feedBase = supabase.from('requests').select(FULL_SELECT).eq('status', 'open')
+  const { data: requests, error: requestsError } = await (
+    userCampusId ? feedBase.eq('campus_id', userCampusId) : feedBase
+  ).order('created_at', { ascending: false })
 
   // STEP 1: Debug logging — visible in the Next.js terminal (server-side)
   console.log('[dashboard] requests fetched:', requests?.length ?? 0, '| error:', requestsError?.message ?? 'none')
@@ -129,11 +147,10 @@ export default async function DashboardPage() {
   // Schema cache fallback — retry without migration 006/007 columns
   let feedData: unknown[] = requests ?? []
   if (isSchemaErr(requestsError?.message)) {
-    const { data: fallback, error: fallbackErr } = await supabase
-      .from('requests')
-      .select(BASE_SELECT)
-      .eq('status', 'open')
-      .order('created_at', { ascending: false })
+    const fallbackBase = supabase.from('requests').select(BASE_SELECT).eq('status', 'open')
+    const { data: fallback, error: fallbackErr } = await (
+      userCampusId ? fallbackBase.eq('campus_id', userCampusId) : fallbackBase
+    ).order('created_at', { ascending: false })
     console.log('[dashboard] fallback fetched:', fallback?.length ?? 0, '| error:', fallbackErr?.message ?? 'none')
     feedData = (fallback ?? []) as unknown[]
   }
@@ -338,6 +355,21 @@ export default async function DashboardPage() {
 
       <div className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-12">
         <PageTracker event="dashboard_opened" />
+        {campusName ? (
+          <div data-testid="campus-badge" className="mb-3 flex items-center gap-2">
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Campus</span>
+            <span className="rounded-full border border-blue-800/50 bg-blue-900/30 px-3 py-0.5 text-xs font-medium text-blue-300">
+              {campusName}
+            </span>
+          </div>
+        ) : userCampusId === null && profileRow !== null && profileRow !== undefined ? (
+          // Post-migration: profile exists but campus_id is null — data integrity issue
+          <div className="mb-3 rounded-lg border border-orange-800/40 bg-orange-900/20 px-4 py-2">
+            <p className="text-xs text-orange-300">
+              Your campus is not set. Please contact support or complete setup.
+            </p>
+          </div>
+        ) : null}
         <RequestInput />
 
         {/* First-session onboarding card — client component, dismisses via localStorage */}

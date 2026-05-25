@@ -2294,3 +2294,130 @@ During any tour session, verify:
 ---
 
 **All checks in AD-1 through AD-11 must be ✅ for Section AD to pass.**
+
+---
+
+## Section AE: Campus Scoping / Tenant Isolation
+
+**Prompt ID:** COS-P25-CAMPUS-SCOPING-TENANT-ISOLATION  
+**Migration:** 030_campus_scoping.sql  
+**Spec:** e2e/tests/31-campus-scoping-tenant-isolation.spec.ts (10 tests)
+
+---
+
+### AE-1: TAMU feed isolation
+
+1. Log in as a TAMU user.
+2. Open the dashboard.
+3. **Expect:** Campus badge shows "Texas A&M University".
+4. **Expect:** Only TAMU requests appear in the "All Open" feed.
+5. Confirm no UT Austin requests are visible.
+
+| Check | Result |
+|---|---|
+| Campus badge shows Texas A&M University | |
+| Feed contains TAMU requests | |
+| No UT Austin requests visible | |
+
+---
+
+### AE-2: UT Austin feed isolation
+
+1. Log in as a UT Austin user.
+2. Open the dashboard.
+3. **Expect:** Campus badge shows "University of Texas at Austin".
+4. **Expect:** Only UT Austin requests appear in the feed.
+5. Confirm no TAMU requests are visible.
+
+| Check | Result |
+|---|---|
+| Campus badge shows UT Austin | |
+| Feed contains UT Austin requests | |
+| No TAMU requests visible | |
+
+---
+
+### AE-3: Cross-campus direct URL blocked
+
+1. As a TAMU user, copy the request ID of a TAMU request from the feed.
+2. Log in as a UT Austin user in a different browser/session.
+3. Attempt to query that TAMU request ID directly (e.g., via DevTools → `supabase.from('requests').select().eq('id', tamuRequestId)`).
+4. **Expect:** 0 rows returned. RLS filters the result.
+
+| Check | Result |
+|---|---|
+| Cross-campus ID query returns 0 rows | |
+| No request details leaked | |
+
+---
+
+### AE-4: Cross-campus offer blocked server-side
+
+1. As a UT Austin user, obtain the ID of a TAMU request (e.g., through an admin or test setup).
+2. Call `submit_offer_safe` with that request ID.
+3. **Expect:** Response is `{ ok: false, error: "This request is not available at your campus" }`.
+
+| Check | Result |
+|---|---|
+| submit_offer_safe returns ok=false | |
+| Error message references campus | |
+
+---
+
+### AE-5: New request campus assignment — TAMU
+
+1. Log in as a TAMU user.
+2. Create a new request through the normal UI flow.
+3. After posting, inspect the row in the DB (admin/SQL editor): `SELECT campus_id FROM requests WHERE title = '...'`.
+4. **Expect:** `campus_id` matches the TAMU campus UUID.
+
+| Check | Result |
+|---|---|
+| Request rows has campus_id = TAMU UUID | |
+| campus_id was not set by client (trigger assigned it) | |
+
+---
+
+### AE-6: New request campus assignment — UT Austin
+
+1. Log in as a UT Austin user.
+2. Create a new request through the normal UI flow.
+3. Inspect the DB row.
+4. **Expect:** `campus_id` matches the UT Austin campus UUID.
+
+| Check | Result |
+|---|---|
+| Request row has campus_id = UT Austin UUID | |
+
+---
+
+### AE-7: Spoofed campus_id is rejected by server trigger
+
+1. As a TAMU user, open DevTools and run:
+   `supabase.from('requests').insert({ requester_id: user.id, category: 'peer_help', title: 'spoof test', urgency: 'medium', campus_id: '<ut-austin-campus-id>' })`
+2. **Expect:** The insert succeeds (trigger does not raise), but the saved row has `campus_id = TAMU UUID`.
+3. The client-provided `campus_id` for UT Austin is silently overwritten by the BEFORE INSERT trigger.
+
+| Check | Result |
+|---|---|
+| Insert succeeds (no hard error) | |
+| Saved row has TAMU campus_id, not the spoofed UT Austin value | |
+
+---
+
+### AE-8: Existing request workflow still works
+
+1. Log in as any valid user.
+2. Create a peer help request through the normal UI flow (time, payment, post).
+3. **Expect:** Request appears in the campus-scoped feed.
+4. **Expect:** No regression in time/payment/location gates.
+
+| Check | Result |
+|---|---|
+| Request creation succeeds end-to-end | |
+| Request visible in campus feed | |
+| No time/payment regression | |
+
+---
+
+**All checks in AE-1 through AE-8 must be ✅ for Section AE to pass.**

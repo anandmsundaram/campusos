@@ -538,6 +538,30 @@ export interface TourMetadata {
   lastSeenStep:  number | null
 }
 
+// ─── Campus helpers ───────────────────────────────────────────────────────────
+
+/** Return the campus uuid for a given slug ('tamu' | 'ut-austin'). */
+export async function getCampusId(slug: string): Promise<string> {
+  const { data, error } = await adminClient()
+    .from('campuses')
+    .select('id')
+    .eq('slug', slug)
+    .single()
+  if (error) throw new Error(`getCampusId(${slug}): ${error.message}`)
+  return data.id
+}
+
+/** Update a user's campus_id in profiles (admin, bypasses RLS). */
+export async function setUserCampus(userId: string, campusId: string): Promise<void> {
+  const { error } = await adminClient()
+    .from('profiles')
+    .update({ campus_id: campusId })
+    .eq('id', userId)
+  if (error) throw new Error(`setUserCampus(${userId}): ${error.message}`)
+}
+
+// ─── (existing functions continue below) ─────────────────────────────────────
+
 /** Read tour_state from user_metadata via the admin API. */
 export async function getTourMetadata(userId: string): Promise<TourMetadata | null> {
   const result = await adminClient().auth.admin.getUserById(userId)

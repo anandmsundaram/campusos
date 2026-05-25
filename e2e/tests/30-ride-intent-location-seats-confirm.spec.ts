@@ -266,8 +266,9 @@ test.describe('Ride intent routing, seats, location gating, and confirm-gate mes
     await expect(categoryRow).toContainText('Rides')
     await expect(categoryRow).not.toContainText('Errands')
 
-    // Title must contain "Walmart" or "Ride"
-    await expect(page.getByText(/Ride to Walmart|Walmart.*[Rr]ide/)).toBeVisible()
+    // Title must contain "Walmart" or "Ride" — scope to title-row to avoid strict mode
+    const titleRow = page.locator('[data-testid="title-row"]')
+    await expect(titleRow).toContainText(/Ride to Walmart|Walmart.*[Rr]ide/)
   })
 
   // ── 7: Food pickup regression ─────────────────────────────────────────────────

@@ -1522,7 +1522,7 @@ export default function RequestInput() {
 
           <div className="mb-5 flex flex-col gap-3">
             <Row data-testid="category-row" label="Category" value={CATEGORY_LABELS[parsed!.category]} />
-            <Row label="Title" value={parsed!.title} />
+            <Row data-testid="title-row" label="Title" value={parsed!.title} />
 
             {/* ── RIDES-specific rows ── */}
             {parsed!.category === 'rides' && (
