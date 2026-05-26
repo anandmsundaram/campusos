@@ -560,6 +560,18 @@ export async function setUserCampus(userId: string, campusId: string): Promise<v
   if (error) throw new Error(`setUserCampus(${userId}): ${error.message}`)
 }
 
+/** Set admin_role on a user's profile ('user' | 'campus_admin' | 'global_admin'). */
+export async function setUserAdminRole(
+  userId: string,
+  role: 'user' | 'campus_admin' | 'global_admin',
+): Promise<void> {
+  const { error } = await adminClient()
+    .from('profiles')
+    .update({ admin_role: role })
+    .eq('id', userId)
+  if (error) throw new Error(`setUserAdminRole(${userId}, ${role}): ${error.message}`)
+}
+
 // ─── (existing functions continue below) ─────────────────────────────────────
 
 /** Read tour_state from user_metadata via the admin API. */

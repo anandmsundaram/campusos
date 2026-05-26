@@ -2421,3 +2421,174 @@ During any tour session, verify:
 ---
 
 **All checks in AE-1 through AE-8 must be ✅ for Section AE to pass.**
+
+---
+
+## Section AF — Admin RBAC and Ops Dashboard
+
+**Feature:** DB-driven admin roles replace hardcoded email lists. `/dashboard/admin` is gated by `admin_role` on the `profiles` table (`'user'` | `'campus_admin'` | `'global_admin'`). Global admins see platform-wide data; campus admins see only their campus.
+
+---
+
+### AF-1: Non-admin access is blocked
+
+1. Log in as a regular user (any account without admin rights).
+2. Navigate directly to `/dashboard/admin`.
+3. **Expect:** Immediately redirected to `/dashboard`.
+4. **Expect:** Admin link does not appear in the sidebar.
+
+| Check | Result |
+|---|---|
+| Redirect to /dashboard occurs | |
+| Admin link absent from sidebar | |
+
+---
+
+### AF-2: Global admin access and role badge
+
+1. Log in as a global admin (`anandmsundaram@gmail.com`, `campusosapp@gmail.com`, or `valsgum@gmail.com`).
+2. Navigate to `/dashboard/admin`.
+3. **Expect:** Page loads with "Admin Dashboard" heading.
+4. **Expect:** "Global Admin" badge visible in the header.
+5. **Expect:** "Platform-wide view — all campuses" subheading text.
+
+| Check | Result |
+|---|---|
+| Page loads without redirect | |
+| "Global Admin" badge visible | |
+| Platform-wide subheading shown | |
+
+---
+
+### AF-3: Global admin — system health metrics
+
+1. On `/dashboard/admin` as global admin.
+2. **Expect:** Health metrics grid shows Total Users, Total Requests, Total Rides, Offers Made, Active Rides, Tasks Completed.
+3. Each metric shows a non-negative integer.
+
+| Check | Result |
+|---|---|
+| All 6 metric cards visible | |
+| Values are non-negative integers | |
+
+---
+
+### AF-4: Global admin — campus filter
+
+1. On `/dashboard/admin` as global admin.
+2. **Expect:** Campus filter row appears with "All" and per-campus links.
+3. Click a campus name (e.g., "Texas A&M").
+4. **Expect:** URL changes to `?campus=<uuid>` and page reloads with "Filtered: Texas A&M" subheading.
+5. Click "All".
+6. **Expect:** URL returns to `/dashboard/admin` with no campus param.
+
+| Check | Result |
+|---|---|
+| Campus filter row visible | |
+| Clicking campus appends ?campus= | |
+| Subheading updates to "Filtered: <campus>" | |
+| Clicking All removes campus filter | |
+
+---
+
+### AF-5: Global admin — onboarding funnel and engagement
+
+1. On `/dashboard/admin` as global admin.
+2. **Expect:** "Onboarding Funnel" section visible with 4 steps (last 7 days).
+3. **Expect:** "Engagement Events" section visible with 6 event counts.
+
+| Check | Result |
+|---|---|
+| Funnel section visible | |
+| Engagement section visible | |
+| Step values are non-negative integers | |
+
+---
+
+### AF-6: Global admin — requests, users, audit, reports sections
+
+1. On `/dashboard/admin` as global admin.
+2. **Expect:** "Recent Requests" section with table columns: Category, Title, Status, Requester, Campus, When.
+3. **Expect:** "Recent Users" section with table columns: Name, Role, Campus, Rating, Joined.
+4. **Expect:** "Audit Log" section with table columns: Event, Actor, Request, When.
+5. **Expect:** "Pending Reports" section visible (may show empty state if no reports).
+
+| Check | Result |
+|---|---|
+| Recent Requests section visible | |
+| Requests table has Campus column | |
+| Recent Users section visible | |
+| Users table has Campus column | |
+| Audit Log section visible | |
+| Pending Reports section visible | |
+
+---
+
+### AF-7: Campus admin access and role badge
+
+1. In Supabase dashboard, set a test user's `admin_role` to `campus_admin`.
+2. Log in as that user.
+3. Navigate to `/dashboard/admin`.
+4. **Expect:** Page loads without redirect.
+5. **Expect:** "Campus Admin" badge visible.
+6. **Expect:** Subheading says "Scoped to: <campus name>".
+
+| Check | Result |
+|---|---|
+| Page loads without redirect | |
+| "Campus Admin" badge visible | |
+| Scoped subheading visible | |
+
+---
+
+### AF-8: Campus admin — no analytics funnel, no campus filter
+
+1. On `/dashboard/admin` as campus admin.
+2. **Expect:** Campus filter row is NOT visible.
+3. **Expect:** "Onboarding Funnel" section is NOT visible (RLS blocks analytics_events).
+4. **Expect:** "Engagement Events" section is NOT visible.
+5. **Expect:** "Recent Requests", "Recent Users", "Audit Log", "Pending Reports" sections ARE visible.
+
+| Check | Result |
+|---|---|
+| Campus filter absent | |
+| Onboarding Funnel absent | |
+| Engagement Events absent | |
+| Recent Requests visible | |
+| Recent Users visible | |
+| Audit Log visible | |
+| Pending Reports visible | |
+
+---
+
+### AF-9: Campus admin data isolation
+
+1. On `/dashboard/admin` as campus admin.
+2. **Expect:** Recent Requests shows only requests from the admin's campus.
+3. **Expect:** Recent Users shows only users from the admin's campus.
+4. **Expect:** No Campus column appears in Requests or Users tables (scoped, no need to disambiguate).
+
+| Check | Result |
+|---|---|
+| Requests show only own campus | |
+| Users show only own campus | |
+| Campus column absent from tables | |
+
+---
+
+### AF-10: Admin link in sidebar
+
+1. Log in as any admin (`campus_admin` or `global_admin`).
+2. Navigate to `/dashboard`.
+3. **Expect:** "Admin" link visible in the sidebar navigation.
+4. Log in as a regular user.
+5. **Expect:** "Admin" link NOT visible in the sidebar.
+
+| Check | Result |
+|---|---|
+| Admin link visible for admin user | |
+| Admin link absent for regular user | |
+
+---
+
+**All checks in AF-1 through AF-10 must be ✅ for Section AF to pass.**

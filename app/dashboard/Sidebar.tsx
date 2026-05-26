@@ -6,8 +6,6 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { trackEvent } from '@/lib/analytics'
 
-const ADMIN_EMAILS = new Set(['anandmsundaram@gmail.com', 'campusosapp@gmail.com', 'valsgum@gmail.com'])
-
 // Profile is excluded here and rendered explicitly so mobile can treat it as a sheet trigger
 const NAV_MAIN = [
   { href: '/dashboard',          label: 'Dashboard',   icon: 'home' },
@@ -49,6 +47,7 @@ interface Props {
   userName: string | null
   userEmail: string
   userId: string
+  isAdmin: boolean
   logout: () => Promise<void>
 }
 
@@ -229,7 +228,7 @@ function NotificationBell({
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
-export default function Sidebar({ userName, userEmail, userId, logout }: Props) {
+export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }: Props) {
   const pathname = usePathname()
   const [mobileProfileOpen, setMobileProfileOpen] = useState(false)
   const [mobileNotifOpen, setMobileNotifOpen] = useState(false)
@@ -336,7 +335,7 @@ export default function Sidebar({ userName, userEmail, userId, logout }: Props) 
             <NavIcon name="user" active={isActive('/dashboard/profile')} />
             Profile
           </Link>
-          {ADMIN_EMAILS.has(userEmail) && (
+          {isAdmin && (
             <Link
               href="/dashboard/admin"
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${

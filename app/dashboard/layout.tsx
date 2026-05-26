@@ -12,9 +12,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('name')
+    .select('name, admin_role')
     .eq('id', user.id)
     .single()
+
+  const isAdmin = profile?.admin_role === 'campus_admin' || profile?.admin_role === 'global_admin'
 
   async function logout() {
     'use server'
@@ -29,6 +31,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         userName={profile?.name ?? null}
         userEmail={user.email ?? ''}
         userId={user.id}
+        isAdmin={isAdmin}
         logout={logout}
       />
       {/* Offset by sidebar on desktop; pad bottom for mobile nav */}
