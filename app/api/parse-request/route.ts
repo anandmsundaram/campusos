@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse, type NextRequest } from 'next/server'
+import { checkRequestScope, SCOPE_BLOCKED_MESSAGE } from '@/lib/requestScope'
 
 console.log('[parse-request] module load — ANTHROPIC_API_KEY present:', !!process.env.ANTHROPIC_API_KEY)
 
@@ -152,6 +153,13 @@ export async function POST(request: NextRequest) {
   if (!text) {
     console.log('[parse-request] empty text, returning 400')
     return NextResponse.json({ error: 'text is required' }, { status: 400 })
+  }
+
+  // Server-side scope guard — prevents API bypass
+  const scopeResult = checkRequestScope(text)
+  if (!scopeResult.allowed) {
+    console.log('[parse-request] scope check blocked:', text.slice(0, 80))
+    return NextResponse.json({ error: 'OUT_OF_SCOPE', reason: SCOPE_BLOCKED_MESSAGE }, { status: 422 })
   }
 
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Chicago' })

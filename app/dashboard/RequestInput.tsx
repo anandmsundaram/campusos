@@ -7,6 +7,7 @@ import { LocationPicker } from '@/app/components/LocationPicker'
 import type { ResolvedLocation } from '@/lib/location-types'
 import TermsModal from '@/app/components/TermsModal'
 import { getGateStatus } from '@/lib/terms'
+import { checkRequestScope, SCOPE_BLOCKED_MESSAGE } from '@/lib/requestScope'
 
 interface ParsedRequest {
   category: 'rides' | 'moving' | 'peer_help' | 'errands' | 'borrow' | 'meal_meetup'
@@ -751,6 +752,13 @@ export default function RequestInput() {
       return
     }
 
+    // Client-side scope guard before hitting the API
+    const scopeResult = checkRequestScope(text)
+    if (!scopeResult.allowed) {
+      setError(SCOPE_BLOCKED_MESSAGE)
+      return
+    }
+
     setError(null)
     setStatus('parsing')
     setParsed(null)
@@ -771,7 +779,11 @@ export default function RequestInput() {
     })
 
     if (!res.ok) {
-      setError('Failed to parse your request. Please try again.')
+      if (res.status === 422) {
+        setError(SCOPE_BLOCKED_MESSAGE)
+      } else {
+        setError('Failed to parse your request. Please try again.')
+      }
       setStatus('idle')
       return
     }
@@ -929,7 +941,11 @@ export default function RequestInput() {
     }
 
     if (dbError) {
-      setError(dbError.message)
+      if (/OUT_OF_SCOPE/i.test(dbError.message)) {
+        setError(SCOPE_BLOCKED_MESSAGE)
+      } else {
+        setError(dbError.message)
+      }
       setStatus('confirm')
       return
     }
@@ -1082,7 +1098,7 @@ export default function RequestInput() {
 
       {/* Error */}
       {error !== null && (
-        <div className="w-full max-w-2xl rounded-xl border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-sm text-red-400">
+        <div data-testid="scope-error" className="w-full max-w-2xl rounded-xl border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-sm text-red-400">
           {error}
         </div>
       )}
@@ -1152,7 +1168,7 @@ export default function RequestInput() {
 
       {/* ── Confirmation card ── */}
       {showConfirmCard && (
-        <div className="w-full max-w-2xl rounded-2xl border border-[#1e2d4a] bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
+        <div data-testid="confirm-card" className="w-full max-w-2xl rounded-2xl border border-[#1e2d4a] bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
 
           {/* Follow-up questions */}
           {followupQuestionsToShow.length > 0 && (

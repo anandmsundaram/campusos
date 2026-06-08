@@ -2748,3 +2748,154 @@ the app shell is free of duplicate action areas.
 ---
 
 **All checks in AG-1 through AG-10 must be ✅ for Section AG to pass.**
+
+---
+
+## SECTION AH — Request Scope Guardrails
+
+**Prompt ID:** COS-P25-REQUEST-SCOPE-GUARDRAILS  
+**Goal:** Confirm that out-of-scope requests are blocked at the client layer, the API layer, and the database layer. Practical campus-help requests pass through unaffected.
+
+**Blocked message:** *"CampusOS is for practical campus help like rides, pickups, errands, moving, and quick paid favors. This request is outside the current beta scope."*
+
+---
+
+### AH-1: Dating request blocked
+
+1. Log in as any user. Navigate to `/dashboard`.
+2. Type `Can I get a date?` into the request textarea.
+3. Click "Post request".
+4. **Expect:** A red error banner appears immediately with the blocked message.
+5. **Expect:** No confirm card or parser card appears.
+6. **Expect:** No request record is created in the database.
+
+| Check | Result |
+|---|---|
+| Error banner visible with scope-blocked message | |
+| No confirm/disambiguation card shown | |
+| No DB record created | |
+
+---
+
+### AH-2: Dating advice blocked
+
+1. Type `I need dating advice` into the request textarea and submit.
+2. **Expect:** Same blocked message. No confirm card.
+
+| Check | Result |
+|---|---|
+| Error banner visible | |
+| No confirm card | |
+
+---
+
+### AH-3: "Be my date" phrasing blocked
+
+1. Type `I need someone to be my date tonight` and submit.
+2. **Expect:** Blocked.
+
+| Check | Result |
+|---|---|
+| Error banner visible | |
+
+---
+
+### AH-4: Ride with "date" destination — ALLOWED
+
+1. Type `I need a ride to my date tonight` and submit.
+2. **Expect:** NO scope-error banner appears.
+3. **Expect:** Parser proceeds and shows the confirm card (or disambiguation card) as normal.
+
+| Check | Result |
+|---|---|
+| No scope error shown | |
+| Confirm/disambiguation card appears | |
+
+---
+
+### AH-5: Pickup for a date — ALLOWED
+
+1. Type `Can someone pick up flowers for my date?` and submit.
+2. **Expect:** NO scope-error banner. Parser proceeds normally.
+
+| Check | Result |
+|---|---|
+| No scope error shown | |
+| Confirm/disambiguation card appears | |
+
+---
+
+### AH-6: Homework cheating blocked
+
+1. Type `Can someone do my homework?` and submit.
+2. **Expect:** Blocked.
+
+| Check | Result |
+|---|---|
+| Error banner visible | |
+
+---
+
+### AH-7: Alcohol purchase blocked
+
+1. Type `Can someone buy alcohol for me?` and submit.
+2. **Expect:** Blocked.
+
+| Check | Result |
+|---|---|
+| Error banner visible | |
+
+---
+
+### AH-8: Vape purchase blocked
+
+1. Type `Can someone buy a vape for me?` and submit.
+2. **Expect:** Blocked.
+
+| Check | Result |
+|---|---|
+| Error banner visible | |
+
+---
+
+### AH-9: Existing ride flow not regressed
+
+1. Type a normal ride request (`Need a ride from campus to Houston Friday 9am`) and submit.
+2. **Expect:** Parser proceeds, confirm card appears, request posts successfully.
+
+| Check | Result |
+|---|---|
+| No scope error | |
+| Confirm card appears | |
+| Request posted successfully | |
+
+---
+
+### AH-10: Existing errand flow not regressed
+
+1. Type `Can someone pick up my package from the mailroom?` and submit.
+2. **Expect:** Parser proceeds normally, confirm card appears.
+
+| Check | Result |
+|---|---|
+| No scope error | |
+| Confirm card appears | |
+
+---
+
+### AH-11: API bypass returns 422
+
+1. Using curl or Postman (or browser DevTools), POST directly to `/api/parse-request`:
+   ```json
+   { "text": "Can someone do my homework?" }
+   ```
+2. **Expect:** HTTP 422 response with `{ "error": "OUT_OF_SCOPE", "reason": "..." }`.
+
+| Check | Result |
+|---|---|
+| 422 status returned | |
+| Body contains error: "OUT_OF_SCOPE" | |
+
+---
+
+**All checks in AH-1 through AH-11 must be ✅ for Section AH to pass.**
