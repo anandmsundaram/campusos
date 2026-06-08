@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { trackEvent } from '@/lib/analytics'
 import ReportModal from '@/app/components/ReportModal'
+import BlockModal from '@/app/components/BlockModal'
+import { getMyBlocks } from '@/lib/blocking'
 import TermsModal from '@/app/components/TermsModal'
 import { getGateStatus } from '@/lib/terms'
 import {
@@ -283,6 +285,18 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
 
   // Report modal
   const [reportTarget, setReportTarget] = useState<{ type: 'request' | 'offer'; id: string; name?: string } | null>(null)
+
+  // Block modal
+  const [blockTarget, setBlockTarget] = useState<{ userId: string; name?: string } | null>(null)
+  // IDs of users this user has actively blocked — used to hide CTAs
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const supabase = createClient()
+    getMyBlocks(supabase).then(blocks => {
+      setBlockedUserIds(new Set(blocks.map(b => b.blocked_id)))
+    }).catch(() => {})
+  }, [])
 
   // Accept/decline handlers update local state immediately
   function handleOfferAccepted(requestId: string, offerId: string, seatsToFill = 1) {
@@ -605,6 +619,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                         onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
                         onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
                         onOfferCountered={(offerId, amount) => handleOfferCountered(req.id, offerId, amount)}
+                        blockedHelperIds={blockedUserIds}
                       />
                     )
                   })}
@@ -678,6 +693,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
                 onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
                 onReport={!isOwn ? () => setReportTarget({ type: 'request', id: req.id, name: req.title }) : undefined}
+                onBlock={!isOwn && !blockedUserIds.has(req.requester_id) ? () => setBlockTarget({ userId: req.requester_id, name: profile?.name ?? undefined }) : undefined}
+                blockedHelperIds={blockedUserIds}
               />
             )
           })}
@@ -814,6 +831,18 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
         />
       )}
 
+      {/* Block modal */}
+      {blockTarget && (
+        <BlockModal
+          targetUserId={blockTarget.userId}
+          displayName={blockTarget.name}
+          onClose={() => setBlockTarget(null)}
+          onBlocked={() => {
+            setBlockedUserIds(prev => new Set([...prev, blockTarget.userId]))
+          }}
+        />
+      )}
+
       {/* Terms gate */}
       {showTermsGate && (
         <TermsModal
@@ -852,6 +881,8 @@ function RequestCard({
   completing = false,
   isPast = false,
   onReport,
+  onBlock,
+  blockedHelperIds = new Set(),
 }: {
   req: FeedRequest
   profile: ProfileInfo | null
@@ -876,6 +907,8 @@ function RequestCard({
   completing?: boolean
   isPast?: boolean
   onReport?: () => void
+  onBlock?: () => void
+  blockedHelperIds?: Set<string>
 }) {
   const isRide = req.category === 'rides'
   const isFull = isRide && req.is_driver === true && req.available_seats != null && (req.seats_filled ?? 0) >= req.available_seats
@@ -1371,6 +1404,7 @@ function RequestCard({
                 isDriver={req.is_driver}
                 availableSeats={req.available_seats}
                 seatsFilled={req.seats_filled}
+                isBlockedHelper={blockedHelperIds.has(offer.helper_id)}
                 onAccepted={() => onOfferAccepted?.(offer.id, offer.seats_requested ?? 1)}
                 onDeclined={() => onOfferDeclined?.(offer.id)}
                 onCountered={(id, amount) => onOfferCountered?.(id, amount)}
@@ -1417,6 +1451,19 @@ function RequestCard({
                   className="flex-shrink-0 text-[10px] text-slate-700 hover:text-red-400/70 transition-colors"
                 >
                   Report
+                </button>
+              </>
+            )}
+            {onBlock && (
+              <>
+                <span className="flex-shrink-0 text-xs text-slate-700">·</span>
+                <button
+                  type="button"
+                  data-testid="block-user-btn"
+                  onClick={(e) => { e.stopPropagation(); onBlock() }}
+                  className="flex-shrink-0 text-[10px] text-slate-700 hover:text-orange-400/70 transition-colors"
+                >
+                  Block
                 </button>
               </>
             )}
@@ -1509,6 +1556,7 @@ function InlineOfferRow({
   isDriver,
   availableSeats,
   seatsFilled,
+  isBlockedHelper = false,
   onAccepted,
   onDeclined,
   onCountered,
@@ -1520,6 +1568,7 @@ function InlineOfferRow({
   isDriver: boolean | null
   availableSeats: number | null
   seatsFilled: number | null
+  isBlockedHelper?: boolean
   onAccepted: () => void
   onDeclined: () => void
   onCountered?: (offerId: string, amount: number | null) => void
@@ -1630,7 +1679,9 @@ function InlineOfferRow({
             <p className="mt-0.5 text-[11px] text-slate-500 line-clamp-1">{offer.message}</p>
           )}
         </div>
-        {isCountered ? (
+        {isBlockedHelper ? (
+          <span className="text-[11px] text-slate-600 flex-shrink-0 italic">Blocked</span>
+        ) : isCountered ? (
           <span data-testid="counter-sent-status" className="text-[11px] text-orange-400 flex-shrink-0">Counter sent ✓</span>
         ) : (
           <div className="flex gap-1.5 flex-shrink-0">

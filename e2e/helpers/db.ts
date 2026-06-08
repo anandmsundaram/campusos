@@ -590,3 +590,70 @@ export async function getTourMetadata(userId: string): Promise<TourMetadata | nu
     lastSeenStep: (ts.last_seen_step  as number) ?? null,
   }
 }
+
+// ─── Blocking helpers ─────────────────────────────────────────────────────────
+
+export interface SafetyEvent {
+  id: string
+  event_type: string
+  actor_id: string
+  target_user_id: string
+  campus_id: string | null
+  reason: string
+  created_at: string
+}
+
+/** Insert an active block directly via service role (bypasses RLS). */
+export async function seedUserBlock(
+  blockerId: string,
+  blockedId: string,
+  reason: string,
+): Promise<string> {
+  const supabase = adminClient()
+  const { data: blocker } = await supabase
+    .from('profiles')
+    .select('campus_id')
+    .eq('id', blockerId)
+    .single()
+
+  const { data, error } = await supabase
+    .from('user_blocks')
+    .insert({
+      blocker_id: blockerId,
+      blocked_id: blockedId,
+      campus_id: blocker?.campus_id ?? null,
+      reason,
+      is_active: true,
+    })
+    .select('id')
+    .single()
+  if (error) throw new Error(`seedUserBlock: ${error.message}`)
+  return data.id
+}
+
+/** Deactivate all active blocks between two users (either direction). */
+export async function clearUserBlock(
+  userA: string,
+  userB: string,
+): Promise<void> {
+  const { error } = await adminClient()
+    .from('user_blocks')
+    .update({ is_active: false })
+    .or(
+      `and(blocker_id.eq.${userA},blocked_id.eq.${userB}),and(blocker_id.eq.${userB},blocked_id.eq.${userA})`,
+    )
+    .eq('is_active', true)
+  if (error) throw new Error(`clearUserBlock: ${error.message}`)
+}
+
+/** Fetch safety_events for a campus (or all if campusId omitted). */
+export async function getSafetyEvents(campusId?: string): Promise<SafetyEvent[]> {
+  let q = adminClient()
+    .from('safety_events')
+    .select('id, event_type, actor_id, target_user_id, campus_id, reason, created_at')
+    .order('created_at', { ascending: false })
+  if (campusId) q = q.eq('campus_id', campusId)
+  const { data, error } = await q
+  if (error) throw new Error(`getSafetyEvents: ${error.message}`)
+  return (data ?? []) as SafetyEvent[]
+}

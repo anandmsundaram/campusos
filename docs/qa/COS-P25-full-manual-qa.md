@@ -2899,3 +2899,229 @@ the app shell is free of duplicate action areas.
 ---
 
 **All checks in AH-1 through AH-11 must be ✅ for Section AH to pass.**
+
+---
+
+## Section AI — User Blocking and Abuse Safety
+
+Tests the full blocking lifecycle: blocking a user, blocked state in the UI,
+managing blocked users at `/dashboard/blocked`, unblocking, server-side offer
+guard, and admin safety event audit trail.
+
+**Automated coverage:** `e2e/tests/36-user-blocking-abuse-safety.spec.ts` (15 tests)
+
+---
+
+### AI-1: Sidebar "Blocked Users" link
+
+1. Log in as any verified student. Navigate to `/dashboard`.
+2. **Expect:** "Blocked Users" entry is visible in the left sidebar navigation.
+3. Click it.
+4. **Expect:** Navigates to `/dashboard/blocked`.
+
+| Check | Result |
+|---|---|
+| Link visible in sidebar | |
+| Navigates to /dashboard/blocked | |
+
+---
+
+### AI-2: Empty blocked users page
+
+1. Navigate to `/dashboard/blocked` as a user with no active blocks.
+2. **Expect:** Page renders with heading "Blocked Users" and empty-state message "No blocked users".
+
+| Check | Result |
+|---|---|
+| Heading visible | |
+| Empty-state message shown | |
+
+---
+
+### AI-3: Block modal from request card
+
+1. Navigate to `/dashboard` as a non-owner of any request.
+2. Locate a request card from another user.
+3. Click "Block" in the card footer.
+4. **Expect:** BlockModal opens showing the user's display name and a reason dropdown.
+
+| Check | Result |
+|---|---|
+| Block button visible for non-owner | |
+| Modal opens on click | |
+| Reason dropdown visible | |
+
+---
+
+### AI-4: Block requires a reason
+
+1. Open the BlockModal (see AI-3).
+2. **Expect:** "Block user" submit button is disabled.
+3. Select a reason from the dropdown.
+4. **Expect:** Submit button becomes enabled.
+
+| Check | Result |
+|---|---|
+| Submit disabled without reason | |
+| Submit enabled after reason selected | |
+
+---
+
+### AI-5: Successful block shows success state
+
+1. Open BlockModal, select a reason, click "Block user".
+2. **Expect:** Modal transitions to success state showing "User blocked" message and a "Done" button.
+3. Click "Done".
+4. **Expect:** Modal closes.
+
+| Check | Result |
+|---|---|
+| Success state shown after submit | |
+| "Done" button visible in success state | |
+| Modal closes on "Done" | |
+
+---
+
+### AI-6: Block button hidden for already-blocked user
+
+1. Block a user (see AI-5).
+2. Navigate back to the request feed.
+3. Locate another request from the same requester you just blocked.
+4. **Expect:** No "Block" button appears in the card footer for that requester.
+
+| Check | Result |
+|---|---|
+| Block button absent for blocked user | |
+
+---
+
+### AI-7: Blocked user appears in /dashboard/blocked
+
+1. After blocking a user, navigate to `/dashboard/blocked`.
+2. **Expect:** A row appears with the blocked user's name (or "Unknown user") and the reason.
+3. An "Unblock" button is visible on the row.
+
+| Check | Result |
+|---|---|
+| Row appears for blocked user | |
+| Reason text shown | |
+| Unblock button visible | |
+
+---
+
+### AI-8: Unblock flow — requires reason
+
+1. On `/dashboard/blocked`, click "Unblock" on a blocked user row.
+2. **Expect:** UnblockModal opens.
+3. **Expect:** "Confirm unblock" button is disabled.
+4. Select a reason.
+5. **Expect:** Button becomes enabled.
+
+| Check | Result |
+|---|---|
+| UnblockModal opens | |
+| Submit disabled without reason | |
+| Submit enabled after reason selected | |
+
+---
+
+### AI-9: Unblock removes user from blocked list
+
+1. Complete the unblock flow (reason selected → "Confirm unblock" clicked).
+2. **Expect:** Modal closes and the unblocked user's row disappears from the list.
+3. **Expect:** If no other blocks, empty-state message reappears.
+
+| Check | Result |
+|---|---|
+| Row removed after unblock | |
+| Empty state shown if no blocks remain | |
+
+---
+
+### AI-10: Blocked helper offer shows "Blocked" label
+
+1. As the requester, block a helper who has already submitted an offer on your request.
+2. Navigate to "My Requests" tab.
+3. Find your request and expand the offer section.
+4. **Expect:** The blocked helper's offer row shows "Blocked" in italic text instead of Accept / Decline / Counter buttons.
+
+| Check | Result |
+|---|---|
+| "Blocked" label replaces CTAs | |
+| Accept/Decline/Counter absent for blocked helper | |
+
+---
+
+### AI-11: Server-side guard prevents blocked helper from offering
+
+1. User A blocks User B.
+2. As User B, navigate to the dashboard. User A's request is still visible in the feed.
+3. Click "I can help" (or equivalent CTA) on User A's request.
+4. Submit the offer form.
+5. **Expect:** An error message appears: "You cannot offer on this request" (or similar blocked message).
+
+| Check | Result |
+|---|---|
+| Request still visible to blocked helper | |
+| Offer submission returns error | |
+| Error text references being blocked | |
+
+---
+
+### AI-12: Admin safety events section is visible
+
+1. Log in as a campus admin or global admin.
+2. Navigate to `/dashboard/admin`.
+3. **Expect:** "Safety events" section is visible on the page.
+
+| Check | Result |
+|---|---|
+| Safety events section visible | |
+
+---
+
+### AI-13: Block event in admin safety events
+
+1. Perform a block via the UI (see AI-5).
+2. As an admin, navigate to `/dashboard/admin`.
+3. Find the Safety Events section.
+4. **Expect:** A "block" event row appears showing the actor, the target, and the reason.
+
+| Check | Result |
+|---|---|
+| Block event row visible | |
+| Event type badge shows "block" | |
+| Actor and target names shown | |
+
+---
+
+### AI-14: Unblock event in admin safety events
+
+1. Perform an unblock via the UI (see AI-9).
+2. As an admin, navigate to `/dashboard/admin`.
+3. Find the Safety Events section.
+4. **Expect:** An "unblock" event row appears.
+
+| Check | Result |
+|---|---|
+| Unblock event row visible | |
+| Event type badge shows "unblock" | |
+
+---
+
+### AI-15: Campus admin sees only own campus safety events
+
+1. Log in as a campus admin (e.g., TAMU admin).
+2. Navigate to `/dashboard/admin`.
+3. **Expect:** Safety Events only shows events from TAMU campus (not other campuses).
+4. Log in as global admin.
+5. **Expect:** Safety Events shows all events across all campuses.
+
+| Check | Result |
+|---|---|
+| Campus admin scoped to own campus | |
+| Global admin sees all campuses | |
+
+---
+
+**All checks in AI-1 through AI-15 must be ✅ for Section AI to pass.**

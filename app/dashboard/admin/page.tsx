@@ -43,6 +43,18 @@ interface AuditRow {
   created_at: string
 }
 
+interface SafetyEventRow {
+  id: string
+  event_type: string
+  actor_id: string | null
+  target_user_id: string | null
+  campus_id: string | null
+  reason: string
+  created_at: string
+  actor_profile: { name: string | null } | null
+  target_profile: { name: string | null } | null
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
   const mins = Math.floor(diff / 60000)
@@ -214,6 +226,16 @@ export default async function AdminPage(props: {
     .select('id, event_type, request_id, actor_id, created_at')
     .order('created_at', { ascending: false })
     .limit(20) as { data: AuditRow[] | null; error: unknown }
+
+  // ── Safety events (block/unblock) — campus_admin RLS-scoped ─────────────
+  const safetyEventsQ = supabase
+    .from('safety_events')
+    .select('id, event_type, actor_id, target_user_id, campus_id, reason, created_at, actor_profile:profiles!actor_id(name), target_profile:profiles!target_user_id(name)')
+    .order('created_at', { ascending: false })
+    .limit(25)
+  const { data: safetyEvents } = await (
+    effectiveCampusId ? safetyEventsQ.eq('campus_id', effectiveCampusId) : safetyEventsQ
+  ) as { data: SafetyEventRow[] | null; error: unknown }
 
   // ── Reports queue (campus_admin RLS-scoped) ───────────────────────────────
   const { data: recentReports } = await supabase
@@ -496,7 +518,62 @@ export default async function AdminPage(props: {
         )}
       </section>
 
-      {/* ── Section 7: Reports queue ──────────────────────────────────────── */}
+      {/* ── Section 7: Safety events (block/unblock) ─────────────────────── */}
+      <section className="mt-10" aria-label="Safety events" data-testid="safety-section">
+        <div className="flex items-center gap-3 mb-4">
+          <h2 className="text-sm font-semibold text-white">Safety Events</h2>
+          <span className="text-xs text-slate-600">blocks &amp; unblocks · last 25</span>
+          {(safetyEvents?.length ?? 0) > 0 && (
+            <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold text-orange-400">
+              {safetyEvents!.length}
+            </span>
+          )}
+        </div>
+        {!safetyEvents || safetyEvents.length === 0 ? (
+          <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] px-5 py-8 text-center">
+            <p className="text-sm text-slate-500">No safety events</p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-[#1e2d4a]">
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Event</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Actor</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Target</th>
+                    {isGlobal && <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Campus</th>}
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">Reason</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-semibold text-slate-600 uppercase tracking-wide">When</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {safetyEvents.map((ev, i) => {
+                    const actorName = Array.isArray(ev.actor_profile) ? ev.actor_profile[0]?.name : ev.actor_profile?.name
+                    const targetName = Array.isArray(ev.target_profile) ? ev.target_profile[0]?.name : ev.target_profile?.name
+                    return (
+                      <tr key={ev.id} className={i < safetyEvents.length - 1 ? 'border-b border-[#1e2d4a]' : ''}>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${ev.event_type === 'block' ? 'text-red-400 border-red-500/20 bg-red-500/[0.08]' : 'text-emerald-400 border-emerald-500/20 bg-emerald-500/[0.08]'}`}>
+                            {ev.event_type}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-400">{actorName ?? (ev.actor_id ? ev.actor_id.slice(0, 8) : '—')}</td>
+                        <td className="px-4 py-3 text-slate-400">{targetName ?? (ev.target_user_id ? ev.target_user_id.slice(0, 8) : '—')}</td>
+                        {isGlobal && <td className="px-4 py-3 text-slate-500">{ev.campus_id ? (campusMap[ev.campus_id] ?? ev.campus_id.slice(0, 8)) : '—'}</td>}
+                        <td className="px-4 py-3 text-slate-500 max-w-[160px] truncate">{ev.reason.replace(/_/g, ' ')}</td>
+                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{timeAgo(ev.created_at)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* ── Section 8: Reports queue ──────────────────────────────────────── */}
       <section className="mt-10" aria-label="Pending reports" data-testid="reports-section">
         <div className="flex items-center gap-3 mb-4">
           <h2 className="text-sm font-semibold text-white">Pending Reports</h2>

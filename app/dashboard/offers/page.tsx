@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { subflowFromCategory, getCounterLabel, getStatusLabel, getOfferNotificationMessage } from '@/lib/offerText'
+import BlockModal from '@/app/components/BlockModal'
+import { getMyBlocks } from '@/lib/blocking'
 
 interface RequesterProfile {
   name: string | null
@@ -92,6 +94,8 @@ export default function MyOffersPage() {
   const [loading, setLoading] = useState(true)
   const [acting, setActing] = useState<string | null>(null)
   const [actError, setActError] = useState<string | null>(null)
+  const [blockTarget, setBlockTarget] = useState<{ userId: string; name?: string } | null>(null)
+  const [blockedRequesterIds, setBlockedRequesterIds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -112,6 +116,12 @@ export default function MyOffersPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const supabase = createClient()
+    getMyBlocks(supabase).then(blocks => {
+      setBlockedRequesterIds(new Set(blocks.map(b => b.blocked_id)))
+    }).catch(() => {})
+  }, [])
 
   async function handleAcceptCounter(offerId: string, requestId: string, requesterId: string, category: string, errandType: string | null) {
     setActing(offerId)
@@ -340,12 +350,33 @@ export default function MyOffersPage() {
                       <span className="text-xs text-slate-600">★ {Number(profile.rating).toFixed(1)}</span>
                     )}
                     <span className="ml-auto text-xs text-slate-600">{timeAgo(offer.created_at)}</span>
+                    {!blockedRequesterIds.has(req.requester_id) && (
+                      <button
+                        type="button"
+                        data-testid="block-requester-btn"
+                        onClick={() => setBlockTarget({ userId: req.requester_id, name: profile?.name ?? undefined })}
+                        className="flex-shrink-0 text-[10px] text-slate-700 hover:text-orange-400/70 transition-colors"
+                      >
+                        Block
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
             )
           })}
         </div>
+      )}
+
+      {blockTarget && (
+        <BlockModal
+          targetUserId={blockTarget.userId}
+          displayName={blockTarget.name}
+          onClose={() => setBlockTarget(null)}
+          onBlocked={() => {
+            setBlockedRequesterIds(prev => new Set([...prev, blockTarget.userId]))
+          }}
+        />
       )}
     </div>
   )
