@@ -432,11 +432,14 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     setSeatsRequested(1)
   }
 
-  // Compute items needing the current user's action
+  // Items needing THIS user's action:
+  // - As helper: offers where requester countered back (status='countered')
+  // - As requester: requests with fresh pending offers (status='pending' only —
+  //   'countered' means requester already countered and is now waiting for the helper)
   const countersPendingMyResponse = myOffers.filter(o => o.status === 'countered')
   const requestsWithPendingOffers = localMyRequests.filter(r =>
     (r.status === 'open' || r.status === 'matched') &&
-    r.request_offers.some(o => o.status === 'pending' || o.status === 'countered')
+    r.request_offers.some(o => o.status === 'pending')
   )
   const needsActionCount = countersPendingMyResponse.length + requestsWithPendingOffers.length
 

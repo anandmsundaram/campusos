@@ -296,7 +296,7 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
   return (
     <>
       {/* ── Desktop sidebar ── */}
-      <aside className="hidden md:flex fixed left-0 top-0 h-screen w-60 flex-col bg-[#060b17] border-r border-[#1e2d4a] z-30">
+      <aside data-testid="sidebar-nav" className="hidden md:flex fixed left-0 top-0 h-screen w-60 flex-col bg-[#060b17] border-r border-[#1e2d4a] z-30">
         {/* Logo + notification bell */}
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-[#1e2d4a] flex-shrink-0">
           <span className="text-blue-400 text-xl leading-none">⬡</span>

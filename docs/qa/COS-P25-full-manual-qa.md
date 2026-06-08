@@ -2592,3 +2592,159 @@ During any tour session, verify:
 ---
 
 **All checks in AF-1 through AF-10 must be ✅ for Section AF to pass.**
+
+---
+
+## Section AG — Counter Visibility and Student App Shell Polish
+
+Tests that each party in the counter-offer flow sees exactly the right CTAs and
+status labels, that unrelated users cannot see private counter controls, and that
+the app shell is free of duplicate action areas.
+
+**Automated coverage:** `e2e/tests/33-counter-visibility-student-app-shell-polish.spec.ts` (11 tests)
+
+---
+
+### AG-1: Needs-action banner — pending offer (requester view)
+
+1. Log in as User A. Create any open request.
+2. Log in as User B on the same campus. Submit an offer on User A's request.
+3. Log back in as User A and navigate to `/dashboard`.
+4. **Expect:** A yellow/orange "needs your response" banner is visible above the tabs (`data-testid="needs-action-banner"`).
+5. Accept or decline the offer.
+6. **Expect:** Banner disappears.
+
+| Check | Result |
+|---|---|
+| Banner appears when offer is pending | |
+| Banner disappears after requester responds | |
+
+---
+
+### AG-2: Needs-action banner — counter pending (helper view)
+
+1. Continue from AG-1 setup, or re-seed: User A has countered User B's offer.
+2. Log in as User B (helper) and navigate to `/dashboard`.
+3. **Expect:** The needs-action banner is visible — User B must respond to the counter.
+4. **Expect:** Banner text references their offer needing response (not a generic message).
+
+| Check | Result |
+|---|---|
+| Banner visible for helper after requester counters | |
+
+---
+
+### AG-3: Requester NOT shown banner while waiting for helper
+
+1. User A counters User B's offer (offer status = `countered`).
+2. Log back in as User A and navigate to `/dashboard`.
+3. **Expect:** The needs-action banner is NOT visible — User A already acted (countered) and is now waiting.
+
+| Check | Result |
+|---|---|
+| Banner absent for requester after they countered | |
+
+---
+
+### AG-4: Helper sees counter CTA in My Offers tab
+
+1. With a `countered` offer in place (User A countered User B's offer):
+2. Log in as User B. Go to `/dashboard` → My Offers tab.
+3. **Expect:** The offer card shows the requester's counter amount highlighted in orange.
+4. **Expect:** "Accept" (`accept-counter-btn`) and "Decline" (`decline-counter-btn`) buttons are visible.
+5. **Expect:** No "I can help" CTA or unrelated actions appear on this card.
+
+| Check | Result |
+|---|---|
+| Counter amount highlighted in orange | |
+| Accept button visible | |
+| Decline button visible | |
+| No unrelated CTAs | |
+
+---
+
+### AG-5: Helper sees counter CTA on standalone My Offers page
+
+1. Same `countered` offer setup.
+2. Log in as User B. Navigate directly to `/dashboard/offers`.
+3. **Expect:** The same orange counter section and Accept / Decline buttons appear.
+4. **Expect:** Clicking "Accept counter" removes the CTA buttons and transitions the offer to accepted.
+
+| Check | Result |
+|---|---|
+| Counter section visible at /dashboard/offers | |
+| Accept/Decline buttons visible | |
+| Clicking Accept removes CTA and shows accepted state | |
+
+---
+
+### AG-6: Requester sees "Counter sent ✓" (waiting state)
+
+1. User A counters User B's offer.
+2. Log in as User A. Go to `/dashboard` → My Requests tab.
+3. **Expect:** The inline offer row shows "Counter sent ✓" (`data-testid="counter-sent-status"`).
+4. **Expect:** No accept/decline buttons shown for User A on this row (they already acted).
+
+| Check | Result |
+|---|---|
+| "Counter sent ✓" label visible | |
+| No accept/decline buttons for requester | |
+
+---
+
+### AG-7: Unrelated user has no private counter CTAs
+
+1. Log in as User C (same campus, unrelated to the offer).
+2. Navigate to `/dashboard`.
+3. **Expect:** User C cannot see `accept-counter-btn` or `decline-counter-btn` anywhere on the page.
+4. **Expect:** User C can see the request in the open feed (it is open), but with no counter controls.
+
+| Check | Result |
+|---|---|
+| No accept-counter-btn visible | |
+| No decline-counter-btn visible | |
+| Request card is visible in open feed | |
+
+---
+
+### AG-8: Cross-campus isolation
+
+1. Log in as User C but set their campus to a different campus than the request's campus.
+2. Navigate to `/dashboard`.
+3. **Expect:** The request does not appear in User C's feed at all.
+
+| Check | Result |
+|---|---|
+| Request absent from cross-campus feed | |
+
+---
+
+### AG-9: No duplicate request-posting CTA
+
+1. Log in as any user. Navigate to `/dashboard`.
+2. **Expect:** The request-posting textarea appears exactly once in the main content area.
+3. **Expect:** The sidebar navigation does NOT contain a request-posting textarea or "Post" button.
+
+| Check | Result |
+|---|---|
+| Textarea appears once in main content | |
+| Sidebar has no duplicate "Post" CTA | |
+
+---
+
+### AG-10: Counter decline flow
+
+1. With a `countered` offer in place.
+2. Log in as User B (helper). Go to `/dashboard/offers` or My Offers tab.
+3. Click "Decline".
+4. **Expect:** The offer card transitions to a declined/rejected state.
+5. **Expect:** User A (requester) receives a notification that the counter was declined.
+
+| Check | Result |
+|---|---|
+| Offer shows rejected state after decline | |
+| Requester notified of decline | |
+
+---
+
+**All checks in AG-1 through AG-10 must be ✅ for Section AG to pass.**
