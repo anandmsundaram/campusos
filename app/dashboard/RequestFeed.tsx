@@ -966,86 +966,52 @@ function RequestCard({
           onClick={() => onToggle?.()}
           className="cursor-pointer select-none"
         >
-        {/* Top: badges */}
-        <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
-          <Badge text={CATEGORY_LABELS[req.category] ?? req.category} color={CATEGORY_BADGE[req.category]} />
-          <Badge text={req.urgency} color={URGENCY_BADGE[req.urgency]} capitalize />
-          {isRide && req.is_driver !== null && (
-            <Badge
-              text={req.is_driver ? '🚗 Driver' : '🙋 Passenger'}
-              color={req.is_driver
-                ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
-                : 'text-purple-400 bg-purple-500/10 border-purple-500/20'}
-            />
-          )}
-          {isRide && req.is_driver && req.available_seats != null && (
-            isFull ? (
-              <Badge text="FULL" color="text-red-400 bg-red-500/10 border-red-500/20" />
+        {/* Title / Route heading — primary scan target */}
+        <div className="flex items-start gap-2 mb-1.5">
+          <div className="flex-1 min-w-0">
+            {isRide && req.origin_city && req.destination_city ? (
+              <>
+                <p className="text-base font-bold text-white leading-tight">
+                  {req.origin_city}
+                  <span className="mx-2 font-normal text-slate-500">→</span>
+                  {req.destination_city}
+                </p>
+                {req.title && (
+                  <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">{req.title}</p>
+                )}
+              </>
             ) : (
-              <span data-testid="seats-badge">
-                <Badge
-                  text={`${req.available_seats - (req.seats_filled ?? 0)} of ${req.available_seats} seats left`}
-                  color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]"
-                />
-              </span>
-            )
-          )}
-          {isRide && req.is_round_trip && (
-            <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
-          )}
-          {isPastRide && req.status !== 'completed' && (
-            <Badge text="Pending completion" color="text-yellow-400 bg-yellow-500/10 border-yellow-500/20" />
-          )}
-          {isExpired && (
-            <Badge text="Expired" color="text-slate-500 bg-white/[0.02] border-[#1e2d4a]" />
-          )}
-          {req.status === 'completed' && (
-            <Badge text="Completed" color="text-emerald-400 bg-emerald-500/10 border-emerald-500/20" />
-          )}
-          {/* Role / relationship badge */}
+              <p className="text-[15px] font-semibold text-white leading-snug">{req.title}</p>
+            )}
+          </div>
+          {/* Role badge — right of title */}
           {isOwn ? (
-            <span data-testid="card-role-status" className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-300">
+            <span data-testid="card-role-status" className="flex-shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-300">
               My request{inlineOffers.length > 0 ? ` · ${inlineOffers.length} offer${inlineOffers.length !== 1 ? 's' : ''}` : ''}
             </span>
           ) : myOfferStatus != null ? (
-            <span data-testid="card-role-status" className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${OFFER_STATUS_BADGE[myOfferStatus]}`}>
+            <span data-testid="card-role-status" className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${OFFER_STATUS_BADGE[myOfferStatus]}`}>
               {myOfferStatus === 'accepted' ? '✓ Accepted'
                : myOfferStatus === 'countered' ? '↩ Counter'
                : myOfferStatus === 'rejected' ? 'Declined'
                : 'Offered ✓'}
             </span>
           ) : hasOffered ? (
-            <span data-testid="card-role-status" className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-semibold leading-none text-yellow-400">
+            <span data-testid="card-role-status" className="flex-shrink-0 rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-semibold leading-none text-yellow-400">
               Offered ✓
             </span>
           ) : null}
         </div>
 
-        {/* Title / Route heading */}
-        {isRide && req.origin_city && req.destination_city ? (
-          <div className="mb-3">
-            <p className="text-base font-bold text-white leading-tight">
-              {req.origin_city}
-              <span className="mx-2 font-normal text-slate-500">→</span>
-              {req.destination_city}
-            </p>
-            {req.title && (
-              <p className="mt-0.5 text-[11px] text-slate-500 leading-snug">{req.title}</p>
-            )}
-          </div>
-        ) : (
-          <p className="text-[15px] font-semibold text-white leading-snug mb-3">{req.title}</p>
-        )}
-
-        {/* Parser summary subtitle — non-ride skim hint */}
+        {/* Parser summary — context hint, shown when collapsed */}
         {!isRide && !isExpanded && typeof req.structured_data?.summary === 'string' && (
-          <p data-testid="card-summary" className="text-xs text-slate-500 leading-relaxed -mt-1 mb-3 line-clamp-2">
+          <p data-testid="card-summary" className="text-xs text-slate-500 leading-relaxed mb-2 line-clamp-2">
             {req.structured_data.summary}
           </p>
         )}
 
         {/* Meta row */}
-        <div data-testid="request-card-key-details" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-4">
+        <div data-testid="request-card-key-details" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-2">
           {/* Non-ride location — prefer resolved pickup_location/dropoff_location */}
           {!isRide && (() => {
             if (req.category === 'errands') {
@@ -1237,6 +1203,46 @@ function RequestCard({
 
         {/* Structured data meta chips — non-ride categories only */}
         {!isRide && <StructuredDataMeta category={req.category} sd={req.structured_data} />}
+
+        {/* Category + status badges — secondary, after title and key details */}
+        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+          <Badge text={CATEGORY_LABELS[req.category] ?? req.category} color={CATEGORY_BADGE[req.category]} />
+          {req.urgency !== 'low' && (
+            <Badge text={req.urgency} color={URGENCY_BADGE[req.urgency]} capitalize />
+          )}
+          {isRide && req.is_driver !== null && (
+            <Badge
+              text={req.is_driver ? '🚗 Driver' : '🙋 Passenger'}
+              color={req.is_driver
+                ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
+                : 'text-purple-400 bg-purple-500/10 border-purple-500/20'}
+            />
+          )}
+          {isRide && req.is_driver && req.available_seats != null && (
+            isFull ? (
+              <Badge text="FULL" color="text-red-400 bg-red-500/10 border-red-500/20" />
+            ) : (
+              <span data-testid="seats-badge">
+                <Badge
+                  text={`${req.available_seats - (req.seats_filled ?? 0)} of ${req.available_seats} seats left`}
+                  color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]"
+                />
+              </span>
+            )
+          )}
+          {isRide && req.is_round_trip && (
+            <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
+          )}
+          {isPastRide && req.status !== 'completed' && (
+            <Badge text="Pending completion" color="text-yellow-400 bg-yellow-500/10 border-yellow-500/20" />
+          )}
+          {isExpired && (
+            <Badge text="Expired" color="text-slate-500 bg-white/[0.02] border-[#1e2d4a]" />
+          )}
+          {req.status === 'completed' && (
+            <Badge text="Completed" color="text-emerald-400 bg-emerald-500/10 border-emerald-500/20" />
+          )}
+        </div>
 
         </div>{/* end request-card-front */}
 

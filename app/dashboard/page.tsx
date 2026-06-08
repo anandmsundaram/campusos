@@ -376,7 +376,7 @@ export default async function DashboardPage() {
         <OnboardingCard />
 
         {/* Finance strip */}
-        <div className="mt-10">
+        <div className="mt-6">
           <FinanceStrip committed={committed} earned={earned} owed={owed} openRequests={openRequests} />
         </div>
 
@@ -388,7 +388,7 @@ export default async function DashboardPage() {
         )}
 
         {/* Activity pulse + contextual banner */}
-        <div className="mt-8">
+        <div className="mt-4">
           <ActivityPulse
             openCount={feedData.length}
             completedThisWeek={completedThisWeek ?? 0}

@@ -13,7 +13,6 @@ const NAV_MAIN = [
   { href: '/dashboard/requests', label: 'My Requests',    icon: 'list' },
   { href: '/dashboard/offers',   label: 'My Offers',      icon: 'offers' },
   { href: '/dashboard/messages', label: 'Messages',       icon: 'chat' },
-  { href: '/dashboard/blocked',  label: 'Blocked Users',  icon: 'block' },
 ]
 
 const NOTIF_ICONS: Record<string, string> = {
@@ -205,8 +204,8 @@ function NotificationBell({
 
       {open && (
         // absolute left-0 top-full — positions below the bell container, left-aligned.
-        // The sidebar is w-60 (240px) and the dropdown is w-80 (320px), so it extends
-        // 80px into the content area over the sidebar's right edge. z-50 keeps it on top.
+        // The sidebar is w-56 (224px) and the dropdown is w-80 (320px), so it extends
+        // 96px into the content area over the sidebar's right edge. z-50 keeps it on top.
         <div className="absolute left-0 top-full mt-2 z-50 w-80 rounded-xl border border-[#1e2d4a] bg-[#060b17] shadow-2xl shadow-black/60">
           <div className="flex items-center justify-between border-b border-[#1e2d4a] px-4 py-3">
             <span className="text-xs font-semibold text-white">Notifications</span>
@@ -297,7 +296,7 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
   return (
     <>
       {/* ── Desktop sidebar ── */}
-      <aside data-testid="sidebar-nav" className="hidden md:flex fixed left-0 top-0 h-screen w-60 flex-col bg-[#060b17] border-r border-[#1e2d4a] z-30">
+      <aside data-testid="sidebar-nav" className="hidden md:flex fixed left-0 top-0 h-screen w-56 flex-col bg-[#060b17] border-r border-[#1e2d4a] z-30">
         {/* Logo + notification bell */}
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-[#1e2d4a] flex-shrink-0">
           <span className="text-blue-400 text-xl leading-none">⬡</span>
@@ -335,6 +334,17 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
           >
             <NavIcon name="user" active={isActive('/dashboard/profile')} />
             Profile
+          </Link>
+          <Link
+            href="/dashboard/blocked"
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+              isActive('/dashboard/blocked')
+                ? 'bg-blue-500/10 text-blue-400 font-medium'
+                : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
+            }`}
+          >
+            <NavIcon name="block" active={isActive('/dashboard/blocked')} />
+            Blocked Users
           </Link>
           {isAdmin && (
             <Link
