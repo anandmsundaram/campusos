@@ -432,8 +432,56 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     setSeatsRequested(1)
   }
 
+  // Compute items needing the current user's action
+  const countersPendingMyResponse = myOffers.filter(o => o.status === 'countered')
+  const requestsWithPendingOffers = localMyRequests.filter(r =>
+    (r.status === 'open' || r.status === 'matched') &&
+    r.request_offers.some(o => o.status === 'pending' || o.status === 'countered')
+  )
+  const needsActionCount = countersPendingMyResponse.length + requestsWithPendingOffers.length
+
   return (
     <>
+      {/* Needs-action banner */}
+      {needsActionCount > 0 && (
+        <div
+          data-testid="needs-action-banner"
+          className="mb-4 flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/[0.06] px-4 py-3"
+        >
+          <span className="text-base leading-none">⚡</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-orange-300">
+              {needsActionCount === 1 ? '1 item needs your response' : `${needsActionCount} items need your response`}
+            </p>
+            <p className="text-xs text-orange-400/70 mt-0.5">
+              {countersPendingMyResponse.length > 0 && requestsWithPendingOffers.length > 0
+                ? `${countersPendingMyResponse.length} counter${countersPendingMyResponse.length !== 1 ? 's' : ''} on your offers · ${requestsWithPendingOffers.length} pending offer${requestsWithPendingOffers.length !== 1 ? 's' : ''} on your requests`
+                : countersPendingMyResponse.length > 0
+                ? `Check My Offers — ${countersPendingMyResponse.length} counter${countersPendingMyResponse.length !== 1 ? 's' : ''} waiting`
+                : `Check My Requests — ${requestsWithPendingOffers.length} pending offer${requestsWithPendingOffers.length !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+          {countersPendingMyResponse.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setTab('offers')}
+              className="flex-shrink-0 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-semibold text-orange-300 transition-colors hover:bg-orange-500/20"
+            >
+              View offers
+            </button>
+          )}
+          {countersPendingMyResponse.length === 0 && requestsWithPendingOffers.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setTab('mine')}
+              className="flex-shrink-0 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-semibold text-orange-300 transition-colors hover:bg-orange-500/20"
+            >
+              View requests
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex items-center gap-1 border-b border-[#1e2d4a] mb-5">
         {(['all', 'mine', 'offers'] as const).map((t) => {
@@ -1580,7 +1628,7 @@ function InlineOfferRow({
           )}
         </div>
         {isCountered ? (
-          <span className="text-[11px] text-orange-400 flex-shrink-0">Counter sent ✓</span>
+          <span data-testid="counter-sent-status" className="text-[11px] text-orange-400 flex-shrink-0">Counter sent ✓</span>
         ) : (
           <div className="flex gap-1.5 flex-shrink-0">
             <button

@@ -10,13 +10,15 @@ create table if not exists public.email_whitelist (
   added_at   timestamptz default now() not null
 );
 
--- Seed existing hardcoded bypasses + new beta tester
+-- Seed founders, admins, and approved beta testers
 insert into public.email_whitelist (email, reason) values
-  ('anandmsundaram@gmail.com', 'founder'),
-  ('campusosapp@gmail.com',    'admin'),
-  ('valsgum@gmail.com',        'founder'),
-  ('anand.slate@gmail.com',    'founder'),
-  ('lakshmi175@gmail.com',     'beta_tester')
+  ('anandmsundaram@gmail.com',  'founder'),
+  ('campusosapp@gmail.com',     'admin'),
+  ('valsgum@gmail.com',         'founder'),
+  ('anand.slate@gmail.com',     'founder'),
+  ('lakshmi175@gmail.com',      'beta_tester'),
+  ('campusvoice@gmail.com',     'beta_tester'),
+  ('sanjanaanandtx@gmail.com',  'beta_tester')
 on conflict (email) do nothing;
 
 -- RLS: table is not broadly readable — access only via the function below

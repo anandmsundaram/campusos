@@ -21,7 +21,6 @@ function isEduEmail(email: string) {
 }
 
 async function isAllowedEmail(email: string): Promise<boolean> {
-  const { createClient } = await import('@/lib/supabase/client')
   const normalized = email.trim().toLowerCase()
   if (normalized.endsWith('.edu')) return true
   const supabase = createClient()
@@ -59,7 +58,7 @@ export default function SignupPage() {
     setLoading(true)
 
     if (!(await isAllowedEmail(form.email))) {
-      setError('Only .edu email addresses are allowed.')
+      setError('Use a .edu email, or ask us to pre-approve this email.')
       setLoading(false)
       return
     }
@@ -145,6 +144,7 @@ export default function SignupPage() {
               </label>
               <input
                 id="email"
+                data-testid="email-input"
                 type="email"
                 autoComplete="email"
                 required
@@ -164,7 +164,7 @@ export default function SignupPage() {
                 ].join(' ')}
               />
               {eduError && (
-                <p className="text-xs text-red-400">Must be a .edu address or pre-approved email</p>
+                <p data-testid="email-inline-error" className="text-xs text-red-400">Must be a .edu address or pre-approved email</p>
               )}
             </div>
 
@@ -240,12 +240,13 @@ export default function SignupPage() {
             </div>
 
             {error && (
-              <p className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">
+              <p data-testid="signup-error" className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">
                 {error}
               </p>
             )}
 
             <button
+              data-testid="signup-submit-btn"
               type="submit"
               disabled={loading}
               className="mt-1 w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed"

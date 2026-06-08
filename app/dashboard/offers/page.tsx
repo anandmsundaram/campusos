@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { subflowFromCategory, getCounterLabel, getStatusLabel } from '@/lib/offerText'
+import { subflowFromCategory, getCounterLabel, getStatusLabel, getOfferNotificationMessage } from '@/lib/offerText'
 
 interface RequesterProfile {
   name: string | null
@@ -22,6 +23,7 @@ interface RequestInfo {
   destination_city: string | null
   scheduled_time: string | null
   created_at: string
+  requester_id: string
   is_driver: boolean | null
   structured_data: Record<string, unknown> | null
   profiles: RequesterProfile | RequesterProfile[] | null
@@ -85,8 +87,11 @@ function timeAgo(iso: string): string {
 }
 
 export default function MyOffersPage() {
+  const router = useRouter()
   const [offers, setOffers] = useState<MyOffer[]>([])
   const [loading, setLoading] = useState(true)
+  const [acting, setActing] = useState<string | null>(null)
+  const [actError, setActError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -97,7 +102,7 @@ export default function MyOffersPage() {
       .from('request_offers')
       .select(`
         id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, created_at,
-        requests(id, title, category, urgency, status, budget, location, origin_city, destination_city, scheduled_time, created_at, is_driver, structured_data, profiles!requester_id(name, rating))
+        requests(id, title, category, urgency, status, budget, location, origin_city, destination_city, scheduled_time, created_at, requester_id, is_driver, structured_data, profiles!requester_id(name, rating))
       `)
       .eq('helper_id', user.id)
       .order('created_at', { ascending: false })
@@ -107,6 +112,58 @@ export default function MyOffersPage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function handleAcceptCounter(offerId: string, requestId: string, requesterId: string, category: string, errandType: string | null) {
+    setActing(offerId)
+    setActError(null)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setActError('Not authenticated'); setActing(null); return }
+    const { data: result, error } = await supabase.rpc('accept_offer_atomic', {
+      p_offer_id: offerId,
+      p_accepted_by: user.id,
+    })
+    if (error || !result?.ok) {
+      setActError(error?.message ?? result?.error ?? 'Failed to accept counter-offer')
+      setActing(null)
+      return
+    }
+    const subflow = subflowFromCategory(category, errandType)
+    await supabase.from('notifications').insert({
+      user_id: requesterId,
+      type: 'offer_accepted',
+      message: getOfferNotificationMessage('counter_accepted', subflow),
+      related_request_id: requestId,
+    })
+    await supabase.from('messages').insert({
+      sender_id: user.id,
+      receiver_id: requesterId,
+      request_id: requestId,
+      content: '✓ Counter accepted! Chat here to coordinate.',
+    })
+    setOffers(prev => prev.map(o => o.id === offerId ? { ...o, status: 'accepted' as const } : o))
+    setActing(null)
+    router.refresh()
+  }
+
+  async function handleDeclineCounter(offerId: string, requestId: string, requesterId: string, category: string, errandType: string | null) {
+    setActing(offerId)
+    setActError(null)
+    const supabase = createClient()
+    const { data: check } = await supabase.rpc('validate_offer_action', { p_request_id: requestId })
+    if (!check?.ok) { setActError(check?.error ?? 'This request is no longer active'); setActing(null); return }
+    const { error } = await supabase.from('request_offers').update({ status: 'rejected' }).eq('id', offerId)
+    if (error) { setActError(error.message); setActing(null); return }
+    const subflow = subflowFromCategory(category, errandType)
+    await supabase.from('notifications').insert({
+      user_id: requesterId,
+      type: 'offer_rejected',
+      message: getOfferNotificationMessage('counter_declined', subflow),
+      related_request_id: requestId,
+    })
+    setOffers(prev => prev.map(o => o.id === offerId ? { ...o, status: 'rejected' as const } : o))
+    setActing(null)
+  }
 
   if (loading) {
     return (
@@ -148,12 +205,16 @@ export default function MyOffersPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-3">
+          {actError && <p className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-4 py-2.5 text-xs text-red-400">{actError}</p>}
           {offers.map(offer => {
             const req = normalizeRequest(offer.requests)
             if (!req) return null
             const profile = normalizeProfile(req.profiles)
             const statusInfo = OFFER_STATUS[offer.status] ?? OFFER_STATUS.pending
             const isRejected = offer.status === 'rejected'
+            const isCountered = offer.status === 'countered'
+            const isActing = acting === offer.id
+            const errandType = (req.structured_data?.errand_type as string | null) ?? null
             const isRide = req.category === 'rides'
             const pageSubflow = subflowFromCategory(req.category, req.structured_data?.errand_type as string | null)
             const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
@@ -163,9 +224,15 @@ export default function MyOffersPage() {
             return (
               <div
                 key={offer.id}
-                className={`relative overflow-hidden rounded-xl border border-[#1e2d4a] bg-[#0d1526] transition-all ${
-                  offer.status === 'accepted' ? 'border-emerald-500/20' : ''
-                } ${isRejected ? 'opacity-55' : ''}`}
+                data-testid="my-offer-card"
+                data-offer-id={offer.id}
+                data-offer-status={offer.status}
+                className={`relative overflow-hidden rounded-xl border bg-[#0d1526] transition-all ${
+                  offer.status === 'accepted' ? 'border-emerald-500/20'
+                  : isCountered ? 'border-orange-500/20'
+                  : isRejected ? 'border-[#1e2d4a] opacity-60'
+                  : 'border-[#1e2d4a]'
+                }`}
               >
                 <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${CATEGORY_ACCENT[req.category] ?? 'bg-slate-500'}`} />
 
@@ -216,15 +283,47 @@ export default function MyOffersPage() {
                         <span className="inline-flex rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
                           Agreed: ${offer.final_agreed_price}
                         </span>
-                      ) : offer.requester_counter != null ? (
-                        <span className="inline-flex rounded-full border border-blue-500/20 bg-blue-500/10 px-2.5 py-0.5 text-xs font-medium text-blue-400">
-                          {getCounterLabel(pageSubflow, req.is_driver)}: ${offer.requester_counter}
-                        </span>
                       ) : offer.counter_budget != null ? (
                         <span className="inline-flex rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2.5 py-0.5 text-xs font-medium text-yellow-400">
-                          Offered: ${offer.counter_budget}
+                          Your offer: ${offer.counter_budget}
                         </span>
                       ) : null}
+                    </div>
+                  )}
+
+                  {/* Requester's counter — highlighted separately */}
+                  {isCountered && offer.requester_counter != null && (
+                    <div className="mb-3 rounded-lg border border-orange-500/20 bg-orange-500/[0.06] px-3 py-2.5">
+                      <p className="text-[11px] font-medium text-orange-400 mb-1" data-testid="counter-label">
+                        {getCounterLabel(pageSubflow, req.is_driver)}
+                      </p>
+                      <span className="rounded-full border border-orange-500/20 bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-300">
+                        ${offer.requester_counter}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Counter action CTA */}
+                  {isCountered && (
+                    <div className="mb-3 flex gap-2">
+                      <button
+                        data-testid="accept-counter-btn"
+                        type="button"
+                        onClick={() => handleAcceptCounter(offer.id, req.id, req.requester_id, req.category, errandType)}
+                        disabled={isActing}
+                        className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+                      >
+                        {isActing ? '…' : 'Accept counter'}
+                      </button>
+                      <button
+                        data-testid="decline-counter-btn"
+                        type="button"
+                        onClick={() => handleDeclineCounter(offer.id, req.id, req.requester_id, req.category, errandType)}
+                        disabled={isActing}
+                        className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
+                      >
+                        {isActing ? '…' : 'Decline'}
+                      </button>
                     </div>
                   )}
 
