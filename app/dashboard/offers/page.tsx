@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { subflowFromCategory, getCounterLabel, getStatusLabel, getOfferNotificationMessage } from '@/lib/offerText'
-import { isOfferEffectivelyExpired } from '@/lib/marketplaceLifecycle'
+import { isOfferEffectivelyExpired, isAcceptedPastDue } from '@/lib/marketplaceLifecycle'
 import { formatWhere, formatWhen, formatNote, formatNextAction, formatPostedTime, hasExpectedLocation, nextActionColor } from '@/lib/cardViewModel'
 import BlockModal from '@/app/components/BlockModal'
 import { getMyBlocks } from '@/lib/blocking'
@@ -68,11 +68,12 @@ const URGENCY_BADGE: Record<string, string> = {
   high: 'text-red-400 bg-red-500/10 border-red-500/20',
 }
 const OFFER_STATUS: Record<string, { label: string; cls: string }> = {
-  pending:  { label: '● Pending',      cls: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
-  accepted: { label: '✓ Accepted',     cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-  rejected: { label: 'Declined',       cls: 'text-slate-500 bg-white/[0.03] border-white/10' },
-  countered: { label: '↔ Countered',   cls: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-  expired:  { label: 'Expired',        cls: 'text-slate-500 bg-white/[0.03] border-white/10' },
+  pending:           { label: '● Pending',      cls: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20' },
+  accepted:          { label: '✓ Accepted',     cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+  accepted_past_due: { label: '⏱ Past due',     cls: 'text-amber-400 bg-amber-500/10 border-amber-500/20' },
+  rejected:          { label: 'Declined',       cls: 'text-slate-500 bg-white/[0.03] border-white/10' },
+  countered:         { label: '↔ Countered',    cls: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
+  expired:           { label: 'Expired',        cls: 'text-slate-500 bg-white/[0.03] border-white/10' },
 }
 
 function normalizeRequest(r: RequestInfo | RequestInfo[] | null | undefined): RequestInfo | null {
@@ -228,7 +229,8 @@ export default function MyOffersPage() {
             if (!req) return null
             const profile = normalizeProfile(req.profiles)
             const isEffExpired = isOfferEffectivelyExpired(offer.status, req)
-            const displayStatus = isEffExpired ? 'expired' : offer.status
+            const isPastDue = isAcceptedPastDue(offer.status, req, req.status)
+            const displayStatus = isEffExpired ? 'expired' : isPastDue ? 'accepted_past_due' : offer.status
             const statusInfo = OFFER_STATUS[displayStatus] ?? OFFER_STATUS.pending
             const isRejected = offer.status === 'rejected'
             const isCountered = offer.status === 'countered'
@@ -238,9 +240,9 @@ export default function MyOffersPage() {
             const pageSubflow = subflowFromCategory(req.category, req.structured_data?.errand_type as string | null)
             const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
             const seats = offer.seats_requested ?? 1
-            const statusLabelText = isEffExpired ? 'Expired' : getStatusLabel(offer.status, pageSubflow, { agreedPrice, seats })
+            const statusLabelText = isEffExpired ? 'Expired' : isPastDue ? '⏱ Past due' : getStatusLabel(offer.status, pageSubflow, { agreedPrice, seats })
             const neededWhen = formatWhen(req)
-            const nextAction = formatNextAction(offer.status, isEffExpired, req.status, neededWhen)
+            const nextAction = formatNextAction(offer.status, isEffExpired, req.status, neededWhen, isPastDue)
 
             return (
               <div

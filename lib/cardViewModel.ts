@@ -96,21 +96,35 @@ export function formatNote(req: CardRequest): string | null {
 }
 
 export type NextActionVariant =
-  | 'open' | 'pending' | 'countered' | 'accepted'
+  | 'open' | 'pending' | 'countered' | 'accepted' | 'accepted_past_due'
   | 'declined' | 'not_selected' | 'expired' | 'cancelled' | 'completed'
 
 export interface NextAction { label: string; variant: NextActionVariant }
 
-/** Canonical next-action label and variant for a helper's offer card. */
+/**
+ * Canonical next-action label and variant for a helper's offer card.
+ * @param offerStatus  - current offer row status
+ * @param isEffExpired - true when a PENDING/COUNTERED offer's request expired (no accepted offer)
+ * @param reqStatus    - parent request status
+ * @param neededWhen   - human-readable needed date/time for richer expiry labels
+ * @param isPastDue    - true when an ACCEPTED offer's request is past its needed time but not completed
+ */
 export function formatNextAction(
   offerStatus: string,
   isEffExpired: boolean,
   reqStatus: string,
   neededWhen?: string | null,
+  isPastDue?: boolean,
 ): NextAction {
-  if (isEffExpired) {
+  // Accepted offer whose needed time has passed but work not confirmed
+  if (isPastDue) {
     const detail = neededWhen ? ` (needed ${neededWhen})` : ''
-    return { label: `Expired — needed time passed${detail}`, variant: 'expired' }
+    return { label: `Past due — accepted helper, waiting for completion confirmation${detail}`, variant: 'accepted_past_due' }
+  }
+  // Pending/countered offer on a request whose needed time passed with no accepted helper
+  if (isEffExpired) {
+    const detail = neededWhen ? ` before ${neededWhen}` : ''
+    return { label: `Expired — no accepted helper${detail}`, variant: 'expired' }
   }
   if (reqStatus === 'cancelled') return { label: 'Request cancelled', variant: 'cancelled' }
   if (reqStatus === 'completed') return { label: 'Completed', variant: 'completed' }
@@ -125,15 +139,16 @@ export function formatNextAction(
 }
 
 const NEXT_ACTION_COLOR: Record<NextActionVariant, string> = {
-  open:         'text-blue-400',
-  pending:      'text-slate-500',
-  countered:    'text-orange-400',
-  accepted:     'text-emerald-500',
-  declined:     'text-slate-500',
-  not_selected: 'text-slate-500',
-  expired:      'text-slate-500',
-  cancelled:    'text-slate-500',
-  completed:    'text-emerald-400',
+  open:             'text-blue-400',
+  pending:          'text-slate-500',
+  countered:        'text-orange-400',
+  accepted:         'text-emerald-500',
+  accepted_past_due:'text-amber-500',
+  declined:         'text-slate-500',
+  not_selected:     'text-slate-500',
+  expired:          'text-slate-500',
+  cancelled:        'text-slate-500',
+  completed:        'text-emerald-400',
 }
 
 export function nextActionColor(variant: NextActionVariant): string {

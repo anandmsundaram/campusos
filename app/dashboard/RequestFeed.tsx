@@ -20,6 +20,7 @@ import {
 import {
   isRequestExpired,
   isOfferEffectivelyExpired,
+  isAcceptedPastDue,
   validateOfferAmount,
 } from '@/lib/marketplaceLifecycle'
 import {
@@ -190,11 +191,12 @@ const URGENCY_BADGE: Record<string, string> = {
 }
 
 const OFFER_STATUS_BADGE: Record<string, string> = {
-  pending: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
-  countered: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
-  accepted: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-  rejected: 'text-slate-400 bg-white/[0.03] border-white/10',
-  expired: 'text-slate-500 bg-slate-500/[0.05] border-slate-300/40',
+  pending:           'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
+  countered:         'text-orange-400 bg-orange-500/10 border-orange-500/20',
+  accepted:          'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
+  accepted_past_due: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
+  rejected:          'text-slate-400 bg-white/[0.03] border-white/10',
+  expired:           'text-slate-500 bg-slate-500/[0.05] border-slate-300/40',
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -282,19 +284,26 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     return set
   }, [myOffers])
 
-  // Active = open (not yet past scheduled time) or matched; Past = completed or expired
+  // Active = open/matched where needed time has not passed yet
+  // Past  = completed, cancelled, expired-open, and matched-past-due
   const activeMyRequests = useMemo(
-    () => localMyRequests.filter(r =>
-      (r.status === 'open' && (!r.scheduled_time || new Date(r.scheduled_time) >= now)) ||
-      r.status === 'matched'
-    ),
+    () => localMyRequests.filter(r => {
+      if (r.status === 'open' || r.status === 'matched') {
+        return !r.scheduled_time || new Date(r.scheduled_time) >= now
+      }
+      return false
+    }),
     [localMyRequests, now]
   )
   const pastMyRequests = useMemo(
-    () => localMyRequests.filter(r =>
-      r.status === 'completed' ||
-      (r.status === 'open' && !!r.scheduled_time && new Date(r.scheduled_time) < now)
-    ),
+    () => localMyRequests.filter(r => {
+      if (r.status === 'completed' || r.status === 'cancelled') return true
+      // Expired open request (no accepted offer)
+      if (r.status === 'open' && r.scheduled_time && new Date(r.scheduled_time) < now) return true
+      // Accepted past-due (offer was accepted but needed time passed, not yet completed)
+      if (r.status === 'matched' && r.scheduled_time && new Date(r.scheduled_time) < now) return true
+      return false
+    }),
     [localMyRequests, now]
   )
 
@@ -1503,7 +1512,9 @@ function RequestCard({
 
           {isPast ? (
             req.status === 'completed'
-              ? <span className="text-xs font-semibold text-emerald-400">Completed ✓</span>
+              ? <span data-testid="req-completed-label" className="text-xs font-semibold text-emerald-400">Completed ✓</span>
+              : req.status === 'matched'
+              ? <span data-testid="req-past-due-label" className="text-xs font-semibold text-amber-500">Past due — awaiting completion</span>
               : isPastRide && onComplete
               ? (
                 <button
@@ -1516,7 +1527,7 @@ function RequestCard({
                   {completing ? '…' : 'Mark complete'}
                 </button>
               )
-              : <span className="text-xs text-slate-500">Expired</span>
+              : <span data-testid="req-expired-label" className="text-xs text-slate-500">Expired — no helper accepted</span>
           ) : isOwn ? (
             <button
               data-testid="view-offers-btn"
@@ -1904,9 +1915,12 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
         const seats = offer.seats_requested ?? 1
         const offerSubflow = subflowFromCategory(req.category, req.structured_data?.errand_type as string | null)
         const isEffExpired = isOfferEffectivelyExpired(offer.status, req)
-        const displayStatusKey = isEffExpired ? 'expired' : offer.status
+        const isPastDue = isAcceptedPastDue(offer.status, req, req.status)
+        const displayStatusKey = isEffExpired ? 'expired' : isPastDue ? 'accepted_past_due' : offer.status
         const statusLabel = isEffExpired
           ? 'Expired'
+          : isPastDue
+          ? 'Past due'
           : getStatusLabel(offer.status, offerSubflow, { agreedPrice, seats })
 
         return (
@@ -1993,7 +2007,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
               {/* Next-action hint */}
               {(() => {
                 const when = formatWhen(req)
-                const action = formatNextAction(offer.status, isEffExpired, req.status, when)
+                const action = formatNextAction(offer.status, isEffExpired, req.status, when, isPastDue)
                 if (action.variant === 'open') return null
                 return <p className={`text-[11px] ${nextActionColor(action.variant)} mb-3`}>{action.label}</p>
               })()}

@@ -21,14 +21,31 @@ export function isRequestExpired(req: RequestExpirability): boolean {
 }
 
 /**
- * Returns true when a pending or countered offer's parent request has expired.
- * Accepted and rejected offers are already final — expiry doesn't change them.
+ * Returns true when a pending or countered offer's parent request has expired
+ * with NO accepted offer. Accepted and rejected offers are already final —
+ * this function must NOT apply to them.
  */
 export function isOfferEffectivelyExpired(
   offerStatus: string,
   req: RequestExpirability,
 ): boolean {
   if (offerStatus !== 'pending' && offerStatus !== 'countered') return false
+  return isRequestExpired(req)
+}
+
+/**
+ * Returns true when an accepted offer's parent request has passed its needed
+ * time but the request has NOT been marked completed or cancelled.
+ * This is "accepted past-due" — distinct from expiry, which only applies
+ * when no offer was ever accepted.
+ */
+export function isAcceptedPastDue(
+  offerStatus: string,
+  req: RequestExpirability,
+  reqStatus: string,
+): boolean {
+  if (offerStatus !== 'accepted') return false
+  if (reqStatus === 'completed' || reqStatus === 'cancelled') return false
   return isRequestExpired(req)
 }
 
