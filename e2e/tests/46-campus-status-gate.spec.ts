@@ -136,8 +136,10 @@ test.describe('Campus status gate', () => {
     // Campus secondary msg must not appear
     await expect(page.locator('[data-testid="campus-waitlist-msg"]')).not.toBeVisible()
 
-    // Should hit password validation error (special character or length)
-    expect(text.toLowerCase()).toMatch(/password|special/)
+    // Should reach either password validation OR the duplicate-email check —
+    // both indicate the campus gate was bypassed. "already exists" fires when
+    // the email is already registered; "password/special" fires for new emails.
+    expect(text.toLowerCase()).toMatch(/password|special|already exists/)
   })
 
   // ── UI: active_beta domain is not blocked ────────────────────────────────

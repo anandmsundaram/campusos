@@ -12,9 +12,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('name, admin_role')
+    .select('name, admin_role, is_suspended')
     .eq('id', user.id)
     .single()
+
+  if (profile?.is_suspended) {
+    redirect('/login?message=Your+account+has+been+suspended.+Contact+campusosapp%40gmail.com+for+help.')
+  }
 
   const isAdmin = profile?.admin_role === 'campus_admin' || profile?.admin_role === 'global_admin'
 

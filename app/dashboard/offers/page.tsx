@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { subflowFromCategory, getCounterLabel, getStatusLabel, getOfferNotificationMessage } from '@/lib/offerText'
-import { getOfferLifecycleState } from '@/lib/marketplaceLifecycle'
+import { getOfferLifecycleState, canActOnOffer } from '@/lib/marketplaceLifecycle'
 import { formatWhere, formatWhen, formatNote, formatNextActionFromState, formatPostedTime, hasExpectedLocation, nextActionColor } from '@/lib/cardViewModel'
 import BlockModal from '@/app/components/BlockModal'
 import { getMyBlocks } from '@/lib/blocking'
@@ -366,8 +366,8 @@ export default function MyOffersPage() {
                     </div>
                   )}
 
-                  {/* Counter action CTA — gated on !isEffExpired */}
-                  {isCountered && !isEffExpired && (
+                  {/* Counter action CTA — gated on canActOnOffer */}
+                  {isCountered && canActOnOffer(offer.status, req) && (
                     <div className="mb-3 flex gap-2">
                       <button
                         data-testid="accept-counter-btn"
@@ -388,6 +388,15 @@ export default function MyOffersPage() {
                         {isActing ? '…' : 'Decline'}
                       </button>
                     </div>
+                  )}
+                  {isCountered && !canActOnOffer(offer.status, req) && !isEffExpired && (
+                    <p data-testid="counter-closed-reason" className="mb-3 text-[11px] text-slate-500 italic">
+                      {offerState === 'cancelled'
+                        ? 'No actions available — request was cancelled'
+                        : offerState === 'completed'
+                        ? 'No actions available — request was completed'
+                        : 'No actions available'}
+                    </p>
                   )}
 
                   {/* Footer: requester info + posted time (secondary only) */}

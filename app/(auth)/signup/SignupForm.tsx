@@ -93,6 +93,7 @@ export default function SignupForm({ campuses }: Props) {
     year: '',
   })
   const [error, setError] = useState<string | null>(null)
+  const [showSignInLink, setShowSignInLink] = useState(false)
   const [loading, setLoading] = useState(false)
   const [emailTouched, setEmailTouched] = useState(false)
   const signupStartedFired = useRef(false)
@@ -120,6 +121,7 @@ export default function SignupForm({ campuses }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setShowSignInLink(false)
     setLoading(true)
 
     if (!(await isAllowedEmail(form.email))) {
@@ -135,6 +137,21 @@ export default function SignupForm({ campuses }: Props) {
       return
     }
 
+    const supabase = createClient()
+    const normalizedEmail = form.email.trim().toLowerCase()
+    const { data: isRegistered } = await supabase.rpc('is_email_registered', { p_email: normalizedEmail })
+    if (isRegistered) {
+      const { data: isSuspended } = await supabase.rpc('is_user_suspended', { p_email: normalizedEmail })
+      if (isSuspended) {
+        setError('This account has been suspended. Contact campusosapp@gmail.com for help.')
+      } else {
+        setError('An account already exists for this email.')
+        setShowSignInLink(true)
+      }
+      setLoading(false)
+      return
+    }
+
     const pwdError = validatePassword(form.password)
     if (pwdError) {
       setError(pwdError)
@@ -144,7 +161,6 @@ export default function SignupForm({ campuses }: Props) {
 
     const universityName = selectedCampus?.name ?? form.campusSlug
 
-    const supabase = createClient()
     const { error } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
@@ -331,9 +347,12 @@ export default function SignupForm({ campuses }: Props) {
             </div>
 
             {error && (
-              <p data-testid="signup-error" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600">
+              <div data-testid="signup-error" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600">
                 {error}
-              </p>
+                {showSignInLink && (
+                  <> <Link href="/login" className="underline font-semibold">Sign in</Link></>
+                )}
+              </div>
             )}
             {error && (error.includes("isn't live") || error.includes("isn't available") || error.includes("not currently")) && (
               <p data-testid="campus-waitlist-msg" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-700">

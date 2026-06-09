@@ -206,6 +206,18 @@ export function getRequesterViewOffersLabel(
 }
 
 /**
+ * Returns true when the helper can still act on a countered offer
+ * (accept or decline). False when the parent request is cancelled,
+ * completed, or expired, or when the offer is not in a countered state.
+ */
+export function canActOnOffer(
+  offerStatus: string,
+  req: RequestExpirability & { status: string },
+): boolean {
+  return getOfferLifecycleState(offerStatus, req) === 'pending_open'
+}
+
+/**
  * Validates a raw user-typed offer or counter amount string.
  * Returns a human-readable error, or null if the value is acceptable.
  * Empty string is valid (means "accept the request's posted budget").
