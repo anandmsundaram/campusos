@@ -82,10 +82,10 @@ export function formatWhen(req: CardRequest): string | null {
   return null
 }
 
-/** Absolute posted date (not a relative "X days ago"). */
+/** Absolute posted date including year — "Jun 9, 2026". Never relative. */
 export function formatPostedTime(created_at: string): string {
   const d = new Date(created_at)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 /** Short description or AI-generated summary, or null if neither exists. */

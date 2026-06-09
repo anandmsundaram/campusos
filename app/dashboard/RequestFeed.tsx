@@ -232,19 +232,22 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   const [urgencyFilter, setUrgencyFilter] = useState('all')
   const [sortBy, setSortBy] = useState('newest')
 
-  // Ride completion state
+  // Completion state (all categories)
   const [completingId, setCompletingId] = useState<string | null>(null)
 
-  async function handleCompleteRide(requestId: string, helperIds: string[]) {
+  async function handleMarkComplete(requestId: string, category: string, helperIds: string[]) {
     setCompletingId(requestId)
     const supabase = createClient()
     const { data: result, error } = await supabase.rpc('complete_request_safe', { p_request_id: requestId })
     if (error || !result?.ok) { setCompletingId(null); return }
+    const completionMsg = category === 'rides'
+      ? 'The ride has been marked as complete. Thanks for riding!'
+      : 'Your request has been marked as complete — thanks for helping out!'
     await Promise.all(helperIds.map(uid =>
       supabase.from('notifications').insert({
         user_id: uid,
         type: 'task_completed',
-        message: 'The ride has been marked as complete. Thanks for riding!',
+        message: completionMsg,
         related_request_id: requestId,
       })
     ))
@@ -663,7 +666,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                         onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
                         onOfferCountered={(offerId, amount) => handleOfferCountered(req.id, offerId, amount)}
                         onComplete={acceptedOffersForActive && acceptedOffersForActive.length > 0
-                          ? () => handleCompleteRide(req.id, acceptedOffersForActive.map(o => o.helper_id))
+                          ? () => handleMarkComplete(req.id, req.category, acceptedOffersForActive.map(o => o.helper_id))
                           : undefined}
                         completing={completingId === req.id}
                         blockedHelperIds={blockedUserIds}
@@ -700,7 +703,7 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                             acceptedOffers={acceptedOffersForCard}
                           isPast
                           onComplete={acceptedOffersForCard && acceptedOffersForCard.length > 0
-                            ? () => handleCompleteRide(req.id, acceptedOffersForCard.map(o => o.helper_id))
+                            ? () => handleMarkComplete(req.id, req.category, acceptedOffersForCard.map(o => o.helper_id))
                             : undefined
                           }
                           completing={completingId === req.id}
@@ -1506,7 +1509,7 @@ function RequestCard({
               </span>
             )}
             <span className="flex-shrink-0 text-xs text-slate-700">·</span>
-            <span className="flex-shrink-0 text-xs text-slate-600">{timeAgo(req.created_at)}</span>
+            <span data-testid="card-posted-time" className="flex-shrink-0 text-xs text-slate-600">Posted {formatPostedTime(req.created_at)}</span>
             {onReport && (
               <>
                 <span className="flex-shrink-0 text-xs text-slate-700">·</span>
