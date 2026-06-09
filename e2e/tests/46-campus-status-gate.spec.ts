@@ -33,18 +33,22 @@ async function getCampusForDomain(domain: string): Promise<{ campus_id: string |
 }
 
 // ─── UI helper: fill and submit signup form ───────────────────────────────────
+// University is now a <select>; use selectOption() with the campus slug value.
+// Waitlist campuses are disabled in the select — use 'tamu' (active_beta) as default
+// so the submit button is reachable; server-side checkCampusStatus() handles the gate.
 
 async function fillAndSubmitSignup(
   page: import('@playwright/test').Page,
   email: string,
+  campusSlug = 'tamu',
   // Must be ≥10 chars to pass HTML5 minLength, but lack a special char to fail JS validation
   password = 'TenCharsABC',
 ) {
   await page.goto('/signup')
   await page.locator('#name').fill('E2E Test User')
   await page.locator('[data-testid="email-input"]').fill(email)
+  await page.locator('[data-testid="university-select"]').selectOption(campusSlug)
   await page.locator('#password').fill(password)
-  await page.locator('#university').fill('Test University')
   await page.locator('#major').fill('CS')
   await page.locator('#year').selectOption('Junior')
   await page.locator('[data-testid="signup-submit-btn"]').click()
@@ -88,6 +92,8 @@ test.describe('Campus status gate', () => {
   })
 
   // ── UI: waitlist domain shows friendly block message ─────────────────────
+  // Waitlist campuses are disabled in the dropdown; user must pick an active campus
+  // and enter their waitlist email. The server-side campus gate catches the domain.
 
   test('UI: waitlist .edu domain is blocked with waitlist message', async ({ page }) => {
     await fillAndSubmitSignup(page, 'student@uh.edu')
@@ -138,7 +144,7 @@ test.describe('Campus status gate', () => {
 
   test('UI: active_beta .edu domain is not blocked by campus check', async ({ page }) => {
     // 10-char no-special-char password passes HTML5 minLength but fails JS validation
-    await fillAndSubmitSignup(page, 'student@tamu.edu')
+    await fillAndSubmitSignup(page, 'student@tamu.edu', 'tamu')
 
     const errEl = page.locator('[data-testid="signup-error"]')
     await expect(errEl).toBeVisible({ timeout: 15_000 })

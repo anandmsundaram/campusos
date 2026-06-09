@@ -2,30 +2,40 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getRequestLifecycleState, getOfferLifecycleState, type OfferSummary } from '@/lib/marketplaceLifecycle'
+import RangeFilter from './RangeFilter'
 
 // ─── Range helpers ────────────────────────────────────────────────────────────
 
-type RangeKey = 'month' | '30d' | '3mo' | '12mo'
+type QuickRangeKey = 'month' | '30d' | '3mo' | '12mo'
+type RangeKey = QuickRangeKey | 'custom'
 
-const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
+const QUICK_OPTIONS: { key: QuickRangeKey; label: string }[] = [
   { key: 'month', label: 'This month' },
   { key: '30d',   label: 'Last 30 days' },
   { key: '3mo',   label: 'Last 3 months' },
   { key: '12mo',  label: 'Last 12 months' },
 ]
 
-function getRangeStart(range: RangeKey): Date {
+const MAX_LOOKBACK_MS = 365 * 24 * 60 * 60 * 1000
+
+function getQuickRangeStart(range: QuickRangeKey): Date {
   const now = new Date()
   switch (range) {
     case 'month': return new Date(now.getFullYear(), now.getMonth(), 1)
     case '30d':   return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
     case '3mo':   return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-    case '12mo':  return new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+    case '12mo':  return new Date(now.getTime() - MAX_LOOKBACK_MS)
   }
 }
 
-function getRangeLabel(range: RangeKey): string {
-  return RANGE_OPTIONS.find(o => o.key === range)?.label ?? 'This month'
+function getQuickRangeLabel(range: QuickRangeKey): string {
+  return QUICK_OPTIONS.find(o => o.key === range)?.label ?? 'This month'
+}
+
+function fmtDateLabel(iso: string): string {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+  })
 }
 
 // ─── View param ───────────────────────────────────────────────────────────────
@@ -107,24 +117,67 @@ function catLabel(category: string): string {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 interface ActivityPageProps {
-  searchParams: Promise<{ range?: string; view?: string; filter?: string }>
+  searchParams: Promise<{ range?: string; from?: string; to?: string; view?: string; filter?: string }>
 }
 
 export default async function ActivityPage({ searchParams }: ActivityPageProps) {
   const params = await searchParams
-  const rawRange = params.range ?? 'month'
-  const range: RangeKey = (['month', '30d', '3mo', '12mo'] as const).includes(rawRange as RangeKey)
-    ? (rawRange as RangeKey)
-    : 'month'
   const view = parseView(params.view)
   const filterState = params.filter ?? null
+
+  // ── Parse date range ──────────────────────────────────────────────────────
+  const rawRange = params.range ?? 'month'
+  const isCustom = rawRange === 'custom'
+  const today = new Date()
+  today.setHours(23, 59, 59, 999)
+  const minLookback = new Date(Date.now() - MAX_LOOKBACK_MS)
+
+  let rangeKey: RangeKey = 'month'
+  let rangeStart: Date
+  let rangeEnd: Date = today
+  let rangeLabel: string
+  let fromParam: string | null = null
+  let toParam: string | null = null
+  let rangeInvalid = false
+
+  if (isCustom && params.from && params.to) {
+    const fromDate = new Date(params.from + 'T00:00:00')
+    const toDate = new Date(params.to + 'T23:59:59')
+    const todayMidnight = new Date(); todayMidnight.setHours(0, 0, 0, 0)
+
+    if (
+      isNaN(fromDate.getTime()) || isNaN(toDate.getTime()) ||
+      fromDate > toDate ||
+      fromDate < minLookback ||
+      toDate > today
+    ) {
+      rangeInvalid = true
+      rangeKey = 'month'
+      rangeStart = getQuickRangeStart('month')
+      rangeLabel = 'This month (invalid range — showing default)'
+    } else {
+      rangeKey = 'custom'
+      rangeStart = fromDate
+      rangeEnd = toDate
+      fromParam = params.from
+      toParam = params.to
+      rangeLabel = `${fmtDateLabel(params.from)} – ${fmtDateLabel(params.to)}`
+    }
+  } else {
+    const quickKey = (['month', '30d', '3mo', '12mo'] as const).includes(rawRange as QuickRangeKey)
+      ? (rawRange as QuickRangeKey)
+      : 'month'
+    rangeKey = quickKey
+    rangeStart = getQuickRangeStart(quickKey)
+    rangeLabel = getQuickRangeLabel(quickKey)
+  }
+
+  const rangeStartIso = rangeStart.toISOString()
+  const rangeEndIso = rangeEnd.toISOString()
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
-
-  const rangeStart = getRangeStart(range)
-  const rangeStartIso = rangeStart.toISOString()
 
   // ── Fetch my requests in range ────────────────────────────────────────────
   const { data: myRequestsRaw } = await supabase
@@ -132,6 +185,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     .select('id, category, title, status, budget, is_driver, created_at, scheduled_time, flexible_time, request_offers(id, status, counter_budget, requester_counter, final_agreed_price, seats_requested)')
     .eq('requester_id', user.id)
     .gte('created_at', rangeStartIso)
+    .lte('created_at', rangeEndIso)
     .order('created_at', { ascending: false })
     .limit(200)
 
@@ -141,6 +195,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     .select('id, status, created_at, counter_budget, requester_counter, final_agreed_price, seats_requested, requests(id, title, category, status, budget, is_driver, scheduled_time, flexible_time, created_at)')
     .eq('helper_id', user.id)
     .gte('created_at', rangeStartIso)
+    .lte('created_at', rangeEndIso)
     .order('created_at', { ascending: false })
     .limit(200)
 
@@ -160,14 +215,13 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     expired_with_unaccepted_offers: 0,
     cancelled: 0,
   }
-  // Detail records per state
   const reqRecords: Record<string, RequestRow[]> = {}
 
   let owed = 0
   let completedPaid = 0
 
   for (const r of myRequests) {
-    if (r.is_driver === true) continue // driver requests are earnings, not obligations
+    if (r.is_driver === true) continue
     const offers = r.request_offers ?? []
     const summary: OfferSummary = {
       pendingCount: offers.filter(o => o.status === 'pending' || o.status === 'countered').length,
@@ -208,7 +262,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   for (const o of myOffers) {
     const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
     if (!req) continue
-    if (req.is_driver === true) continue // passenger seat offers — not helper earnings
+    if (req.is_driver === true) continue
     const state = getOfferLifecycleState(o.status, req) as OfferState
     offerByState[state] = (offerByState[state] ?? 0) + 1
     if (!offerRecords[state]) offerRecords[state] = []
@@ -217,17 +271,16 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     const total = offerPrice(o, req.budget)
     if (state === 'completed') earned += total
     else if (state === 'accepted_upcoming' || state === 'accepted_past_due') pendingEarnings += total
-    else if (state === 'pending_open') pendingEarnings += total  // include pending/countered in pipeline
+    else if (state === 'pending_open') pendingEarnings += total
   }
 
-  const rangeLabel = getRangeLabel(range)
-  const rangeParam = `range=${range}`
+  const rangeParam = rangeKey === 'custom' && fromParam && toParam
+    ? `range=custom&from=${fromParam}&to=${toParam}`
+    : `range=${rangeKey}`
 
-  // ── Section order driven by view param ───────────────────────────────────
   const offersFirst = view === 'you-could-earn' || view === 'earned'
-  const requestsFirst = view === 'to-pay' || view === 'open-nearby'
+  const highlightRequests = view === 'to-pay' || view === 'open-nearby'
   const highlightOffers = offersFirst
-  const highlightRequests = requestsFirst
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
@@ -242,23 +295,14 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
         </Link>
       </div>
 
-      {/* Date range filter */}
-      <div data-testid="activity-range-filter" className="flex flex-wrap gap-2 mb-8">
-        {RANGE_OPTIONS.map(opt => (
-          <Link
-            key={opt.key}
-            href={`/dashboard/activity?range=${opt.key}`}
-            data-testid={`range-${opt.key}`}
-            className={`rounded-full border px-4 py-1.5 text-xs font-medium transition-colors ${
-              range === opt.key
-                ? 'border-blue-500 bg-blue-500 text-white'
-                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
-            }`}
-          >
-            {opt.label}
-          </Link>
-        ))}
-      </div>
+      {rangeInvalid && (
+        <p data-testid="range-error-banner" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600">
+          Invalid date range — showing current month instead. Start must be before end, within 12 months, and not in the future.
+        </p>
+      )}
+
+      {/* Date range filter (client component) */}
+      <RangeFilter range={rangeKey} from={fromParam} to={toParam} view={params.view ?? null} />
 
       {/* Financial summary */}
       <section className="mb-8">
@@ -327,7 +371,7 @@ function RequestsSection({ reqByState, reqRecords, rangeParam, filterState, high
           return (
             <div key={state}>
               <Link
-                href={`/dashboard/activity?${rangeParam}&filter=${isActive ? '' : state}${isActive ? '' : `#requests`}`}
+                href={`/dashboard/activity?${rangeParam}&filter=${isActive ? '' : state}${isActive ? '' : '#requests'}`}
                 className={`flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors ${isActive ? 'bg-slate-50' : ''}`}
               >
                 <span className={`text-sm ${isActive ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{label}</span>
@@ -388,7 +432,7 @@ function OffersSection({ offerByState, offerRecords, rangeParam, filterState, hi
           return (
             <div key={state}>
               <Link
-                href={`/dashboard/activity?${rangeParam}&filter=${isActive ? '' : state}${isActive ? '' : `#offers`}`}
+                href={`/dashboard/activity?${rangeParam}&filter=${isActive ? '' : state}${isActive ? '' : '#offers'}`}
                 className={`flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors ${isActive ? 'bg-slate-50' : ''}`}
               >
                 <span className={`text-sm ${isActive ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{label}</span>
@@ -418,19 +462,32 @@ function OffersSection({ offerByState, offerRecords, rangeParam, filterState, hi
 
 function RequestDetailRow({ r }: { r: RequestRow }) {
   const acceptedOffer = r.request_offers?.find(o => o.status === 'accepted')
-  const price = acceptedOffer
-    ? offerPrice(acceptedOffer, r.budget)
-    : r.budget ?? 0
+  const price = acceptedOffer ? offerPrice(acceptedOffer, r.budget) : r.budget ?? 0
+
+  const priceLabel = acceptedOffer?.final_agreed_price != null ? 'Agreed'
+    : acceptedOffer?.requester_counter != null ? 'Counter'
+    : acceptedOffer?.counter_budget != null ? 'Offered'
+    : r.budget ? 'Budget'
+    : null
+
+  const scheduledFmt = r.scheduled_time
+    ? new Date(r.scheduled_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : r.flexible_time ? 'Flexible' : null
 
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/60">
-      <div className="min-w-0 pr-3">
+    <div className="flex items-start justify-between px-4 py-2.5 bg-slate-50/60 gap-3">
+      <div className="min-w-0 flex-1">
         <p className="text-xs font-medium text-slate-800 truncate">{r.title}</p>
-        <p className="text-[10px] text-slate-400 mt-0.5">{catLabel(r.category)}</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">
+          {catLabel(r.category)}{scheduledFmt ? ` · ${scheduledFmt}` : ''}
+        </p>
       </div>
-      <span className="shrink-0 text-xs tabular-nums text-slate-600">
-        {price > 0 ? fmtDollars(price) : '—'}
-      </span>
+      {price > 0 && priceLabel && (
+        <div className="shrink-0 text-right">
+          <p className="text-xs tabular-nums text-slate-700 font-medium">{fmtDollars(price)}</p>
+          <p className="text-[10px] text-slate-400">{priceLabel}</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -440,15 +497,30 @@ function OfferDetailRow({ o }: { o: OfferRow }) {
   if (!req) return null
   const price = offerPrice(o, req.budget)
 
+  const priceLabel = o.final_agreed_price != null ? 'Agreed'
+    : o.requester_counter != null ? 'Counter'
+    : o.counter_budget != null ? 'My offer'
+    : req.budget ? 'Budget'
+    : null
+
+  const scheduledFmt = req.scheduled_time
+    ? new Date(req.scheduled_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : req.flexible_time ? 'Flexible' : null
+
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/60">
-      <div className="min-w-0 pr-3">
+    <div className="flex items-start justify-between px-4 py-2.5 bg-slate-50/60 gap-3">
+      <div className="min-w-0 flex-1">
         <p className="text-xs font-medium text-slate-800 truncate">{req.title}</p>
-        <p className="text-[10px] text-slate-400 mt-0.5">{catLabel(req.category)}</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">
+          {catLabel(req.category)}{scheduledFmt ? ` · ${scheduledFmt}` : ''}
+        </p>
       </div>
-      <span className="shrink-0 text-xs tabular-nums text-slate-600">
-        {price > 0 ? fmtDollars(price) : '—'}
-      </span>
+      {price > 0 && priceLabel && (
+        <div className="shrink-0 text-right">
+          <p className="text-xs tabular-nums text-slate-700 font-medium">{fmtDollars(price)}</p>
+          <p className="text-[10px] text-slate-400">{priceLabel}</p>
+        </div>
+      )}
     </div>
   )
 }

@@ -90,11 +90,11 @@ test.describe('Email whitelist', () => {
       await page.goto('/signup')
       await page.waitForLoadState('networkidle')
 
-      // Fill all required fields
+      // Fill all required fields (university is now a <select>)
       await page.fill('[data-testid="email-input"]', 'notapproved@gmail.com')
       await page.fill('input[id="name"]', 'Test User')
       await page.fill('input[id="password"]', 'StrongPass1!')
-      await page.fill('input[id="university"]', 'State University')
+      await page.selectOption('[data-testid="university-select"]', 'tamu')
       await page.fill('input[id="major"]', 'CS')
       await page.selectOption('select[id="year"]', 'Freshman')
 

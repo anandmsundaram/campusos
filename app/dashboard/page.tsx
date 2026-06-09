@@ -320,7 +320,6 @@ export default async function DashboardPage() {
 
   // Offers I made on OTHERS' requests (I am the helper or the passenger) — current month
   for (const o of (myOffersRaw ?? []) as FinOffer[]) {
-    if (o.status !== 'accepted') continue
     if (new Date(o.created_at) < monthStart) continue
     const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
     if (!req) continue
@@ -328,12 +327,15 @@ export default async function DashboardPage() {
     const total = price * (o.seats_requested ?? 1)
 
     if (req.is_driver === true) {
-      // I booked seats as a PASSENGER → I owe the driver
-      if (req.status === 'open' || req.status === 'matched') owed += total
+      // I booked seats as a PASSENGER — only count when accepted
+      if (o.status === 'accepted' && (req.status === 'open' || req.status === 'matched')) owed += total
     } else {
-      // I am the HELPER (task or driving for a ride-seeker) → I earn
-      if (req.status === 'completed') earned += total
-      else if (req.status === 'open' || req.status === 'matched') committed += total
+      // I am the HELPER → I earn; include pending/countered in pipeline
+      if (o.status === 'accepted' && req.status === 'completed') earned += total
+      else if (
+        (o.status === 'accepted' && (req.status === 'open' || req.status === 'matched')) ||
+        o.status === 'pending' || o.status === 'countered'
+      ) committed += total
     }
   }
 
