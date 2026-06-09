@@ -46,9 +46,9 @@ const CATEGORY_LABELS: Record<ParsedRequest['category'], string> = {
 }
 
 const URGENCY_COLORS: Record<ParsedRequest['urgency'], string> = {
-  low: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-  medium: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
-  high: 'text-red-400 bg-red-500/10 border-red-500/20',
+  low: 'text-emerald-700 bg-emerald-50 border-emerald-200',
+  medium: 'text-yellow-700 bg-yellow-50 border-yellow-200',
+  high: 'text-red-700 bg-red-50 border-red-200',
 }
 
 const CATEGORIES: { label: string; icon: string; value: ParsedRequest['category'] }[] = [
@@ -996,40 +996,31 @@ export default function RequestInput() {
 
   return (
     <section className="flex flex-col items-center gap-7">
-      {/* Gradient headline */}
+      {/* Headline */}
       <div className="text-center space-y-2">
-        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-tight">
-          <span
-            style={{
-              background: 'linear-gradient(135deg, #ffffff 0%, #e2e8f0 50%, #93c5fd 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}
-          >
-            What do you need help with?
-          </span>
+        <h1 className="text-3xl sm:text-4xl font-bold tracking-tight leading-tight text-slate-900">
+          What do you need help with?
         </h1>
         <p className="text-sm text-slate-500">
-          Describe your request and CampusOS will find someone to help
+          Post it — nearby students can offer
         </p>
       </div>
 
       {/* AI input */}
       <form onSubmit={handleSubmit} className="w-full max-w-2xl">
         <div
-          className="relative rounded-2xl border bg-[#0d1526] transition-all duration-300"
+          className="relative rounded-2xl border bg-white transition-all duration-300"
           style={{
-            borderColor: focused ? 'rgba(59,130,246,0.5)' : '#1e2d4a',
+            borderColor: focused ? 'rgba(59,130,246,0.6)' : 'rgb(203,213,225)',
             boxShadow: focused
-              ? '0 0 0 1px rgba(59,130,246,0.15), 0 0 32px rgba(59,130,246,0.10)'
-              : '0 4px 24px rgba(0,0,0,0.4)',
+              ? '0 0 0 3px rgba(59,130,246,0.1), 0 4px 16px rgba(0,0,0,0.06)'
+              : '0 2px 8px rgba(0,0,0,0.06)',
           }}
         >
           {!text && !focused && (
             <div
               aria-hidden="true"
-              className="absolute left-4 top-3 pointer-events-none select-none text-sm text-slate-600"
+              className="absolute left-4 top-3 pointer-events-none select-none text-sm text-slate-400"
             >
               {displayed}
               <span className="animate-pulse opacity-70">|</span>
@@ -1045,12 +1036,12 @@ export default function RequestInput() {
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             disabled={busy}
-            className="w-full resize-none bg-transparent px-4 py-3 text-sm text-white outline-none disabled:opacity-60"
+            className="w-full resize-none bg-transparent px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none disabled:opacity-60"
           />
 
           <div className="flex items-center justify-between px-3 pb-3">
-            <span className="text-xs text-slate-600">
-              {text.length > 0 ? `${text.length} chars` : 'Powered by Claude AI'}
+            <span className="text-xs text-slate-400">
+              {text.length > 0 ? `${text.length} chars` : 'Nearby students can offer'}
             </span>
             <button
               type="submit"
@@ -1088,7 +1079,7 @@ export default function RequestInput() {
               setText(STARTERS[value])
               textareaRef.current?.focus()
             }}
-            className="flex items-center gap-1.5 rounded-full border border-[#1e2d4a] bg-[#0d1526] px-4 py-2 text-sm text-slate-400 transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.08] hover:text-blue-300"
+            className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600 transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
           >
             <span className="text-base leading-none">{icon}</span>
             <span>{label}</span>
@@ -1112,8 +1103,8 @@ export default function RequestInput() {
 
       {/* ── Disambiguation card ── */}
       {status === 'disambiguating' && parsed && (
-        <div data-testid="disambig-card" className="w-full max-w-2xl rounded-2xl border border-blue-500/20 bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
-          <p className="text-sm font-semibold text-white mb-1">
+        <div data-testid="disambig-card" className="w-full max-w-2xl rounded-2xl border border-blue-200 bg-white p-6 shadow-lg shadow-slate-200/60">
+          <p className="text-sm font-semibold text-slate-900 mb-1">
             {parsed.clarification_question ?? 'What do you need?'}
           </p>
           <p className="text-xs text-slate-500 mb-4">Choose the closest match — you can add details after.</p>
@@ -1124,7 +1115,7 @@ export default function RequestInput() {
                 data-testid="disambig-option"
                 type="button"
                 onClick={() => handleDisambigSelect(opt)}
-                className="flex items-center gap-3 rounded-xl border border-[#1e2d4a] bg-white/[0.02] px-4 py-3 text-sm text-slate-300 text-left transition-all hover:border-blue-500/30 hover:bg-blue-500/[0.05] hover:text-white"
+                className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 text-left transition-all hover:border-blue-300 hover:bg-blue-50 hover:text-blue-800"
               >
                 {opt.label}
               </button>
@@ -1133,7 +1124,7 @@ export default function RequestInput() {
           <button
             type="button"
             onClick={handleEdit}
-            className="mt-4 text-xs text-slate-600 hover:text-slate-400 transition-colors w-full text-center"
+            className="mt-4 text-xs text-slate-400 hover:text-slate-600 transition-colors w-full text-center"
           >
             Edit my message
           </button>
@@ -1142,9 +1133,9 @@ export default function RequestInput() {
 
       {/* ── Offer interstitial ── */}
       {isOfferInterstitial && (
-        <div data-testid="offer-interstitial" className="w-full max-w-2xl rounded-2xl border border-purple-500/15 bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
-          <p className="text-base font-semibold text-white mb-2">Looks like you&apos;re offering help</p>
-          <p className="text-sm text-slate-400 leading-relaxed mb-5">
+        <div data-testid="offer-interstitial" className="w-full max-w-2xl rounded-2xl border border-purple-200 bg-white p-6 shadow-lg shadow-slate-200/60">
+          <p className="text-base font-semibold text-slate-900 mb-2">Looks like you&apos;re offering help</p>
+          <p className="text-sm text-slate-500 leading-relaxed mb-5">
             {(intentType && UNSUPPORTED_MESSAGES[intentType]) ??
               'Offer availability posts are launching soon. For now, browse the feed and respond directly to students who need what you can provide.'}
           </p>
@@ -1158,7 +1149,7 @@ export default function RequestInput() {
             <button
               type="button"
               onClick={handleEdit}
-              className="rounded-lg border border-[#1e2d4a] px-4 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-white"
+              className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700"
             >
               Edit
             </button>
@@ -1168,7 +1159,7 @@ export default function RequestInput() {
 
       {/* ── Confirmation card ── */}
       {showConfirmCard && (
-        <div data-testid="confirm-card" className="w-full max-w-2xl rounded-2xl border border-[#1e2d4a] bg-[#0d1526] p-6 shadow-2xl shadow-black/40">
+        <div data-testid="confirm-card" className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-200/60">
 
           {/* Follow-up questions */}
           {followupQuestionsToShow.length > 0 && (
@@ -1179,7 +1170,7 @@ export default function RequestInput() {
               <div className="flex flex-col gap-4">
                 {followupQuestionsToShow.map(q => (
                   <div key={q.key}>
-                    <p className="text-xs font-medium text-slate-300 mb-1">{q.label}</p>
+                    <p className="text-xs font-medium text-slate-700 mb-1">{q.label}</p>
                     {q.hint && (
                       <p className="text-[10px] text-slate-600 mb-1.5">{q.hint}</p>
                     )}
@@ -1198,7 +1189,7 @@ export default function RequestInput() {
                             className={`rounded-lg border px-3 py-2.5 text-xs font-medium transition-colors ${
                               followupAnswers[q.key] === opt.value
                                 ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
-                                : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
+                                : 'border-slate-200 text-slate-500 hover:border-blue-300 hover:text-slate-700'
                             }`}
                           >
                             {opt.label}
@@ -1212,7 +1203,7 @@ export default function RequestInput() {
                         value={followupAnswers[q.key] ?? ''}
                         onChange={e => handleFollowupChange(q.key, e.target.value)}
                         placeholder={q.placeholder}
-                        className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-blue-500/40"
+                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-400"
                       />
                     )}
                   </div>
@@ -1246,7 +1237,7 @@ export default function RequestInput() {
                     className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
                       timeSlot.dateMode === opt.value
                         ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
-                        : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
+                        : 'border-slate-200 text-slate-500 hover:border-blue-300 hover:text-slate-700'
                     }`}
                   >
                     {opt.label}
@@ -1272,7 +1263,7 @@ export default function RequestInput() {
                       className={`rounded-lg border px-3 py-2 text-xs font-medium capitalize transition-colors ${
                         timeSlot.weekendDay === day
                           ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
-                          : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
+                          : 'border-slate-200 text-slate-500 hover:border-blue-300 hover:text-slate-700'
                       }`}
                     >
                       {day.charAt(0).toUpperCase() + day.slice(1)}
@@ -1296,7 +1287,7 @@ export default function RequestInput() {
                       startHour: '', startMinute: '', startAmPm: '',
                       endHour: '', endMinute: '', endAmPm: '',
                     }))}
-                    className="rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-blue-500/40"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-400"
                   />
                 </div>
               )}
@@ -1324,7 +1315,7 @@ export default function RequestInput() {
                         className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
                           timeSlot.timeMode === opt.value
                             ? 'border-blue-500/50 bg-blue-500/15 text-blue-300'
-                            : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/30 hover:text-slate-300'
+                            : 'border-slate-200 text-slate-500 hover:border-blue-300 hover:text-slate-700'
                         }`}
                       >
                         {opt.label}
@@ -1343,7 +1334,7 @@ export default function RequestInput() {
                       data-testid="time-start-hour"
                       value={timeSlot.startHour}
                       onChange={e => setTimeSlot(prev => ({ ...prev, startHour: e.target.value }))}
-                      className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-400"
                     >
                       <option value="">--</option>
                       {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1353,7 +1344,7 @@ export default function RequestInput() {
                       data-testid="time-start-minute"
                       value={timeSlot.startMinute}
                       onChange={e => setTimeSlot(prev => ({ ...prev, startMinute: e.target.value }))}
-                      className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                      className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-400"
                     >
                       <option value="">--</option>
                       {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
@@ -1368,7 +1359,7 @@ export default function RequestInput() {
                           className={`rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                             timeSlot.startAmPm === ap
                               ? 'bg-blue-600 text-white'
-                              : 'border border-[#1e2d4a] text-slate-500 hover:text-slate-300'
+                              : 'border border-slate-200 text-slate-500 hover:text-slate-700'
                           }`}
                         >
                           {ap}
@@ -1389,7 +1380,7 @@ export default function RequestInput() {
                         data-testid="time-start-hour"
                         value={timeSlot.startHour}
                         onChange={e => setTimeSlot(prev => ({ ...prev, startHour: e.target.value }))}
-                        className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-400"
                       >
                         <option value="">--</option>
                         {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1399,7 +1390,7 @@ export default function RequestInput() {
                         data-testid="time-start-minute"
                         value={timeSlot.startMinute}
                         onChange={e => setTimeSlot(prev => ({ ...prev, startMinute: e.target.value }))}
-                        className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-400"
                       >
                         <option value="">--</option>
                         {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
@@ -1408,7 +1399,7 @@ export default function RequestInput() {
                         {(['AM', 'PM'] as const).map(ap => (
                           <button key={ap} data-testid={`time-start-ampm-${ap}`} type="button"
                             onClick={() => setTimeSlot(prev => ({ ...prev, startAmPm: ap }))}
-                            className={`rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${timeSlot.startAmPm === ap ? 'bg-blue-600 text-white' : 'border border-[#1e2d4a] text-slate-500 hover:text-slate-300'}`}
+                            className={`rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${timeSlot.startAmPm === ap ? 'bg-blue-600 text-white' : 'border border-slate-200 text-slate-500 hover:text-slate-700'}`}
                           >{ap}</button>
                         ))}
                       </div>
@@ -1421,7 +1412,7 @@ export default function RequestInput() {
                         data-testid="time-end-hour"
                         value={timeSlot.endHour}
                         onChange={e => setTimeSlot(prev => ({ ...prev, endHour: e.target.value }))}
-                        className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-400"
                       >
                         <option value="">--</option>
                         {HOURS.map(h => <option key={h} value={h}>{h}</option>)}
@@ -1431,7 +1422,7 @@ export default function RequestInput() {
                         data-testid="time-end-minute"
                         value={timeSlot.endMinute}
                         onChange={e => setTimeSlot(prev => ({ ...prev, endMinute: e.target.value }))}
-                        className="rounded-lg border border-[#1e2d4a] bg-[#0a1120] px-2 py-1.5 text-sm text-white outline-none focus:border-blue-500/40"
+                        className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-blue-400"
                       >
                         <option value="">--</option>
                         {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
@@ -1440,7 +1431,7 @@ export default function RequestInput() {
                         {(['AM', 'PM'] as const).map(ap => (
                           <button key={ap} data-testid={`time-end-ampm-${ap}`} type="button"
                             onClick={() => setTimeSlot(prev => ({ ...prev, endAmPm: ap }))}
-                            className={`rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${timeSlot.endAmPm === ap ? 'bg-blue-600 text-white' : 'border border-[#1e2d4a] text-slate-500 hover:text-slate-300'}`}
+                            className={`rounded px-2.5 py-1.5 text-xs font-semibold transition-colors ${timeSlot.endAmPm === ap ? 'bg-blue-600 text-white' : 'border border-slate-200 text-slate-500 hover:text-slate-700'}`}
                           >{ap}</button>
                         ))}
                       </div>
@@ -1474,7 +1465,7 @@ export default function RequestInput() {
                     className={`flex flex-col gap-0.5 rounded-xl border px-4 py-3 text-left text-xs transition-colors ${
                       paymentSlot.payment_mode === opt.mode
                         ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                        : 'border-[#1e2d4a] text-slate-400 hover:border-emerald-500/20 hover:text-slate-300'
+                        : 'border-slate-200 text-slate-400 hover:border-emerald-300 hover:text-slate-700'
                     }`}
                   >
                     <span className="font-medium text-sm">{opt.label}</span>
@@ -1486,7 +1477,7 @@ export default function RequestInput() {
               {/* Amount input */}
               {currentPaymentOpt?.needs_amount && (
                 <div className="mt-3">
-                  <p className="text-xs font-medium text-slate-300 mb-1.5">
+                  <p className="text-xs font-medium text-slate-700 mb-1.5">
                     {currentPaymentOpt.amount_label ?? 'Amount ($)'}
                   </p>
                   <input
@@ -1497,7 +1488,7 @@ export default function RequestInput() {
                     value={paymentSlot.payment_amount}
                     onChange={e => setPaymentSlot(prev => ({ ...prev, payment_amount: e.target.value }))}
                     placeholder="0"
-                    className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500/40"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-400"
                   />
                 </div>
               )}
@@ -1505,7 +1496,7 @@ export default function RequestInput() {
               {/* Helper fee input (reimburse_plus_helper_fee only) */}
               {paymentSlot.payment_mode === 'reimburse_plus_helper_fee' && (
                 <div className="mt-3">
-                  <p className="text-xs font-medium text-slate-300 mb-1">
+                  <p className="text-xs font-medium text-slate-700 mb-1">
                     How much helper fee will you add?
                   </p>
                   <p className="text-[10px] text-slate-600 mb-1.5">
@@ -1519,7 +1510,7 @@ export default function RequestInput() {
                     value={paymentSlot.helper_fee_amount}
                     onChange={e => setPaymentSlot(prev => ({ ...prev, helper_fee_amount: e.target.value }))}
                     placeholder="0"
-                    className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500/40"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-emerald-400"
                   />
                 </div>
               )}
@@ -1527,7 +1518,7 @@ export default function RequestInput() {
           )}
 
           {/* Parsed summary */}
-          <p className="mb-1 text-sm font-medium text-slate-300">
+          <p className="mb-1 text-sm font-medium text-slate-700">
             Here&apos;s what we understood — does this look right?
           </p>
           {parsed!.summary && (
@@ -1549,7 +1540,7 @@ export default function RequestInput() {
                   </p>
                   <div className="flex flex-col gap-3">
                     <div>
-                      <p className="text-xs font-medium text-slate-300 mb-1.5">Pickup / From</p>
+                      <p className="text-xs font-medium text-slate-700 mb-1.5">Pickup / From</p>
                       <LocationPicker
                         value={pickupLocation}
                         onChange={setPickupLocation}
@@ -1559,7 +1550,7 @@ export default function RequestInput() {
                       />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-slate-300 mb-1.5">Dropoff / To</p>
+                      <p className="text-xs font-medium text-slate-700 mb-1.5">Dropoff / To</p>
                       <LocationPicker
                         value={dropoffLocation}
                         onChange={setDropoffLocation}
@@ -1592,7 +1583,7 @@ export default function RequestInput() {
                 {parsed!.is_round_trip && (
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-slate-500">Round trip</span>
-                    <span className="text-sm text-white">
+                    <span className="text-sm text-slate-900">
                       Yes{parsed!.return_date ? ` · return ${new Date(parsed!.return_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : ''}
                     </span>
                   </div>
@@ -1619,7 +1610,7 @@ export default function RequestInput() {
                           className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
                             priceType === pt
                               ? 'border-blue-500/40 bg-blue-500/10 text-blue-400'
-                              : 'border-[#1e2d4a] text-slate-500 hover:text-slate-300'
+                              : 'border-slate-200 text-slate-500 hover:text-slate-700'
                           }`}
                         >
                           {pt === 'split' ? '⛽ Split gas' : pt === 'fixed' ? '💰 Fixed' : '🎁 Free'}
@@ -1674,7 +1665,7 @@ export default function RequestInput() {
                   </p>
                   <div className="flex flex-col gap-3">
                     <div>
-                      <p className="text-xs font-medium text-slate-300 mb-1.5">From — where items are now</p>
+                      <p className="text-xs font-medium text-slate-700 mb-1.5">From — where items are now</p>
                       <LocationPicker
                         value={pickupLocation}
                         onChange={setPickupLocation}
@@ -1684,7 +1675,7 @@ export default function RequestInput() {
                     </div>
                     {(mergedSD.move_type as string | null | undefined) !== 'furniture' && (
                       <div>
-                        <p className="text-xs font-medium text-slate-300 mb-1.5">To — where items are going</p>
+                        <p className="text-xs font-medium text-slate-700 mb-1.5">To — where items are going</p>
                         <LocationPicker
                           value={dropoffLocation}
                           onChange={setDropoffLocation}
@@ -1733,8 +1724,8 @@ export default function RequestInput() {
               <>
                 {mergedSD.errand_type === 'grocery' && (
                   <div data-testid="grocery-scope-warning" className="rounded-lg border border-yellow-500/20 bg-yellow-500/[0.06] px-4 py-3">
-                    <p className="text-xs text-slate-300 leading-relaxed">
-                      <span className="font-medium text-yellow-400">Beta note:</span>{' '}
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      <span className="font-medium text-yellow-600">Beta note:</span>{' '}
                       CampusOS errands are for quick pickups — not full grocery shopping. Keep lists small and simple.
                     </p>
                   </div>
@@ -1827,8 +1818,8 @@ export default function RequestInput() {
           {/* Rides safety reminder */}
           {parsed!.category === 'rides' && (
             <div className="mb-4 rounded-lg border border-blue-500/15 bg-blue-500/[0.05] px-4 py-3">
-              <p className="text-xs text-slate-400 leading-relaxed">
-                <span className="font-medium text-slate-300">Rides reminder:</span>{' '}
+              <p className="text-xs text-slate-600 leading-relaxed">
+                <span className="font-medium text-slate-700">Rides reminder:</span>{' '}
                 CampusOS connects you with other students — we don&apos;t vet drivers or provide insurance.
                 Confirm all details directly with the other student before your trip.{' '}
                 <a href="/safety" target="_blank" rel="noopener" className="text-blue-400 hover:underline">
@@ -1850,7 +1841,7 @@ export default function RequestInput() {
             <button
               onClick={handleEdit}
               disabled={status === 'saving'}
-              className="rounded-lg border border-[#1e2d4a] px-4 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-white disabled:opacity-40"
+              className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-700 disabled:opacity-40"
             >
               Edit
             </button>
@@ -1946,7 +1937,7 @@ function Row({ label, value, 'data-testid': testId }: { label: string; value: st
   return (
     <div data-testid={testId} className="flex items-start justify-between gap-4">
       <span className="shrink-0 text-xs text-slate-500">{label}</span>
-      <span className="text-right text-sm text-white">{value}</span>
+      <span className="text-right text-sm text-slate-900">{value}</span>
     </div>
   )
 }

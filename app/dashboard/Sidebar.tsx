@@ -103,7 +103,7 @@ function NotifList({
             key={n.id}
             type="button"
             onClick={() => navigate(n)}
-            className={`w-full text-left border-b border-[#1e2d4a]/50 px-4 py-3 last:border-0 transition-colors hover:bg-white/[0.04] active:bg-white/[0.06] ${!n.read ? 'bg-blue-500/[0.04]' : ''}`}
+            className={`w-full text-left border-b border-slate-700/50 px-4 py-3 last:border-0 transition-colors hover:bg-white/[0.04] active:bg-white/[0.06] ${!n.read ? 'bg-blue-500/[0.04]' : ''}`}
           >
             <div className="flex items-start gap-2.5">
               <span className="mt-0.5 flex-shrink-0 text-base leading-none">
@@ -206,8 +206,8 @@ function NotificationBell({
         // absolute left-0 top-full — positions below the bell container, left-aligned.
         // The sidebar is w-56 (224px) and the dropdown is w-80 (320px), so it extends
         // 96px into the content area over the sidebar's right edge. z-50 keeps it on top.
-        <div className="absolute left-0 top-full mt-2 z-50 w-80 rounded-xl border border-[#1e2d4a] bg-[#060b17] shadow-2xl shadow-black/60">
-          <div className="flex items-center justify-between border-b border-[#1e2d4a] px-4 py-3">
+        <div className="absolute left-0 top-full mt-2 z-50 w-80 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60">
+          <div className="flex items-center justify-between border-b border-slate-700 px-4 py-3">
             <span className="text-xs font-semibold text-white">Notifications</span>
             {notifications.length > 0 && (
               <span className="text-[10px] text-slate-600">{notifications.length} recent</span>
@@ -296,9 +296,9 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
   return (
     <>
       {/* ── Desktop sidebar ── */}
-      <aside data-testid="sidebar-nav" className="hidden md:flex fixed left-0 top-0 h-screen w-56 flex-col bg-[#060b17] border-r border-[#1e2d4a] z-30">
+      <aside data-testid="sidebar-nav" className="hidden md:flex fixed left-0 top-0 h-screen w-56 flex-col bg-slate-900 border-r border-slate-700 z-30">
         {/* Logo + notification bell */}
-        <div className="flex items-center gap-2.5 px-5 h-16 border-b border-[#1e2d4a] flex-shrink-0">
+        <div className="flex items-center gap-2.5 px-5 h-16 border-b border-slate-700 flex-shrink-0">
           <span className="text-blue-400 text-xl leading-none">⬡</span>
           <span className="flex-1 font-semibold text-[15px] tracking-tight text-white">CampusOS</span>
           <NotificationBell
@@ -362,7 +362,7 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
         </nav>
 
         {/* User section */}
-        <div className="p-3 border-t border-[#1e2d4a] flex-shrink-0">
+        <div className="p-3 border-t border-slate-700 flex-shrink-0">
           <div className="flex items-center gap-3 px-2 py-2">
             <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-xs font-semibold text-white flex-shrink-0">
               {initials}
@@ -389,7 +389,7 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
       {/* ── Mobile bottom nav ──
           7 items: 5 main routes + bell + profile. Minimum touch width ~51px on
           360px devices (above the 44px Apple HIG minimum). Labels are 9px. */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#060b17]/95 backdrop-blur-md border-t border-[#1e2d4a] flex items-stretch h-16">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 flex items-stretch h-16">
         {NAV_MAIN.map((item) => (
           <Link
             key={item.href}
@@ -443,11 +443,11 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setMobileNotifOpen(false)}
           />
-          <div className="relative rounded-t-2xl border-t border-[#1e2d4a] bg-[#060b17]">
+          <div className="relative rounded-t-2xl border-t border-slate-700 bg-slate-900">
             {/* Handle */}
             <div className="mx-auto mt-3 mb-1 h-1 w-10 rounded-full bg-white/10" />
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1e2d4a]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
               <span className="text-sm font-semibold text-white">Notifications</span>
               <button
                 type="button"
@@ -481,7 +481,7 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
             onClick={() => setMobileProfileOpen(false)}
           />
           {/* Sheet */}
-          <div className="relative rounded-t-2xl border-t border-[#1e2d4a] bg-[#060b17] px-5 pb-10 pt-5">
+          <div className="relative rounded-t-2xl border-t border-slate-700 bg-slate-900 px-5 pb-10 pt-5">
             {/* Handle */}
             <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-white/10" />
 

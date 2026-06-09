@@ -344,12 +344,12 @@ export default async function DashboardPage() {
 
   return (
     <div className="relative min-h-screen">
-      {/* Ambient glow */}
+      {/* Ambient glow — soft indigo top-center on light background */}
       <div
         className="pointer-events-none fixed inset-0"
         style={{
           backgroundImage:
-            'radial-gradient(ellipse 70% 40% at 30% -10%, rgba(59,130,246,0.07), transparent)',
+            'radial-gradient(ellipse 80% 35% at 50% -5%, rgba(99,102,241,0.06), transparent)',
         }}
       />
 
@@ -358,7 +358,7 @@ export default async function DashboardPage() {
         {campusName ? (
           <div data-testid="campus-badge" className="mb-3 flex items-center gap-2">
             <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">Campus</span>
-            <span className="rounded-full border border-blue-800/50 bg-blue-900/30 px-3 py-0.5 text-xs font-medium text-blue-300">
+            <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-0.5 text-xs font-medium text-blue-600">
               {campusName}
             </span>
           </div>
@@ -424,32 +424,34 @@ function FinanceStrip({ committed, earned, owed, openRequests }: {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <FinStat label="Committed" sub="pending earnings" value={fmtDollars(committed)} dim={committed === 0} accent="emerald" testId="fin-in-play" />
+        <FinStat label="You could earn" sub="pending" value={fmtDollars(committed)} dim={committed === 0} accent="emerald" testId="fin-in-play" />
         <FinStat label="Earned" sub="as helper" value={fmtDollars(earned)} dim={earned === 0} accent="blue" testId="fin-earned" />
-        <FinStat label="To Pay" sub="you owe" value={fmtDollars(owed)} dim={owed === 0} accent="orange" testId="fin-to-pay" />
-        <FinStat label="Open Requests" sub="awaiting match" value={openRequests.toLocaleString()} dim={openRequests === 0} accent="slate" testId="fin-active" />
+        <FinStat label="To pay" sub="you owe" value={fmtDollars(owed)} dim={owed === 0} accent="orange" testId="fin-to-pay" />
+        <FinStat label="Open nearby" sub="waiting for help" value={openRequests.toLocaleString()} dim={openRequests === 0} accent="violet" testId="fin-active" />
       </div>
-      <p className="text-[10px] text-slate-700 text-right leading-tight px-0.5">
-        Payments handled directly between students (Venmo, Zelle, cash, etc.)
+      <p className="text-[10px] text-slate-400 text-right leading-tight px-0.5">
+        Pay each other directly — Venmo, Zelle, or cash
       </p>
     </div>
   )
 }
 
 function FinStat({ label, sub, value, dim, accent, testId }: {
-  label: string; sub: string; value: string; dim: boolean; accent: 'emerald' | 'blue' | 'orange' | 'slate'; testId: string
+  label: string; sub: string; value: string; dim: boolean; accent: 'emerald' | 'blue' | 'orange' | 'violet'; testId: string
 }) {
-  const valueColor = dim ? 'text-slate-600' : {
-    emerald: 'text-emerald-400',
-    blue: 'text-blue-400',
-    orange: 'text-orange-400',
-    slate: 'text-white',
-  }[accent]
+  const { ring, valueColor, bg } = dim
+    ? { ring: 'border-slate-200', valueColor: 'text-slate-400', bg: 'bg-white' }
+    : {
+        emerald: { ring: 'border-emerald-200', valueColor: 'text-emerald-600', bg: 'bg-emerald-50' },
+        blue:    { ring: 'border-blue-200',    valueColor: 'text-blue-600',    bg: 'bg-blue-50'    },
+        orange:  { ring: 'border-orange-200',  valueColor: 'text-orange-600',  bg: 'bg-orange-50'  },
+        violet:  { ring: 'border-violet-200',  valueColor: 'text-violet-600',  bg: 'bg-violet-50'  },
+      }[accent]
   return (
-    <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] px-4 py-3">
+    <div className={`rounded-xl border ${ring} ${bg} px-4 py-3`}>
       <p data-testid={testId} className={`text-xl font-bold tabular-nums ${valueColor}`}>{value}</p>
-      <p className="mt-0.5 text-[11px] font-medium text-slate-400 leading-tight">{label}</p>
-      <p className="text-[10px] text-slate-600 leading-tight">{sub}</p>
+      <p className="mt-0.5 text-[11px] font-semibold text-slate-700 leading-tight">{label}</p>
+      <p className="text-[10px] text-slate-400 leading-tight">{sub}</p>
     </div>
   )
 }
@@ -470,14 +472,14 @@ function NextRideWidget({ nextRide }: { nextRide: NextRideInfo }) {
   const isDriver = nextRide.role === 'driver'
 
   return (
-    <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] p-4">
+    <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold text-white">🚗 Your Next Ride</span>
+        <span className="text-sm font-semibold text-slate-900">🚗 Your Next Ride</span>
         <span
           className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${
             isDriver
-              ? 'text-blue-300 bg-blue-900/40 border-blue-800/50'
-              : 'text-purple-300 bg-purple-900/40 border-purple-800/50'
+              ? 'text-blue-700 bg-blue-100 border-blue-300'
+              : 'text-violet-700 bg-violet-100 border-violet-300'
           }`}
         >
           {isDriver ? 'Driver' : 'Passenger'}
@@ -485,13 +487,13 @@ function NextRideWidget({ nextRide }: { nextRide: NextRideInfo }) {
       </div>
 
       {nextRide.origin_city && nextRide.destination_city ? (
-        <p className="text-base font-semibold text-white mb-2">
+        <p className="text-base font-semibold text-slate-900 mb-2">
           {nextRide.origin_city}
-          <span className="mx-2 text-slate-500">→</span>
+          <span className="mx-2 text-slate-400">→</span>
           {nextRide.destination_city}
         </p>
       ) : (
-        <p className="text-[15px] font-semibold text-white mb-2 leading-snug">{nextRide.title}</p>
+        <p className="text-[15px] font-semibold text-slate-900 mb-2 leading-snug">{nextRide.title}</p>
       )}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-3">
@@ -502,18 +504,18 @@ function NextRideWidget({ nextRide }: { nextRide: NextRideInfo }) {
           </span>
         )}
         {!isDriver && nextRide.price_agreed != null && (
-          <span className="text-emerald-400">💵 ${nextRide.price_agreed} / seat agreed</span>
+          <span className="text-emerald-600 font-medium">💵 ${nextRide.price_agreed} / seat agreed</span>
         )}
         {!isDriver && nextRide.driver_name && (
           <span>
-            Driver: <span className="text-slate-300">{nextRide.driver_name}</span>
+            Driver: <span className="text-slate-700 font-medium">{nextRide.driver_name}</span>
           </span>
         )}
       </div>
 
       <Link
         href="/dashboard/rides"
-        className="inline-flex items-center gap-1 text-xs font-medium text-blue-400 hover:text-blue-300 transition-colors"
+        className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
       >
         View on Rides page →
       </Link>

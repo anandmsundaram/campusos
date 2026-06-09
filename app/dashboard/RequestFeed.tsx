@@ -463,44 +463,46 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       {needsActionCount > 0 && (
         <div
           data-testid="needs-action-banner"
-          className="mb-4 flex items-center gap-3 rounded-xl border border-orange-500/20 bg-orange-500/[0.06] px-4 py-3"
+          className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
         >
-          <span className="text-base leading-none">⚡</span>
+          <span className="text-base leading-none">✉️</span>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-orange-300">
-              {needsActionCount === 1 ? '1 item needs your response' : `${needsActionCount} items need your response`}
+            <p className="text-sm font-semibold text-amber-800">
+              {countersPendingMyResponse.length > 0
+                ? `You have ${countersPendingMyResponse.length > 1 ? countersPendingMyResponse.length + ' counters' : 'a counter'} to review`
+                : `${requestsWithPendingOffers.length} offer${requestsWithPendingOffers.length !== 1 ? 's' : ''} waiting on you`}
             </p>
-            <p className="text-xs text-orange-400/70 mt-0.5">
+            <p className="text-xs text-amber-600 mt-0.5">
               {countersPendingMyResponse.length > 0 && requestsWithPendingOffers.length > 0
-                ? `${countersPendingMyResponse.length} counter${countersPendingMyResponse.length !== 1 ? 's' : ''} on your offers · ${requestsWithPendingOffers.length} pending offer${requestsWithPendingOffers.length !== 1 ? 's' : ''} on your requests`
+                ? `${requestsWithPendingOffers.length} offer${requestsWithPendingOffers.length !== 1 ? 's' : ''} on your requests too`
                 : countersPendingMyResponse.length > 0
-                ? `Check My Offers — ${countersPendingMyResponse.length} counter${countersPendingMyResponse.length !== 1 ? 's' : ''} waiting`
-                : `Check My Requests — ${requestsWithPendingOffers.length} pending offer${requestsWithPendingOffers.length !== 1 ? 's' : ''}`}
+                ? 'Tap to accept or decline the counter'
+                : 'Check My Requests to accept or respond'}
             </p>
           </div>
           {countersPendingMyResponse.length > 0 && (
             <button
               type="button"
               onClick={() => setTab('offers')}
-              className="flex-shrink-0 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-semibold text-orange-300 transition-colors hover:bg-orange-500/20"
+              className="flex-shrink-0 rounded-lg bg-amber-100 border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-200"
             >
-              View offers
+              Review
             </button>
           )}
           {countersPendingMyResponse.length === 0 && requestsWithPendingOffers.length > 0 && (
             <button
               type="button"
               onClick={() => setTab('mine')}
-              className="flex-shrink-0 rounded-lg bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-semibold text-orange-300 transition-colors hover:bg-orange-500/20"
+              className="flex-shrink-0 rounded-lg bg-amber-100 border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-200"
             >
-              View requests
+              View offers
             </button>
           )}
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-[#1e2d4a] mb-5">
+      <div className="flex items-center gap-1 border-b border-slate-200 mb-5">
         {(['all', 'mine', 'offers'] as const).map((t) => {
           const labels = { all: 'All Open', mine: 'My Requests', offers: 'My Offers' }
           const counts = {
@@ -513,12 +515,12 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
               key={t}
               onClick={() => setTab(t)}
               className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
-                tab === t ? 'text-white' : 'text-slate-500 hover:text-slate-300'
+                tab === t ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               {labels[t]}
               <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                tab === t ? 'bg-blue-500/20 text-blue-400' : 'bg-white/[0.04] text-slate-600'
+                tab === t ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
               }`}>
                 {counts[t]}
               </span>
@@ -538,8 +540,8 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
             onClick={() => setCatFilter(catFilter === 'rides' ? 'all' : 'rides')}
             className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
               catFilter === 'rides'
-                ? 'border-blue-500/40 bg-blue-500/10 text-blue-400'
-                : 'border-[#1e2d4a] text-slate-500 hover:border-blue-500/20 hover:text-blue-400'
+                ? 'border-blue-300 bg-blue-100 text-blue-700'
+                : 'border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600'
             }`}
           >
             🚗 Rides
@@ -629,9 +631,9 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
               {filteredPastRequests.length > 0 && (
                 <>
                   <div className="flex items-center gap-3 mt-6 mb-3">
-                    <div className="flex-1 border-t border-[#1e2d4a]" />
-                    <span className="text-[11px] text-slate-600 uppercase tracking-wider">Past</span>
-                    <div className="flex-1 border-t border-[#1e2d4a]" />
+                    <div className="flex-1 border-t border-slate-200" />
+                    <span className="text-[11px] text-slate-400 uppercase tracking-wider">Past</span>
+                    <div className="flex-1 border-t border-slate-200" />
                   </div>
                   <div className="flex flex-col gap-3 opacity-60">
                     {filteredPastRequests.map((req) => {
@@ -732,10 +734,10 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                 <ModalField label="Seats needed">
                   <div className="flex items-center gap-3">
                     <button type="button" onClick={() => setSeatsRequested(s => Math.max(1, s - 1))} disabled={submitting || seatsRequested <= 1}
-                      className="h-8 w-8 rounded-lg border border-[#1e2d4a] text-slate-400 hover:border-blue-500/40 hover:text-white disabled:opacity-40 flex items-center justify-center text-lg leading-none">−</button>
+                      className="h-8 w-8 rounded-lg border border-slate-200 text-slate-400 hover:border-blue-500/40 hover:text-white disabled:opacity-40 flex items-center justify-center text-lg leading-none">−</button>
                     <span className="text-sm font-semibold text-white w-4 text-center">{seatsRequested}</span>
                     <button type="button" onClick={() => setSeatsRequested(s => Math.min(seatsRemaining, s + 1))} disabled={submitting || seatsRequested >= seatsRemaining}
-                      className="h-8 w-8 rounded-lg border border-[#1e2d4a] text-slate-400 hover:border-blue-500/40 hover:text-white disabled:opacity-40 flex items-center justify-center text-lg leading-none">+</button>
+                      className="h-8 w-8 rounded-lg border border-slate-200 text-slate-400 hover:border-blue-500/40 hover:text-white disabled:opacity-40 flex items-center justify-center text-lg leading-none">+</button>
                     <span className="text-xs text-slate-500">{seatsRemaining} available</span>
                   </div>
                 </ModalField>
@@ -952,8 +954,8 @@ function RequestCard({
       data-request-id={req.id}
       className={`group relative overflow-hidden rounded-xl border transition-all duration-300 ${
         isExpanded
-          ? 'border-blue-500/25 bg-[#0d1830] shadow-xl shadow-black/50 -translate-y-0.5'
-          : 'border-[#1e2d4a] bg-[#0d1526] hover:border-blue-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/40'
+          ? 'border-blue-300 bg-white shadow-lg shadow-blue-100/60 -translate-y-0.5'
+          : 'border-slate-200 bg-white hover:border-blue-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-200/80'
       }`}
     >
       {/* Left accent bar */}
@@ -971,7 +973,7 @@ function RequestCard({
           <div className="flex-1 min-w-0">
             {isRide && req.origin_city && req.destination_city ? (
               <>
-                <p className="text-base font-bold text-white leading-tight">
+                <p className="text-base font-bold text-slate-900 leading-tight">
                   {req.origin_city}
                   <span className="mx-2 font-normal text-slate-500">→</span>
                   {req.destination_city}
@@ -981,12 +983,12 @@ function RequestCard({
                 )}
               </>
             ) : (
-              <p className="text-[15px] font-semibold text-white leading-snug">{req.title}</p>
+              <p className="text-[15px] font-semibold text-slate-900 leading-snug">{req.title}</p>
             )}
           </div>
           {/* Role badge — right of title */}
           {isOwn ? (
-            <span data-testid="card-role-status" className="flex-shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-300">
+            <span data-testid="card-role-status" className="flex-shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-600">
               My request{inlineOffers.length > 0 ? ` · ${inlineOffers.length} offer${inlineOffers.length !== 1 ? 's' : ''}` : ''}
             </span>
           ) : myOfferStatus != null ? (
@@ -1030,9 +1032,9 @@ function RequestCard({
               if (from && to) return (
                 <span data-testid="card-location-meta" className="flex items-center gap-1.5">
                   <span className="text-[11px]">📦</span>
-                  <span className="font-medium text-slate-300">{from}</span>
-                  <span className="text-slate-600">→</span>
-                  <span className="font-medium text-slate-300">{to}</span>
+                  <span className="font-medium text-slate-700">{from}</span>
+                  <span className="text-slate-400">→</span>
+                  <span className="font-medium text-slate-700">{to}</span>
                 </span>
               )
               if (from) return (
@@ -1067,9 +1069,9 @@ function RequestCard({
             if (req.origin_city && req.destination_city) return (
               <span className="flex items-center gap-1.5">
                 <span className="text-[11px]">🚗</span>
-                <span className="font-medium text-slate-300">{req.origin_city}</span>
-                <span className="text-slate-600">→</span>
-                <span className="font-medium text-slate-300">{req.destination_city}</span>
+                <span className="font-medium text-slate-700">{req.origin_city}</span>
+                <span className="text-slate-400">→</span>
+                <span className="font-medium text-slate-700">{req.destination_city}</span>
               </span>
             )
             return req.location ? (
@@ -1134,7 +1136,7 @@ function RequestCard({
           {isRide && !isOwn && profile && (
             <span className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[11px]">👤</span>
-              <span className="text-slate-300">{profile.name ?? 'A student'}</span>
+              <span className="text-slate-700">{profile.name ?? 'A student'}</span>
               {profile.rating != null && (
                 <span className={Number(profile.rating) >= 4.5 ? 'text-yellow-400 font-medium' : 'text-slate-600'}>
                   ★ {Number(profile.rating).toFixed(1)}
@@ -1225,19 +1227,19 @@ function RequestCard({
               <span data-testid="seats-badge">
                 <Badge
                   text={`${req.available_seats - (req.seats_filled ?? 0)} of ${req.available_seats} seats left`}
-                  color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]"
+                  color="text-slate-400 bg-white/[0.03] border-slate-200"
                 />
               </span>
             )
           )}
           {isRide && req.is_round_trip && (
-            <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-[#1e2d4a]" />
+            <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-slate-200" />
           )}
           {isPastRide && req.status !== 'completed' && (
             <Badge text="Pending completion" color="text-yellow-400 bg-yellow-500/10 border-yellow-500/20" />
           )}
           {isExpired && (
-            <Badge text="Expired" color="text-slate-500 bg-white/[0.02] border-[#1e2d4a]" />
+            <Badge text="Expired" color="text-slate-500 bg-white/[0.02] border-slate-200" />
           )}
           {req.status === 'completed' && (
             <Badge text="Completed" color="text-emerald-400 bg-emerald-500/10 border-emerald-500/20" />
@@ -1254,9 +1256,9 @@ function RequestCard({
           style={{ maxHeight: isExpanded ? '1400px' : '0' }}
           className={`overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out ${isExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         >
-          <div className="mt-3 mb-1 rounded-xl border border-blue-500/20 bg-[#0a1220]/60">
+          <div className="mt-3 mb-1 rounded-xl border border-blue-500/20 bg-slate-50/60">
             {/* Detail header with close button */}
-            <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-[#1e2d4a]/50">
+            <div className="flex items-center justify-between px-3 pt-2.5 pb-2 border-b border-slate-200/50">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Details</span>
               <button
                 type="button"
@@ -1274,7 +1276,7 @@ function RequestCard({
               {req.description && (
                 <p
                   data-testid="request-card-original-text"
-                  className="text-xs text-slate-400 italic leading-relaxed border-l-2 border-[#1e2d4a] pl-3"
+                  className="text-xs text-slate-400 italic leading-relaxed border-l-2 border-slate-200 pl-3"
                 >
                   &ldquo;{req.description}&rdquo;
                 </p>
@@ -1286,7 +1288,7 @@ function RequestCard({
                   <span className="text-[11px] mt-0.5 flex-shrink-0">🕐</span>
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">When</p>
-                    <p className="text-xs text-slate-300">
+                    <p className="text-xs text-slate-700">
                       {req.scheduled_time
                         ? req.flexible_time
                           ? `${new Date(req.scheduled_time).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} · Flexible`
@@ -1304,7 +1306,7 @@ function RequestCard({
                   <span className="text-[11px] mt-0.5 flex-shrink-0">💳</span>
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">Payment</p>
-                    <p className="text-xs text-slate-300">
+                    <p className="text-xs text-slate-700">
                       {(req.structured_data as Record<string, unknown> | null)?.payment_summary
                         ? String((req.structured_data as Record<string, unknown>).payment_summary)
                         : `$${req.budget}${isRide && req.is_driver ? ' / seat' : ''}`
@@ -1321,7 +1323,7 @@ function RequestCard({
                   <div>
                     <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">Location</p>
                     {!!(req.pickup_location?.place_name) && (
-                      <p className="text-xs text-slate-300">{req.pickup_location!.place_name as string}</p>
+                      <p className="text-xs text-slate-700">{req.pickup_location!.place_name as string}</p>
                     )}
                     {!!(req.dropoff_location?.place_name) && (
                       <p className="text-xs text-slate-400 mt-0.5">→ {req.dropoff_location!.place_name as string}</p>
@@ -1376,9 +1378,9 @@ function RequestCard({
                   const agreedPrice = o.final_agreed_price ?? o.requester_counter ?? o.counter_budget
                   const seatCount = o.seats_requested ?? 1
                   return (
-                    <div key={o.id} className="flex items-center gap-2 rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-3 py-2">
+                    <div key={o.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white/[0.02] px-3 py-2">
                       <Avatar name={pax?.name} size="sm" />
-                      <span className="text-xs font-medium text-slate-300">{pax?.name ?? 'Anonymous'}</span>
+                      <span className="text-xs font-medium text-slate-700">{pax?.name ?? 'Anonymous'}</span>
                       {pax?.rating != null && (
                         <span className="text-xs text-slate-600">★ {Number(pax.rating).toFixed(1)}</span>
                       )}
@@ -1420,10 +1422,10 @@ function RequestCard({
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-[#1e2d4a] pt-3">
+        <div className="flex items-center justify-between border-t border-slate-200 pt-3">
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
             <Avatar name={profile?.name} />
-            <span className="text-xs text-slate-400 font-medium truncate max-w-[120px]">
+            <span className="text-xs text-slate-600 font-medium truncate max-w-[120px]">
               {profile?.name ?? 'A student'}
             </span>
             {hasWorkedWithRequester && (
@@ -1481,7 +1483,7 @@ function RequestCard({
               aria-controls={`detail-${req.id}`}
               onClick={(e) => { e.stopPropagation(); onToggle?.() }}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onToggle?.() } }}
-              className={`flex-shrink-0 text-[11px] font-medium transition-colors ${isExpanded ? 'text-blue-400 hover:text-blue-300' : 'text-slate-500 hover:text-slate-300'}`}
+              className={`flex-shrink-0 text-[11px] font-medium transition-colors ${isExpanded ? 'text-blue-600 hover:text-blue-700' : 'text-slate-500 hover:text-slate-700'}`}
             >
               {isExpanded ? 'Less ▴' : 'Details ▾'}
             </button>
@@ -1508,7 +1510,7 @@ function RequestCard({
               data-testid="view-offers-btn"
               type="button"
               onClick={(e) => { e.stopPropagation(); onViewOffers() }}
-              className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-all hover:border-white/20 hover:text-slate-200"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-400 transition-all hover:border-white/20 hover:text-slate-200"
             >
               View offers
             </button>
@@ -1661,14 +1663,14 @@ function InlineOfferRow({
   const isCountered = offer.status === 'countered'
 
   return (
-    <div className="rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-3 py-2.5">
+    <div className="rounded-lg border border-slate-200 bg-white/[0.02] px-3 py-2.5">
       <div className="flex items-center gap-2.5">
         <Avatar name={profile?.name} size="sm" />
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="text-xs font-medium text-white">{profile?.name ?? 'Anonymous'}</span>
+            <span className="text-xs font-medium text-slate-900">{profile?.name ?? 'Anonymous'}</span>
             {profile?.rating != null && (
-              <span className="text-xs text-slate-600">★ {Number(profile.rating).toFixed(1)}</span>
+              <span className="text-xs text-slate-500">★ {Number(profile.rating).toFixed(1)}</span>
             )}
             {offer.counter_budget != null && (
               <span className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
@@ -1705,7 +1707,7 @@ function InlineOfferRow({
               type="button"
               onClick={decline}
               disabled={acting}
-              className="rounded-lg border border-[#1e2d4a] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
+              className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
             >
               {acting ? '…' : 'Decline'}
             </button>
@@ -1715,7 +1717,7 @@ function InlineOfferRow({
                 type="button"
                 onClick={() => setShowCounter(v => !v)}
                 disabled={acting}
-                className="rounded-lg border border-[#1e2d4a] px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
+                className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
               >
                 Counter
               </button>
@@ -1737,7 +1739,7 @@ function InlineOfferRow({
               onChange={e => setCounterAmt(e.target.value)}
               placeholder="Your price"
               disabled={acting}
-              className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] pl-6 pr-3 py-1.5 text-xs text-white placeholder:text-slate-600 outline-none focus:border-orange-500/40 disabled:opacity-50"
+              className="w-full rounded-lg border border-slate-300 bg-white pl-6 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 outline-none focus:border-orange-400 disabled:opacity-50"
             />
           </div>
           <button
@@ -1753,7 +1755,7 @@ function InlineOfferRow({
             type="button"
             onClick={() => { setShowCounter(false); setCounterAmt('') }}
             disabled={acting}
-            className="rounded-lg border border-[#1e2d4a] px-2.5 py-1.5 text-[11px] text-slate-500 hover:text-slate-300 disabled:opacity-40"
+            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-500 hover:text-slate-700 disabled:opacity-40"
           >
             Cancel
           </button>
@@ -1863,8 +1865,8 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
 
   if (offers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-[#1e2d4a] bg-[#0d1526]/60 py-14 px-6 text-center">
-        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#1e2d4a] bg-[#0d1526] text-2xl">🤝</div>
+      <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/60 py-14 px-6 text-center">
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-2xl">🤝</div>
         <p className="text-sm font-medium text-slate-400">You haven&apos;t offered help yet</p>
         <p className="mt-1.5 max-w-xs text-xs text-slate-600 leading-relaxed">
           Switch to <span className="text-slate-400 font-medium">All Open</span> to browse requests from students on your campus.
@@ -1895,14 +1897,14 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
             data-testid="my-offer-card"
             data-offer-id={offer.id}
             data-offer-status={offer.status}
-            className={`relative overflow-hidden rounded-xl border bg-[#0d1526] transition-all ${
+            className={`relative overflow-hidden rounded-xl border bg-white transition-all ${
               offer.status === 'accepted'
                 ? 'border-emerald-500/20'
                 : offer.status === 'rejected'
-                ? 'border-[#1e2d4a] opacity-60'
+                ? 'border-slate-200 opacity-60'
                 : isCountered
                 ? 'border-orange-500/20'
-                : 'border-[#1e2d4a]'
+                : 'border-slate-200'
             }`}
           >
             <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${CATEGORY_ACCENT[req.category] ?? 'bg-slate-500'}`} />
@@ -1916,7 +1918,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                 </span>
               </div>
 
-              <p className="text-[15px] font-semibold text-white leading-snug mb-3">{req.title}</p>
+              <p className="text-[15px] font-semibold text-slate-900 leading-snug mb-3">{req.title}</p>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-3">
                 {req.location && <span className="flex items-center gap-1.5"><span>📍</span>{req.location}</span>}
@@ -1931,7 +1933,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
 
               {/* Your original offer */}
               {(offer.message || offer.counter_budget != null) && (
-                <div className="mb-3 rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-3 py-2.5 space-y-1.5">
+                <div className="mb-3 rounded-lg border border-slate-200 bg-white/[0.02] px-3 py-2.5 space-y-1.5">
                   {offer.message && (
                     <p className="text-xs text-slate-400 italic">&ldquo;{offer.message}&rdquo;</p>
                   )}
@@ -1970,7 +1972,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                     type="button"
                     onClick={() => declineCounter(offer.id, req.id, req.requester_id)}
                     disabled={isActing}
-                    className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
+                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
                   >
                     {isActing ? '…' : 'Decline'}
                   </button>
@@ -1998,11 +2000,11 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                 </div>
               )}
 
-              <div className="flex items-center gap-2 flex-wrap border-t border-[#1e2d4a] pt-3">
+              <div className="flex items-center gap-2 flex-wrap border-t border-slate-200 pt-3">
                 <Avatar name={profile?.name} />
                 <span className="text-xs text-slate-500">
                   {req.category === 'rides' && req.is_driver ? 'Driver' : 'Posted by'}{' '}
-                  <span className="text-slate-300">{profile?.name ?? 'A student'}</span>
+                  <span className="text-slate-700">{profile?.name ?? 'A student'}</span>
                 </span>
                 {profile?.rating != null && (
                   <span className={`text-xs flex-shrink-0 ${Number(profile.rating) >= 4.5 ? 'text-yellow-400 font-medium' : 'text-slate-600'}`}>
@@ -2203,9 +2205,9 @@ function OffersModal({
 
         {resolved.length > 0 && pending.length > 0 && (
           <div className="flex items-center gap-2 py-1">
-            <div className="flex-1 border-t border-[#1e2d4a]" />
+            <div className="flex-1 border-t border-slate-200" />
             <span className="text-[10px] text-slate-600 uppercase tracking-wider">resolved</span>
-            <div className="flex-1 border-t border-[#1e2d4a]" />
+            <div className="flex-1 border-t border-slate-200" />
           </div>
         )}
 
@@ -2252,7 +2254,7 @@ function OfferRowCard({
   return (
     <div
       className={`rounded-xl border p-4 transition-opacity ${
-        isResolved ? 'border-[#1e2d4a]/50 opacity-55' : 'border-[#1e2d4a] bg-white/[0.02]'
+        isResolved ? 'border-slate-200/50 opacity-55' : 'border-slate-200 bg-white/[0.02]'
       }`}
     >
       <div className="flex items-center gap-2.5">
@@ -2269,7 +2271,7 @@ function OfferRowCard({
           </span>
         )}
         {offer.status === 'rejected' && (
-          <span className="rounded-full border border-[#1e2d4a] px-2 py-0.5 text-[10px] font-medium text-slate-500">
+          <span className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-medium text-slate-500">
             Declined
           </span>
         )}
@@ -2317,7 +2319,7 @@ function OfferRowCard({
             type="button"
             onClick={() => onDecline(offer.id)}
             disabled={isActing}
-            className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-white disabled:opacity-40"
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-white disabled:opacity-40"
           >
             {isActing ? '…' : 'Decline'}
           </button>
@@ -2327,7 +2329,7 @@ function OfferRowCard({
               type="button"
               onClick={() => setShowCounter(true)}
               disabled={isActing}
-              className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
+              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-orange-500/30 hover:text-orange-400 disabled:opacity-40"
             >
               Counter
             </button>
@@ -2348,7 +2350,7 @@ function OfferRowCard({
               onChange={e => setCounterAmt(e.target.value)}
               placeholder="Your price"
               disabled={isActing}
-              className="w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] pl-7 pr-3 py-1.5 text-xs text-white placeholder:text-slate-600 outline-none focus:border-orange-500/40 disabled:opacity-50"
+              className="w-full rounded-lg border border-slate-200 bg-white/[0.03] pl-7 pr-3 py-1.5 text-xs text-white placeholder:text-slate-600 outline-none focus:border-orange-500/40 disabled:opacity-50"
             />
           </div>
           <button
@@ -2364,7 +2366,7 @@ function OfferRowCard({
             type="button"
             onClick={() => { setShowCounter(false); setCounterAmt('') }}
             disabled={isActing}
-            className="rounded-lg border border-[#1e2d4a] px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-40"
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-40"
           >
             Cancel
           </button>
@@ -2399,14 +2401,14 @@ function EmptyState({ tab }: { tab: 'all' | 'mine' | 'offers' }) {
   }
   const c = content[tab]
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-[#1e2d4a] bg-[#0d1526]/60 py-14 px-6 text-center">
-      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-[#1e2d4a] bg-[#0d1526] text-2xl">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-white/60 py-14 px-6 text-center">
+      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-2xl">
         {c.emoji}
       </div>
       <p className="text-sm font-medium text-slate-400">{c.title}</p>
       <p className="mt-1.5 max-w-xs text-xs text-slate-600 leading-relaxed">{c.sub}</p>
       {c.cta && (
-        <p className="mt-3 max-w-xs rounded-lg border border-[#1e2d4a] bg-white/[0.02] px-4 py-2.5 text-xs text-slate-500 italic leading-relaxed">
+        <p className="mt-3 max-w-xs rounded-lg border border-slate-200 bg-white/[0.02] px-4 py-2.5 text-xs text-slate-500 italic leading-relaxed">
           {c.cta}
         </p>
       )}
@@ -2430,7 +2432,7 @@ function Avatar({ name, size = 'md' }: { name?: string | null; size?: 'sm' | 'md
 
 function Badge({ text, color, capitalize }: { text: string; color?: string; capitalize?: boolean }) {
   return (
-    <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium leading-none ${capitalize ? 'capitalize' : ''} ${color ?? 'text-slate-400 bg-white/[0.03] border-[#1e2d4a]'}`}>
+    <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium leading-none ${capitalize ? 'capitalize' : ''} ${color ?? 'text-slate-400 bg-white/[0.03] border-slate-200'}`}>
       {text}
     </span>
   )
@@ -2449,10 +2451,10 @@ function FilterSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="rounded-lg border border-[#1e2d4a] bg-[#0d1526] px-3 py-1.5 text-xs text-slate-400 outline-none cursor-pointer appearance-none hover:border-blue-500/30 hover:text-slate-200 transition-colors"
+      className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 outline-none cursor-pointer appearance-none hover:border-blue-400/50 hover:text-slate-900 transition-colors"
     >
       {options.map((o) => (
-        <option key={o.value} value={o.value} className="bg-[#0d1526]">
+        <option key={o.value} value={o.value}>
           {o.label}
         </option>
       ))}
@@ -2464,7 +2466,7 @@ function Modal({ children, onBackdropClick }: { children: React.ReactNode; onBac
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-black/40" onClick={onBackdropClick} />
-      <div className="relative w-full max-w-md rounded-2xl border border-[#1e2d4a] bg-[#0a0f1e] p-6 shadow-2xl shadow-black/60">
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-[#0a0f1e] p-6 shadow-2xl shadow-black/60">
         {children}
       </div>
     </div>
@@ -2575,7 +2577,7 @@ function StructuredDataMeta({ category, sd }: { category: string; sd: Record<str
   return (
     <div className="flex flex-wrap gap-1.5 mt-2 mb-1">
       {chips.slice(0, 3).map(c => (
-        <span key={c} className="rounded-full border border-[#1e2d4a] bg-white/[0.03] px-2.5 py-0.5 text-[11px] text-slate-400">
+        <span key={c} className="rounded-full border border-slate-200 bg-white/[0.03] px-2.5 py-0.5 text-[11px] text-slate-400">
           {c}
         </span>
       ))}
@@ -2652,7 +2654,7 @@ function ExpandedStructuredData({ category, sd }: { category: string; sd: Record
 
   if (rows.length === 0) return null
   return (
-    <div className="flex flex-col gap-1.5 pt-2 border-t border-[#1e2d4a]/60">
+    <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-200/60">
       {rows.map(({ label, value }) => (
         <div key={label} className="flex items-baseline gap-2">
           <span className="text-[10px] uppercase tracking-wider text-slate-600 w-16 flex-shrink-0">{label}</span>
@@ -2674,13 +2676,13 @@ function timeAgo(iso: string): string {
 }
 
 const textareaClass =
-  'w-full resize-none rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-blue-500/50 focus:bg-white/[0.05] focus:ring-1 focus:ring-blue-500/20 disabled:opacity-50'
+  'w-full resize-none rounded-lg border border-slate-600 bg-white/[0.07] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none transition-all focus:border-blue-500/50 focus:bg-white/[0.09] focus:ring-1 focus:ring-blue-500/20 disabled:opacity-50'
 
 const inputClass =
-  'w-full rounded-lg border border-[#1e2d4a] bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 disabled:opacity-50'
+  'w-full rounded-lg border border-slate-600 bg-white/[0.07] px-4 py-2.5 text-sm text-white placeholder:text-slate-500 outline-none transition-all focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20 disabled:opacity-50'
 
 const primaryBtn =
   'flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50'
 
 const secondaryBtn =
-  'rounded-lg border border-[#1e2d4a] px-4 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-white disabled:opacity-40'
+  'rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:border-slate-500 hover:text-white disabled:opacity-40'
