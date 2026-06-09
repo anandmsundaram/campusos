@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { subflowFromCategory, getCounterLabel, getStatusLabel, getOfferNotificationMessage } from '@/lib/offerText'
 import { isOfferEffectivelyExpired } from '@/lib/marketplaceLifecycle'
-import { formatWhere, formatWhen, formatNote, formatNextAction, hasExpectedLocation, nextActionColor } from '@/lib/cardViewModel'
+import { formatWhere, formatWhen, formatNote, formatNextAction, formatPostedTime, hasExpectedLocation, nextActionColor } from '@/lib/cardViewModel'
 import BlockModal from '@/app/components/BlockModal'
 import { getMyBlocks } from '@/lib/blocking'
 
@@ -239,7 +239,8 @@ export default function MyOffersPage() {
             const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
             const seats = offer.seats_requested ?? 1
             const statusLabelText = isEffExpired ? 'Expired' : getStatusLabel(offer.status, pageSubflow, { agreedPrice, seats })
-            const nextAction = formatNextAction(offer.status, isEffExpired, req.status)
+            const neededWhen = formatWhen(req)
+            const nextAction = formatNextAction(offer.status, isEffExpired, req.status, neededWhen)
 
             return (
               <div
@@ -398,7 +399,7 @@ export default function MyOffersPage() {
                     {profile?.rating != null && (
                       <span className="text-xs text-slate-600">★ {Number(profile.rating).toFixed(1)}</span>
                     )}
-                    <span className="ml-auto text-xs text-slate-600">{timeAgo(offer.created_at)}</span>
+                    <span className="ml-auto text-xs text-slate-600">Posted {formatPostedTime(req.created_at)}</span>
                     {!blockedRequesterIds.has(req.requester_id) && (
                       <button
                         type="button"

@@ -8,6 +8,7 @@ import type { ResolvedLocation } from '@/lib/location-types'
 import TermsModal from '@/app/components/TermsModal'
 import { getGateStatus } from '@/lib/terms'
 import { checkRequestScope, SCOPE_BLOCKED_MESSAGE } from '@/lib/requestScope'
+import { resolveTimeSlot, buildAbsoluteDateLabel } from '@/lib/timingNormalizer'
 
 interface ParsedRequest {
   category: 'rides' | 'moving' | 'peer_help' | 'errands' | 'borrow' | 'meal_meetup'
@@ -871,8 +872,14 @@ export default function RequestInput() {
         paymentData.helper_fee_amount = isNaN(fee) ? 0 : fee
       }
     }
+    let resolvedScheduledTime: string | null = null
+    let resolvedFlexibleTime = false
     if (isTimeComplete(timeSlot) && !parsed.scheduled_time) {
-      paymentData.deadline_text = buildTimeLabel(timeSlot)
+      const resolved = resolveTimeSlot(timeSlot)
+      resolvedScheduledTime = resolved.scheduled_time
+      resolvedFlexibleTime = resolved.flexible_time
+      if (resolved.time_window_end) paymentData.time_window_end = resolved.time_window_end
+      paymentData.deadline_text = buildAbsoluteDateLabel(timeSlot)
     }
     if (paymentSlot.payment_mode) {
       paymentData.payment_summary = buildPaymentSummary(paymentSlot)
@@ -901,7 +908,10 @@ export default function RequestInput() {
       description: text.trim() || null,
       urgency: parsed.urgency,
       ...(parsed.location != null && { location: parsed.location }),
-      ...(parsed.scheduled_time != null && { scheduled_time: parsed.scheduled_time }),
+      ...(parsed.scheduled_time != null
+        ? { scheduled_time: parsed.scheduled_time }
+        : resolvedScheduledTime != null ? { scheduled_time: resolvedScheduledTime } : {}),
+      flexible_time: resolvedFlexibleTime,
       ...(!isDriverNonFixed && parsed.budget != null && { budget: parsed.budget }),
       ...(structuredDataToSave != null && { structured_data: structuredDataToSave }),
       ...(parsed.category === 'rides' && {
@@ -913,7 +923,7 @@ export default function RequestInput() {
         available_seats: parsed.available_seats ?? null,
         is_round_trip: parsed.is_round_trip ?? false,
         return_date: parsed.return_date ?? null,
-        flexible_time: parsed.flexible_time ?? false,
+        flexible_time: parsed.flexible_time ?? resolvedFlexibleTime,
         auto_accept: parsed.is_driver ? autoAccept : true,
         price_type: parsed.is_driver ? priceType : null,
         is_airport_ride: parsed.is_airport_ride ?? false,
@@ -1789,7 +1799,7 @@ export default function RequestInput() {
               />
             )}
             {isTimeComplete(timeSlot) && !parsed!.scheduled_time && (
-              <Row label="When" value={buildTimeLabel(timeSlot)} data-testid="when-row" />
+              <Row label="When" value={buildAbsoluteDateLabel(timeSlot)} data-testid="when-row" />
             )}
             {parsed!.budget != null && !(parsed!.category === 'rides' && parsed!.is_driver) && (
               <Row label="Budget" value={`$${parsed!.budget}`} />

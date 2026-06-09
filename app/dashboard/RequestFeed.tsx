@@ -27,6 +27,7 @@ import {
   formatWhen,
   formatNote,
   formatNextAction,
+  formatPostedTime,
   hasExpectedLocation,
   nextActionColor,
 } from '@/lib/cardViewModel'
@@ -1101,20 +1102,15 @@ function RequestCard({
               </span>
             ) : null
           })()}
-          {req.scheduled_time && (
-            <span data-testid="card-time-meta" className="flex items-center gap-1.5">
-              <span className="text-[11px]">🕐</span>
-              {req.flexible_time
-                ? `${new Date(req.scheduled_time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · Flexible`
-                : new Date(req.scheduled_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-            </span>
-          )}
-          {!req.scheduled_time && !!(req.structured_data as Record<string, unknown> | null)?.deadline_text && (
-            <span data-testid="card-time-meta" className="flex items-center gap-1.5">
-              <span className="text-[11px]">🕐</span>
-              {String((req.structured_data as Record<string, unknown>).deadline_text)}
-            </span>
-          )}
+          {(() => {
+            const when = formatWhen(req)
+            return when ? (
+              <span data-testid="card-time-meta" className="flex items-center gap-1.5">
+                <span className="text-[11px]">🕐</span>
+                {when}
+              </span>
+            ) : null
+          })()}
           {/* Money — priority: final agreed → counter from requester → payment summary → budget */}
           {(() => {
             const moneySd = req.structured_data as Record<string, unknown> | null
@@ -1303,22 +1299,18 @@ function RequestCard({
               )}
 
               {/* Time row */}
-              {(!!req.scheduled_time || !!(req.structured_data as Record<string, unknown> | null)?.deadline_text) && (
-                <div data-testid="request-card-time" className="flex items-start gap-2">
-                  <span className="text-[11px] mt-0.5 flex-shrink-0">🕐</span>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">When</p>
-                    <p className="text-xs text-slate-700">
-                      {req.scheduled_time
-                        ? req.flexible_time
-                          ? `${new Date(req.scheduled_time).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })} · Flexible`
-                          : new Date(req.scheduled_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-                        : String((req.structured_data as Record<string, unknown>).deadline_text)
-                      }
-                    </p>
+              {(() => {
+                const when = formatWhen(req)
+                return when ? (
+                  <div data-testid="request-card-time" className="flex items-start gap-2">
+                    <span className="text-[11px] mt-0.5 flex-shrink-0">🕐</span>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">When</p>
+                      <p className="text-xs text-slate-700">{when}</p>
+                    </div>
                   </div>
-                </div>
-              )}
+                ) : null
+              })()}
 
               {/* Payment row */}
               {(!!(req.structured_data as Record<string, unknown> | null)?.payment_summary || req.budget != null) && (
@@ -2000,7 +1992,8 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
 
               {/* Next-action hint */}
               {(() => {
-                const action = formatNextAction(offer.status, isEffExpired, req.status)
+                const when = formatWhen(req)
+                const action = formatNextAction(offer.status, isEffExpired, req.status, when)
                 if (action.variant === 'open') return null
                 return <p className={`text-[11px] ${nextActionColor(action.variant)} mb-3`}>{action.label}</p>
               })()}
@@ -2090,7 +2083,9 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                     Regular
                   </span>
                 )}
-                <span className="ml-auto flex-shrink-0 text-xs text-slate-600">{timeAgo(offer.created_at)}</span>
+                <span className="ml-auto flex-shrink-0 text-xs text-slate-600">
+                  Posted {formatPostedTime(req.created_at)}
+                </span>
               </div>
             </div>
           </div>

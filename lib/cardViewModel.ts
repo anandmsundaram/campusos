@@ -1,6 +1,8 @@
 // Shared helpers for normalized marketplace card display.
 // Pure functions — no React, no side effects.
 
+import { inferDateFromDeadlineText } from '@/lib/timingNormalizer'
+
 export interface CardRequest {
   category: string
   status: string
@@ -56,7 +58,7 @@ export function hasExpectedLocation(category: string): boolean {
   return category === 'errands' || category === 'moving' || category === 'borrow' || category === 'rides'
 }
 
-/** Human-readable time string from scheduled_time or structured_data.deadline_text, or null. */
+/** Human-readable needed-time string. Resolves scheduled_time or infers from deadline_text for old records. */
 export function formatWhen(req: CardRequest): string | null {
   if (req.scheduled_time) {
     const d = new Date(req.scheduled_time)
@@ -66,8 +68,23 @@ export function formatWhen(req: CardRequest): string | null {
     return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   }
   const dt = req.structured_data?.deadline_text
-  if (typeof dt === 'string' && dt) return dt
+  if (typeof dt === 'string' && dt) {
+    // For old records with vague labels like "Today, flexible time", infer the absolute date
+    const inferred = inferDateFromDeadlineText(dt, req.created_at)
+    if (inferred) {
+      const dateStr = inferred.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+      const isFlexible = dt.toLowerCase().includes('flexible')
+      return isFlexible ? `${dateStr} · Flexible` : dateStr
+    }
+    return dt
+  }
   return null
+}
+
+/** Absolute posted date (not a relative "X days ago"). */
+export function formatPostedTime(created_at: string): string {
+  const d = new Date(created_at)
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 /** Short description or AI-generated summary, or null if neither exists. */
@@ -89,8 +106,12 @@ export function formatNextAction(
   offerStatus: string,
   isEffExpired: boolean,
   reqStatus: string,
+  neededWhen?: string | null,
 ): NextAction {
-  if (isEffExpired) return { label: 'Expired — no action needed', variant: 'expired' }
+  if (isEffExpired) {
+    const detail = neededWhen ? ` (needed ${neededWhen})` : ''
+    return { label: `Expired — needed time passed${detail}`, variant: 'expired' }
+  }
   if (reqStatus === 'cancelled') return { label: 'Request cancelled', variant: 'cancelled' }
   if (reqStatus === 'completed') return { label: 'Completed', variant: 'completed' }
   if (offerStatus === 'pending') return { label: 'Waiting for requester to respond', variant: 'pending' }
