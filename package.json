@@ -11,10 +11,19 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "cap:sync": "cap sync",
+    "cap:copy": "cap copy",
+    "cap:open:ios": "cap open ios",
+    "cap:open:android": "cap open android",
+    "cap:doctor": "cap doctor"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
+    "@capacitor/ios": "^8.4.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.105.4",
     "@types/bcryptjs": "^2.4.6",
