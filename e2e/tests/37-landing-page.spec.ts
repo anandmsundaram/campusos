@@ -13,6 +13,8 @@
  *  9.  Final CTA signup button present
  * 10.  Final CTA login button present
  * 11.  Authenticated user visiting / is redirected to /dashboard
+ * 12.  PWA manifest is reachable at /manifest.webmanifest
+ * 13.  PWA manifest has required fields (name, start_url, display)
  */
 
 import { test, expect } from '../helpers/fixtures'
@@ -152,5 +154,32 @@ test.describe('Landing page', () => {
     // Click desktop logout button
     await driverPage.locator('[data-testid="logout-btn"]').click()
     await expect(driverPage).toHaveURL(/\/$/, { timeout: 10_000 })
+  })
+
+  test('PWA manifest is reachable at /manifest.webmanifest', async ({ browser }) => {
+    const ctx = await browser.newContext()
+    const page = await ctx.newPage()
+    try {
+      const response = await page.goto('/manifest.webmanifest')
+      expect(response?.status()).toBe(200)
+      const ct = response?.headers()['content-type'] ?? ''
+      expect(ct).toMatch(/json|manifest/)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('PWA manifest has required fields', async ({ browser }) => {
+    const ctx = await browser.newContext()
+    const page = await ctx.newPage()
+    try {
+      const response = await page.goto('/manifest.webmanifest')
+      const body = await response?.json()
+      expect(body.name).toBe('CampusOS')
+      expect(body.start_url).toBe('/')
+      expect(body.display).toBe('standalone')
+    } finally {
+      await ctx.close()
+    }
   })
 })

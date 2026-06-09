@@ -34,8 +34,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
         isAdmin={isAdmin}
         logout={logout}
       />
-      {/* Offset by sidebar on desktop; pad bottom for mobile nav */}
-      <div className="md:ml-56 pb-20 md:pb-0">
+      {/* Offset by sidebar on desktop; pad bottom for mobile nav + safe area */}
+      <div className="md:ml-56 pb-24 md:pb-0">
         {children}
       </div>
     </div>

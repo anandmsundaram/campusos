@@ -389,8 +389,12 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
 
       {/* ── Mobile bottom nav ──
           7 items: 5 main routes + bell + profile. Minimum touch width ~51px on
-          360px devices (above the 44px Apple HIG minimum). Labels are 9px. */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 flex items-stretch h-16">
+          360px devices (above the 44px Apple HIG minimum). Labels are 9px.
+          padding-bottom accounts for iOS home indicator in PWA mode. */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-md border-t border-slate-700 flex items-stretch min-h-[64px]"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
         {NAV_MAIN.map((item) => (
           <Link
             key={item.href}
