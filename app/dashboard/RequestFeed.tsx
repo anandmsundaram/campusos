@@ -1456,8 +1456,9 @@ function RequestCard({
           )
         })()}
 
-        {/* Inline pending offers — shown in My Requests tab for the requester */}
-        {inlineOffers.length > 0 && (
+        {/* Inline pending offers — shown in My Requests tab for the requester.
+            Gate on open_with_offers: expired requests must not show Accept/Decline. */}
+        {inlineOffers.length > 0 && cardLifecycleState === 'open_with_offers' && (
           <div className="mb-4 space-y-2" onClick={(e) => e.stopPropagation()}>
             <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
               {inlineOffers.length} pending offer{inlineOffers.length !== 1 ? 's' : ''}
@@ -1614,6 +1615,8 @@ function RequestCard({
             <span className="text-xs font-semibold text-red-400/70">Full</span>
           ) : rideStarted ? (
             <span className="text-xs font-medium text-slate-500">Ride started</span>
+          ) : isRequestExpired(req) ? (
+            <span data-testid="offer-expired-label" className="text-xs text-slate-500">Expired</span>
           ) : (
             <button
               data-testid="offer-cta-btn"

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { trackEvent } from '@/lib/analytics'
+import { isRequestExpired } from '@/lib/marketplaceLifecycle'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -521,8 +522,8 @@ export default function RidesPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white">Rides</h1>
-          <p className="mt-1 text-sm text-slate-500">Find or offer rides with fellow students</p>
+          <h1 className="text-2xl font-bold text-slate-900">Rides</h1>
+          <p className="mt-1 text-sm text-slate-600">Find or offer rides with fellow students</p>
         </div>
         <button
           type="button"
@@ -656,7 +657,9 @@ export default function RidesPage() {
                     const acceptedOffers = offers.filter(o => o.status === 'accepted')
                     const isFull = ride.available_seats != null && ride.seats_filled >= ride.available_seats
                     const seatsLeft = ride.available_seats != null ? ride.available_seats - ride.seats_filled : null
-                    const canChat = isOwn || myOffer?.status === 'accepted'
+                    const isExpiredRide = isRequestExpired(ride)
+                    // Chat: only for active accepted relationships; suppress for expired rides
+                    const canChat = !isExpiredRide && (isOwn || myOffer?.status === 'accepted')
                     const returnTrip = findReturnTrip(ride, rides)
                     const earnings = isOwn && ride.is_driver
                       ? acceptedOffers.reduce((sum, o) => {
@@ -677,6 +680,7 @@ export default function RidesPage() {
                           acceptedCount={isOwn ? acceptedOffers.length : 0}
                           acting={acting}
                           canChat={canChat}
+                          isExpired={isExpiredRide}
                           highlighted={highlightedRideId === ride.id}
                           onRequestSeat={() => handleRequestSeat(ride)}
                           onWithdrawOffer={() => handleWithdrawOffer(ride)}
@@ -742,7 +746,7 @@ export default function RidesPage() {
 
 function RideCard({
   ride, isOwn, myOffer, isFull, seatsLeft, earnings, acceptedCount, acting,
-  canChat, highlighted, onRequestSeat, onWithdrawOffer, onStartRide, onCancelRide,
+  canChat, isExpired, highlighted, onRequestSeat, onWithdrawOffer, onStartRide, onCancelRide,
   onOpenChat, onDmDriver, onGoToOffers, setRef,
 }: {
   ride: RideRequest
@@ -754,6 +758,7 @@ function RideCard({
   acceptedCount: number
   acting: string | null
   canChat: boolean
+  isExpired: boolean
   highlighted: boolean
   onRequestSeat: () => void
   onWithdrawOffer: () => void
@@ -907,26 +912,31 @@ function RideCard({
             )}
 
             {isOwn && ride.is_driver ? (
-              <div className="flex items-center gap-2">
-                {!ride.ride_started && acceptedCount >= 1 && (
+              isExpired ? (
+                <span data-testid="ride-expired-label" className="text-xs text-slate-500">Expired</span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  {!ride.ride_started && acceptedCount >= 1 && (
+                    <button
+                      type="button"
+                      onClick={onStartRide}
+                      disabled={!!acting}
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+                    >
+                      {isActing ? '…' : '🚀 Start Ride'}
+                    </button>
+                  )}
                   <button
+                    data-testid="cancel-ride-btn"
                     type="button"
-                    onClick={onStartRide}
+                    onClick={onCancelRide}
                     disabled={!!acting}
-                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+                    className="rounded-lg border border-[#1e2d4a] px-2.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
                   >
-                    {isActing ? '…' : '🚀 Start Ride'}
+                    {isActing ? '…' : 'Cancel ride'}
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onCancelRide}
-                  disabled={!!acting}
-                  className="rounded-lg border border-[#1e2d4a] px-2.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:border-red-500/30 hover:text-red-400 disabled:opacity-40"
-                >
-                  {isActing ? '…' : 'Cancel ride'}
-                </button>
-              </div>
+                </div>
+              )
             ) : isOwn ? (
               <span className="text-xs text-slate-600">Your request</span>
             ) : myOffer ? (
@@ -950,8 +960,11 @@ function RideCard({
               )
             ) : isFull || ride.ride_started ? (
               <span className="text-xs font-semibold text-slate-600">{isFull ? 'Full' : 'Started'}</span>
+            ) : isExpired ? (
+              <span data-testid="ride-expired-label" className="text-xs text-slate-500">Expired</span>
             ) : (
               <button
+                data-testid="request-seat-btn"
                 type="button"
                 onClick={onRequestSeat}
                 disabled={!!acting}

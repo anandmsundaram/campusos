@@ -206,6 +206,28 @@ export function getRequesterViewOffersLabel(
 }
 
 /**
+ * Derives all valid requester actions for a request in one call.
+ * Use this instead of scattered req.status checks.
+ */
+export function getRequestActions(
+  req: RequestExpirability & { status: string },
+  offerSummary: OfferSummary,
+): {
+  state: RequestLifecycleState
+  canCancel: boolean
+  canMarkComplete: boolean
+  canReviewOffers: boolean
+} {
+  const state = getRequestLifecycleState(req, offerSummary)
+  return {
+    state,
+    canCancel: state === 'open_no_offers' || state === 'open_with_offers',
+    canMarkComplete: state === 'accepted_upcoming' || state === 'accepted_past_due',
+    canReviewOffers: state === 'open_with_offers',
+  }
+}
+
+/**
  * Returns true when the helper can still act on a countered offer
  * (accept or decline). False when the parent request is cancelled,
  * completed, or expired, or when the offer is not in a countered state.

@@ -196,8 +196,8 @@ export default function MyOffersPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-12">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-white">My Offers</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="text-2xl font-bold text-slate-900" data-testid="my-offers-heading">My Offers</h1>
+        <p className="mt-1 text-sm text-slate-600">
           {offers.length > 0
             ? `${offers.length} offer${offers.length !== 1 ? 's' : ''} sent`
             : "Requests you've offered to help with"}

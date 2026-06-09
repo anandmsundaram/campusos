@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { getRequestActions, getRequestLifecycleState, type OfferSummary, type RequestLifecycleState } from '@/lib/marketplaceLifecycle'
 
 type RequestStatus = 'open' | 'matched' | 'completed' | 'cancelled'
 
@@ -14,7 +15,7 @@ interface HelperProfile {
 interface OfferOnRequest {
   id: string
   helper_id: string
-  status: 'pending' | 'accepted' | 'rejected'
+  status: 'pending' | 'accepted' | 'rejected' | 'countered'
   counter_budget: number | null
   message: string | null
   profiles: HelperProfile | HelperProfile[] | null
@@ -58,12 +59,24 @@ const URGENCY_BADGE: Record<string, string> = {
   medium: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20',
   high: 'text-red-400 bg-red-500/10 border-red-500/20',
 }
-const STATUS_SECTIONS: Array<{ status: RequestStatus; label: string; badgeClass: string }> = [
-  { status: 'open',      label: 'Open',      badgeClass: 'text-blue-400 bg-blue-500/10 border-blue-500/20' },
-  { status: 'matched',   label: 'Matched',   badgeClass: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-  { status: 'completed', label: 'Completed', badgeClass: 'text-slate-400 bg-white/[0.03] border-white/10' },
-  { status: 'cancelled', label: 'Cancelled', badgeClass: 'text-slate-600 bg-white/[0.02] border-[#1e2d4a]' },
-]
+const LIFECYCLE_SECTION_LABEL: Partial<Record<RequestLifecycleState, string>> = {
+  open_no_offers: 'Open',
+  open_with_offers: 'Open',
+  accepted_upcoming: 'Matched',
+  accepted_past_due: 'Matched',
+  expired_no_offers: 'Expired',
+  expired_with_unaccepted_offers: 'Expired',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+}
+
+function getOfferSummary(req: MyRequest): OfferSummary {
+  return {
+    pendingCount: req.request_offers.filter(o => o.status === 'pending' || o.status === 'countered').length,
+    acceptedCount: req.request_offers.filter(o => o.status === 'accepted').length,
+    totalCount: req.request_offers.length,
+  }
+}
 
 function normalizeProfile(p: HelperProfile | HelperProfile[] | null | undefined): HelperProfile | null {
   if (!p) return null
@@ -392,10 +405,33 @@ export default function MyRequestsPage() {
     )
   }
 
-  const grouped = STATUS_SECTIONS.map(s => ({
-    ...s,
-    items: requests.filter(r => r.status === s.status),
-  })).filter(s => s.items.length > 0)
+  // Group by lifecycle state (not raw DB status) so expired-open records don't
+  // appear as "Open" with actionable buttons.
+  const sectionOrder: Array<{ key: string; label: string; badgeClass: string; items: MyRequest[] }> = []
+  const sectionMap = new Map<string, { label: string; badgeClass: string; items: MyRequest[] }>()
+
+  for (const req of requests) {
+    const lc = getRequestLifecycleState(req, getOfferSummary(req))
+    const sectionLabel = LIFECYCLE_SECTION_LABEL[lc] ?? 'Open'
+    const key = sectionLabel
+    if (!sectionMap.has(key)) {
+      const badgeClass =
+        key === 'Open'      ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
+        : key === 'Matched' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+        : key === 'Expired' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+        : key === 'Completed' ? 'text-slate-400 bg-white/[0.03] border-white/10'
+        : 'text-slate-600 bg-white/[0.02] border-[#1e2d4a]'
+      sectionMap.set(key, { label: key, badgeClass, items: [] })
+      sectionOrder.push({ key, label: key, badgeClass, items: sectionMap.get(key)!.items })
+    }
+    sectionMap.get(key)!.items.push(req)
+  }
+
+  // Canonical section display order
+  const SECTION_DISPLAY_ORDER = ['Open', 'Matched', 'Expired', 'Completed', 'Cancelled']
+  const grouped = SECTION_DISPLAY_ORDER
+    .map(label => sectionOrder.find(s => s.label === label))
+    .filter((s): s is NonNullable<typeof s> => !!s && s.items.length > 0)
 
   return (
     <>
@@ -408,8 +444,8 @@ export default function MyRequestsPage() {
           </div>
         )}
 
-        {grouped.map(({ status, label, badgeClass, items }) => (
-          <section key={status}>
+        {grouped.map(({ key, label, badgeClass, items }) => (
+          <section key={key}>
             <div className="flex items-center gap-3 mb-4">
               <h2 className="text-sm font-semibold text-slate-300">{label}</h2>
               <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badgeClass}`}>
@@ -419,11 +455,15 @@ export default function MyRequestsPage() {
 
             <div className="flex flex-col gap-3">
               {items.map(req => {
+                const offerSummary = getOfferSummary(req)
+                const lcActions = getRequestActions(req, offerSummary) // canCancel, canMarkComplete, state
+                const { state: lcState, canCancel, canMarkComplete } = lcActions
                 const acceptedOffer = req.request_offers.find(o => o.status === 'accepted')
                 const acceptedHelper = acceptedOffer ? normalizeProfile(acceptedOffer.profiles) : null
-                const pendingCount = req.request_offers.filter(o => o.status === 'pending').length
+                const pendingCount = offerSummary.pendingCount
                 const isActing = acting === req.id
                 const dimmed = req.status === 'cancelled' || req.status === 'completed'
+                  || lcState === 'expired_no_offers' || lcState === 'expired_with_unaccepted_offers'
 
                 return (
                   <div
@@ -478,8 +518,9 @@ export default function MyRequestsPage() {
                       )}
 
                       <div className="flex items-center gap-2 border-t border-[#1e2d4a] pt-3">
-                        {req.status === 'open' && (
+                        {canCancel && (
                           <button
+                            data-testid="cancel-request-btn"
                             type="button"
                             onClick={() => handleCancel(req.id)}
                             disabled={isActing}
@@ -488,8 +529,9 @@ export default function MyRequestsPage() {
                             {isActing ? '…' : 'Cancel request'}
                           </button>
                         )}
-                        {req.status === 'matched' && (
+                        {canMarkComplete && (
                           <button
+                            data-testid="mark-complete-btn"
                             type="button"
                             onClick={() => handleComplete(req)}
                             disabled={isActing}
@@ -498,10 +540,15 @@ export default function MyRequestsPage() {
                             {isActing ? '…' : 'Mark complete'}
                           </button>
                         )}
-                        {req.status === 'completed' && (
+                        {(lcState === 'expired_no_offers' || lcState === 'expired_with_unaccepted_offers') && (
+                          <span data-testid="req-expired-label" className="text-xs text-slate-500">
+                            Expired — no helper accepted
+                          </span>
+                        )}
+                        {lcState === 'completed' && (
                           <span className="text-xs text-slate-600">Completed</span>
                         )}
-                        {req.status === 'cancelled' && (
+                        {lcState === 'cancelled' && (
                           <span className="text-xs text-slate-600">Cancelled</span>
                         )}
                       </div>
@@ -529,8 +576,8 @@ export default function MyRequestsPage() {
 function PageHeader({ title, sub }: { title: string; sub: string }) {
   return (
     <div className="mb-8">
-      <h1 className="text-2xl font-bold text-white">{title}</h1>
-      <p className="mt-1 text-sm text-slate-500">{sub}</p>
+      <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
+      <p className="mt-1 text-sm text-slate-600">{sub}</p>
     </div>
   )
 }
