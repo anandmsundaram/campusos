@@ -182,4 +182,30 @@ test.describe('Landing page', () => {
       await ctx.close()
     }
   })
+
+  test('/icon loads as image/png without auth redirect', async ({ browser }) => {
+    const ctx = await browser.newContext()
+    const page = await ctx.newPage()
+    try {
+      const response = await page.goto('/icon')
+      expect(response?.status()).toBe(200)
+      const ct = response?.headers()['content-type'] ?? ''
+      expect(ct).toMatch(/image\/png/)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('/apple-icon loads as image/png without auth redirect', async ({ browser }) => {
+    const ctx = await browser.newContext()
+    const page = await ctx.newPage()
+    try {
+      const response = await page.goto('/apple-icon')
+      expect(response?.status()).toBe(200)
+      const ct = response?.headers()['content-type'] ?? ''
+      expect(ct).toMatch(/image\/png/)
+    } finally {
+      await ctx.close()
+    }
+  })
 })

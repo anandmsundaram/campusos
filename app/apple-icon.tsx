@@ -17,17 +17,17 @@ export default function AppleIcon() {
           justifyContent: 'center',
         }}
       >
-        <span
-          style={{
-            color: '#ffffff',
-            fontSize: 100,
-            fontWeight: 700,
-            lineHeight: 1,
-            fontFamily: 'sans-serif',
-          }}
-        >
-          C
-        </span>
+        {/* Pointy-top hexagon — CampusOS brand mark, matching the ⬡ in the nav */}
+        <svg width="128" height="128" viewBox="0 0 128 128" fill="none">
+          <path
+            d="M 64 12 L 109 38 L 109 90 L 64 116 L 19 90 L 19 38 Z"
+            stroke="white"
+            strokeWidth="8"
+            fill="none"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </svg>
       </div>
     ),
     { ...size },
