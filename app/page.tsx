@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PageTracker from '@/app/components/PageTracker'
+import PWAInstallCTA from '@/app/components/PWAInstallCTA'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
@@ -176,6 +177,8 @@ export default async function LandingPage() {
             </Link>
           </div>
           <p className="mt-3 text-xs text-slate-400">University email required · Free to join</p>
+
+          <PWAInstallCTA />
 
           {/* Mock flow */}
           <div className="anim-fade-up anim-delay-4 mt-12 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">

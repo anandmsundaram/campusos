@@ -1,6 +1,13 @@
 // Converts UI TimeSlotState to durable, date-resolved storage values.
 // Pure functions — no React, no external dependencies.
 
+export const REQUEST_POSTING_WINDOW_DAYS = 14
+
+/** Returns 'YYYY-MM-DD' for the last date a request can be scheduled from today. */
+export function getMaxBookingDateStr(): string {
+  return localDateStr(REQUEST_POSTING_WINDOW_DAYS)
+}
+
 export interface TimeSlotState {
   dateMode: 'today' | 'tomorrow' | 'weekend' | 'later' | null
   date: string | null           // 'YYYY-MM-DD' for dateMode='later'

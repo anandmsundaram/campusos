@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import RequestInput from './RequestInput'
 import RequestFeed, { type FeedRequest, type MyOffer, type FeedRequestWithOffers } from './RequestFeed'
-import { isRequestExpired } from '@/lib/marketplaceLifecycle'
+import { isRequestExpired, getRequestLifecycleState, type OfferSummary } from '@/lib/marketplaceLifecycle'
 import OnboardingCard from './OnboardingCard'
 import ActivityPulse from './ActivityPulse'
 import ContextualBanner from './ContextualBanner'
@@ -290,39 +290,45 @@ export default async function DashboardPage() {
     return null
   })()
 
-  // ── Financial summary (derived from already-fetched data) ─────────────────
+  // ── Financial summary (derived from already-fetched data, current-month windowed) ─
   // Who earns vs pays:
   //   Driver (requester, is_driver=true)  → EARNS from passengers
   //   Passenger (offer on is_driver=true) → PAYS the driver
   //   Task requester                      → PAYS the helper
   //   Helper/driver (offer on non-driver) → EARNS from requester
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+
   interface FinOffer {
     status: string
+    created_at: string
     counter_budget: number | null
     requester_counter: number | null
     final_agreed_price?: number | null
     seats_requested: number | null
-    requests: { status: string; budget: number | null; is_driver?: boolean | null } | { status: string; budget: number | null; is_driver?: boolean | null }[] | null
+    requests: { status: string; budget: number | null; is_driver?: boolean | null; created_at?: string } | { status: string; budget: number | null; is_driver?: boolean | null; created_at?: string }[] | null
   }
   interface FinReq {
     status: string
+    created_at: string
     budget: number | null
     is_driver?: boolean | null
+    scheduled_time?: string | null
     request_offers?: { status: string; counter_budget: number | null; requester_counter: number | null; final_agreed_price?: number | null; seats_requested: number | null }[]
   }
 
   let committed = 0, earned = 0, owed = 0
 
-  // Offers I made on OTHERS' requests (I am the helper or the passenger)
+  // Offers I made on OTHERS' requests (I am the helper or the passenger) — current month
   for (const o of (myOffersRaw ?? []) as FinOffer[]) {
     if (o.status !== 'accepted') continue
+    if (new Date(o.created_at) < monthStart) continue
     const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
     if (!req) continue
     const price = (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
     const total = price * (o.seats_requested ?? 1)
 
     if (req.is_driver === true) {
-      // I booked seats as a PASSENGER → I owe the driver; only count active rides
+      // I booked seats as a PASSENGER → I owe the driver
       if (req.status === 'open' || req.status === 'matched') owed += total
     } else {
       // I am the HELPER (task or driving for a ride-seeker) → I earn
@@ -331,8 +337,9 @@ export default async function DashboardPage() {
     }
   }
 
-  // My OWN requests (I am the requester/driver/poster)
+  // My OWN requests (I am the requester/driver/poster) — current month
   for (const r of myReqData as FinReq[]) {
+    if (new Date(r.created_at) < monthStart) continue
     for (const o of r.request_offers ?? []) {
       if (o.status !== 'accepted') continue
       const price = (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? r.budget) ?? 0
@@ -349,8 +356,24 @@ export default async function DashboardPage() {
     }
   }
 
-  // Open requests = MY own open/matched requests (not a global count)
-  const openRequests = (myReqData as FinReq[]).filter(r => r.status === 'open' || r.status === 'matched').length
+  // Open requests: MY own requests in open_no_offers or open_with_offers lifecycle state
+  interface FinReqWithOffers {
+    status: string
+    created_at: string
+    scheduled_time: string | null
+    flexible_time?: boolean | null
+    request_offers?: { status: string; counter_budget: number | null; requester_counter: number | null; final_agreed_price?: number | null; seats_requested: number | null }[]
+  }
+  const openRequests = (myReqData as FinReqWithOffers[]).filter(r => {
+    const offers = r.request_offers ?? []
+    const summary: OfferSummary = {
+      pendingCount: offers.filter(o => o.status === 'pending' || o.status === 'countered').length,
+      acceptedCount: offers.filter(o => o.status === 'accepted').length,
+      totalCount: offers.length,
+    }
+    const state = getRequestLifecycleState(r, summary)
+    return state === 'open_no_offers' || state === 'open_with_offers'
+  }).length
 
   return (
     <div className="relative min-h-screen">
@@ -434,10 +457,10 @@ function FinanceStrip({ committed, earned, owed, openRequests }: {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <FinStat label="You could earn" sub="pending" value={fmtDollars(committed)} dim={committed === 0} accent="emerald" testId="fin-in-play" />
-        <FinStat label="Earned" sub="as helper" value={fmtDollars(earned)} dim={earned === 0} accent="blue" testId="fin-earned" />
-        <FinStat label="To pay" sub="you owe" value={fmtDollars(owed)} dim={owed === 0} accent="orange" testId="fin-to-pay" />
-        <FinStat label="Open nearby" sub="waiting for help" value={openRequests.toLocaleString()} dim={openRequests === 0} accent="violet" testId="fin-active" />
+        <FinStat label="You could earn" sub="this month" value={fmtDollars(committed)} dim={committed === 0} accent="emerald" testId="fin-in-play" href="/dashboard/activity" />
+        <FinStat label="Earned" sub="this month" value={fmtDollars(earned)} dim={earned === 0} accent="blue" testId="fin-earned" href="/dashboard/activity" />
+        <FinStat label="To pay" sub="this month" value={fmtDollars(owed)} dim={owed === 0} accent="orange" testId="fin-to-pay" href="/dashboard/activity" />
+        <FinStat label="Open nearby" sub="need help" value={openRequests.toLocaleString()} dim={openRequests === 0} accent="violet" testId="fin-active" href="/dashboard/activity" />
       </div>
       <p className="text-[10px] text-slate-400 text-right leading-tight px-0.5">
         Pay each other directly — Venmo, Zelle, or cash
@@ -446,8 +469,8 @@ function FinanceStrip({ committed, earned, owed, openRequests }: {
   )
 }
 
-function FinStat({ label, sub, value, dim, accent, testId }: {
-  label: string; sub: string; value: string; dim: boolean; accent: 'emerald' | 'blue' | 'orange' | 'violet'; testId: string
+function FinStat({ label, sub, value, dim, accent, testId, href }: {
+  label: string; sub: string; value: string; dim: boolean; accent: 'emerald' | 'blue' | 'orange' | 'violet'; testId: string; href?: string
 }) {
   const { ring, valueColor, bg } = dim
     ? { ring: 'border-slate-200', valueColor: 'text-slate-400', bg: 'bg-white' }
@@ -457,11 +480,23 @@ function FinStat({ label, sub, value, dim, accent, testId }: {
         orange:  { ring: 'border-orange-200',  valueColor: 'text-orange-600',  bg: 'bg-orange-50'  },
         violet:  { ring: 'border-violet-200',  valueColor: 'text-violet-600',  bg: 'bg-violet-50'  },
       }[accent]
-  return (
-    <div className={`rounded-xl border ${ring} ${bg} px-4 py-3`}>
+  const inner = (
+    <>
       <p data-testid={testId} className={`text-xl font-bold tabular-nums ${valueColor}`}>{value}</p>
       <p className="mt-0.5 text-[11px] font-semibold text-slate-700 leading-tight">{label}</p>
       <p className="text-[10px] text-slate-400 leading-tight">{sub}</p>
+    </>
+  )
+  if (href) {
+    return (
+      <Link href={href} className={`rounded-xl border ${ring} ${bg} px-4 py-3 block hover:opacity-80 transition-opacity`}>
+        {inner}
+      </Link>
+    )
+  }
+  return (
+    <div className={`rounded-xl border ${ring} ${bg} px-4 py-3`}>
+      {inner}
     </div>
   )
 }

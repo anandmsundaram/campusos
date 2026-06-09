@@ -8,7 +8,7 @@ import type { ResolvedLocation } from '@/lib/location-types'
 import TermsModal from '@/app/components/TermsModal'
 import { getGateStatus } from '@/lib/terms'
 import { checkRequestScope, SCOPE_BLOCKED_MESSAGE } from '@/lib/requestScope'
-import { resolveTimeSlot, buildAbsoluteDateLabel } from '@/lib/timingNormalizer'
+import { resolveTimeSlot, buildAbsoluteDateLabel, REQUEST_POSTING_WINDOW_DAYS, getMaxBookingDateStr } from '@/lib/timingNormalizer'
 
 interface ParsedRequest {
   category: 'rides' | 'moving' | 'peer_help' | 'errands' | 'borrow' | 'meal_meetup'
@@ -406,8 +406,18 @@ function isDateResolved(ts: TimeSlotState): boolean {
   return true
 }
 
+function isDateBeyondWindow(ts: TimeSlotState): boolean {
+  if (ts.dateMode !== 'later' || !ts.date) return false
+  const maxDate = new Date(getMaxBookingDateStr() + 'T23:59:59')
+  const selected = new Date(ts.date + 'T12:00:00')
+  return selected > maxDate
+}
+
 function getTimeValidationError(ts: TimeSlotState): string | null {
   if (!isDateResolved(ts) || !ts.timeMode) return null
+  if (isDateBeyondWindow(ts)) {
+    return `Requests can be scheduled up to ${REQUEST_POSTING_WINDOW_DAYS} days ahead.`
+  }
   if (ts.timeMode === 'specific') {
     if (ts.dateMode === 'today' && ts.startHour && ts.startMinute && ts.startAmPm) {
       if (!isStartFuture(ts)) return 'Please select a time in the future'
@@ -426,6 +436,7 @@ function getTimeValidationError(ts: TimeSlotState): string | null {
 function isTimeComplete(ts: TimeSlotState): boolean {
   if (!isDateResolved(ts)) return false
   if (!ts.timeMode) return false
+  if (isDateBeyondWindow(ts)) return false
   if (ts.timeMode === 'flexible') return true
   if (ts.timeMode === 'specific') {
     if (!ts.startHour || !ts.startMinute || !ts.startAmPm) return false
@@ -1289,6 +1300,7 @@ export default function RequestInput() {
                     data-testid="time-date-input"
                     type="date"
                     min={new Date().toISOString().split('T')[0]}
+                    max={getMaxBookingDateStr()}
                     value={timeSlot.date ?? ''}
                     onChange={e => setTimeSlot(prev => ({
                       ...prev,
