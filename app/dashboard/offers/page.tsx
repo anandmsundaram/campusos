@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { subflowFromCategory, getCounterLabel, getStatusLabel, getOfferNotificationMessage } from '@/lib/offerText'
-import { isOfferEffectivelyExpired, isAcceptedPastDue } from '@/lib/marketplaceLifecycle'
-import { formatWhere, formatWhen, formatNote, formatNextAction, formatPostedTime, hasExpectedLocation, nextActionColor } from '@/lib/cardViewModel'
+import { getOfferLifecycleState } from '@/lib/marketplaceLifecycle'
+import { formatWhere, formatWhen, formatNote, formatNextActionFromState, formatPostedTime, hasExpectedLocation, nextActionColor } from '@/lib/cardViewModel'
 import BlockModal from '@/app/components/BlockModal'
 import { getMyBlocks } from '@/lib/blocking'
 
@@ -228,8 +228,9 @@ export default function MyOffersPage() {
             const req = normalizeRequest(offer.requests)
             if (!req) return null
             const profile = normalizeProfile(req.profiles)
-            const isEffExpired = isOfferEffectivelyExpired(offer.status, req)
-            const isPastDue = isAcceptedPastDue(offer.status, req, req.status)
+            const offerState = getOfferLifecycleState(offer.status, req)
+            const isEffExpired = offerState === 'pending_expired'
+            const isPastDue = offerState === 'accepted_past_due'
             const displayStatus = isEffExpired ? 'expired' : isPastDue ? 'accepted_past_due' : offer.status
             const statusInfo = OFFER_STATUS[displayStatus] ?? OFFER_STATUS.pending
             const isRejected = offer.status === 'rejected'
@@ -242,7 +243,7 @@ export default function MyOffersPage() {
             const seats = offer.seats_requested ?? 1
             const statusLabelText = isEffExpired ? 'Expired' : isPastDue ? '⏱ Past due' : getStatusLabel(offer.status, pageSubflow, { agreedPrice, seats })
             const neededWhen = formatWhen(req)
-            const nextAction = formatNextAction(offer.status, isEffExpired, req.status, neededWhen, isPastDue)
+            const nextAction = formatNextActionFromState(offerState, neededWhen)
 
             return (
               <div

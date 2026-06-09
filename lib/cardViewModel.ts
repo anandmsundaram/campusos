@@ -2,6 +2,7 @@
 // Pure functions — no React, no side effects.
 
 import { inferDateFromDeadlineText } from '@/lib/timingNormalizer'
+import type { OfferLifecycleState } from '@/lib/marketplaceLifecycle'
 
 export interface CardRequest {
   category: string
@@ -153,4 +154,26 @@ const NEXT_ACTION_COLOR: Record<NextActionVariant, string> = {
 
 export function nextActionColor(variant: NextActionVariant): string {
   return NEXT_ACTION_COLOR[variant]
+}
+
+/**
+ * Canonical next-action display derived from a structured OfferLifecycleState.
+ * Prefer this over the legacy formatNextAction() for new call sites.
+ */
+export function formatNextActionFromState(
+  state: OfferLifecycleState,
+  neededWhen?: string | null,
+): NextAction {
+  const w = neededWhen ? ` before ${neededWhen}` : ''
+  const n = neededWhen ? ` (needed ${neededWhen})` : ''
+  switch (state) {
+    case 'pending_open':     return { label: 'Waiting for requester to respond', variant: 'pending' }
+    case 'pending_expired':  return { label: `Expired — no accepted helper${w}`, variant: 'expired' }
+    case 'accepted_upcoming': return { label: 'Accepted — coordinate via Messages', variant: 'accepted' }
+    case 'accepted_past_due': return { label: `Past due — accepted helper, waiting for completion confirmation${n}`, variant: 'accepted_past_due' }
+    case 'completed':        return { label: 'Completed', variant: 'completed' }
+    case 'declined':         return { label: 'Declined', variant: 'declined' }
+    case 'not_selected':     return { label: 'Requester chose another helper', variant: 'not_selected' }
+    case 'cancelled':        return { label: 'Request cancelled', variant: 'cancelled' }
+  }
 }

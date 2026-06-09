@@ -21,13 +21,18 @@ import {
   isRequestExpired,
   isOfferEffectivelyExpired,
   isAcceptedPastDue,
+  getRequestLifecycleState,
+  getOfferLifecycleState,
+  getRequesterViewOffersLabel,
   validateOfferAmount,
+  type OfferSummary,
 } from '@/lib/marketplaceLifecycle'
 import {
   formatWhere,
   formatWhen,
   formatNote,
   formatNextAction,
+  formatNextActionFromState,
   formatPostedTime,
   hasExpectedLocation,
   nextActionColor,
@@ -977,11 +982,20 @@ function RequestCard({
     ? (req.is_driver ? 'bg-blue-500' : 'bg-purple-500')
     : (CATEGORY_ACCENT[req.category] ?? 'bg-slate-500')
 
+  // Derive lifecycle state for testability (offer summary from available props)
+  const cardOfferSummary = {
+    pendingCount: inlineOffers.length,
+    acceptedCount: acceptedOffers?.length ?? 0,
+    totalCount: (inlineOffers.length) + (acceptedOffers?.length ?? 0),
+  }
+  const cardLifecycleState = getRequestLifecycleState(req, cardOfferSummary)
+
   return (
     <div
       ref={cardRef}
       data-testid="request-card"
       data-request-id={req.id}
+      data-lifecycle-state={isOwn ? cardLifecycleState : undefined}
       className={`group relative overflow-hidden rounded-xl border transition-all duration-300 ${
         isExpanded
           ? 'border-blue-300 bg-white shadow-lg shadow-blue-100/60 -translate-y-0.5'
@@ -1535,7 +1549,14 @@ function RequestCard({
               onClick={(e) => { e.stopPropagation(); onViewOffers() }}
               className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-400 transition-all hover:border-white/20 hover:text-slate-200"
             >
-              View offers
+              {/* Smart label: context-aware based on offer state */}
+              {(() => {
+                const pendingCount = inlineOffers.length
+                const acceptedCount = acceptedOffers?.length ?? 0
+                if (acceptedCount > 0 || req.status === 'matched') return 'View accepted helper'
+                if (pendingCount > 0) return `Review ${pendingCount} offer${pendingCount !== 1 ? 's' : ''}`
+                return 'View offers'
+              })()}
             </button>
           ) : (hasOffered || myOfferStatus) ? (
             myOfferStatus === 'countered' ? (
@@ -1914,8 +1935,9 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
         const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
         const seats = offer.seats_requested ?? 1
         const offerSubflow = subflowFromCategory(req.category, req.structured_data?.errand_type as string | null)
-        const isEffExpired = isOfferEffectivelyExpired(offer.status, req)
-        const isPastDue = isAcceptedPastDue(offer.status, req, req.status)
+        const offerState = getOfferLifecycleState(offer.status, req)
+        const isEffExpired = offerState === 'pending_expired'
+        const isPastDue = offerState === 'accepted_past_due'
         const displayStatusKey = isEffExpired ? 'expired' : isPastDue ? 'accepted_past_due' : offer.status
         const statusLabel = isEffExpired
           ? 'Expired'
@@ -2007,7 +2029,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
               {/* Next-action hint */}
               {(() => {
                 const when = formatWhen(req)
-                const action = formatNextAction(offer.status, isEffExpired, req.status, when, isPastDue)
+                const action = formatNextActionFromState(offerState, when)
                 if (action.variant === 'open') return null
                 return <p className={`text-[11px] ${nextActionColor(action.variant)} mb-3`}>{action.label}</p>
               })()}
