@@ -22,8 +22,10 @@ import {
   isOfferEffectivelyExpired,
   isAcceptedPastDue,
   getRequestLifecycleState,
+  getRequestSectionBucket,
   getOfferLifecycleState,
   getRequesterViewOffersLabel,
+  getLifecycleReason,
   validateOfferAmount,
   type OfferSummary,
 } from '@/lib/marketplaceLifecycle'
@@ -33,6 +35,7 @@ import {
   formatNote,
   formatNextAction,
   formatNextActionFromState,
+  formatRequestStatusBadge,
   formatPostedTime,
   hasExpectedLocation,
   nextActionColor,
@@ -266,8 +269,6 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
   }, [])
   const [offeredIds, setOfferedIds] = useState<Set<string>>(new Set())
 
-  const now = useMemo(() => new Date(), [])
-
   const myOffersByRequestId = useMemo(() => {
     const map = new Map<string, MyOffer>()
     for (const o of myOffers) {
@@ -289,27 +290,33 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     return set
   }, [myOffers])
 
-  // Active = open/matched where needed time has not passed yet
-  // Past  = completed, cancelled, expired-open, and matched-past-due
+  // Section placement driven by centralized lifecycle bucket.
+  // accepted_past_due → 'actionable' → active section (requester can confirm completion).
   const activeMyRequests = useMemo(
     () => localMyRequests.filter(r => {
-      if (r.status === 'open' || r.status === 'matched') {
-        return !r.scheduled_time || new Date(r.scheduled_time) >= now
+      const offers = r.request_offers ?? []
+      const summary: OfferSummary = {
+        pendingCount: offers.filter(o => o.status === 'pending' || o.status === 'countered').length,
+        acceptedCount: offers.filter(o => o.status === 'accepted').length,
+        totalCount: offers.length,
       }
-      return false
+      const bucket = getRequestSectionBucket(getRequestLifecycleState(r, summary))
+      return bucket === 'actionable' || bucket === 'current'
     }),
-    [localMyRequests, now]
+    [localMyRequests]
   )
   const pastMyRequests = useMemo(
     () => localMyRequests.filter(r => {
-      if (r.status === 'completed' || r.status === 'cancelled') return true
-      // Expired open request (no accepted offer)
-      if (r.status === 'open' && r.scheduled_time && new Date(r.scheduled_time) < now) return true
-      // Accepted past-due (offer was accepted but needed time passed, not yet completed)
-      if (r.status === 'matched' && r.scheduled_time && new Date(r.scheduled_time) < now) return true
-      return false
+      const offers = r.request_offers ?? []
+      const summary: OfferSummary = {
+        pendingCount: offers.filter(o => o.status === 'pending' || o.status === 'countered').length,
+        acceptedCount: offers.filter(o => o.status === 'accepted').length,
+        totalCount: offers.length,
+      }
+      const bucket = getRequestSectionBucket(getRequestLifecycleState(r, summary))
+      return bucket === 'past' || bucket === 'closed'
     }),
-    [localMyRequests, now]
+    [localMyRequests]
   )
 
   // View-offers modal (requester side)
@@ -632,6 +639,9 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                   {filteredRequests.map((req) => {
                     const profile = normalizeProfile(req.profiles)
                     const isOwn = req.requester_id === currentUserId
+                    const acceptedOffersForActive = isOwn && 'request_offers' in req
+                      ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'accepted')
+                      : undefined
                     return (
                       <RequestCard
                         key={req.id}
@@ -648,14 +658,14 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
                             ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'pending' || o.status === 'countered')
                             : []
                         }
-                        acceptedOffers={
-                          isOwn && 'request_offers' in req
-                            ? (req as FeedRequestWithOffers).request_offers.filter(o => o.status === 'accepted')
-                            : undefined
-                        }
+                        acceptedOffers={acceptedOffersForActive}
                         onOfferAccepted={(offerId, seatsToFill) => handleOfferAccepted(req.id, offerId, seatsToFill)}
                         onOfferDeclined={(offerId) => handleOfferDeclined(req.id, offerId)}
                         onOfferCountered={(offerId, amount) => handleOfferCountered(req.id, offerId, amount)}
+                        onComplete={acceptedOffersForActive && acceptedOffersForActive.length > 0
+                          ? () => handleCompleteRide(req.id, acceptedOffersForActive.map(o => o.helper_id))
+                          : undefined}
+                        completing={completingId === req.id}
                         blockedHelperIds={blockedUserIds}
                       />
                     )
@@ -982,13 +992,14 @@ function RequestCard({
     ? (req.is_driver ? 'bg-blue-500' : 'bg-purple-500')
     : (CATEGORY_ACCENT[req.category] ?? 'bg-slate-500')
 
-  // Derive lifecycle state for testability (offer summary from available props)
+  // Derive lifecycle state — single source of truth for all owned-card rendering
   const cardOfferSummary = {
     pendingCount: inlineOffers.length,
     acceptedCount: acceptedOffers?.length ?? 0,
     totalCount: (inlineOffers.length) + (acceptedOffers?.length ?? 0),
   }
   const cardLifecycleState = getRequestLifecycleState(req, cardOfferSummary)
+  const reqStatusBadge = isOwn ? formatRequestStatusBadge(cardLifecycleState) : null
 
   return (
     <div
@@ -1030,10 +1041,14 @@ function RequestCard({
               <p className="text-[15px] font-semibold text-slate-900 leading-snug">{req.title}</p>
             )}
           </div>
-          {/* Role badge — right of title */}
-          {isOwn ? (
-            <span data-testid="card-role-status" className="flex-shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold leading-none text-slate-600">
-              My request{inlineOffers.length > 0 ? ` · ${inlineOffers.length} offer${inlineOffers.length !== 1 ? 's' : ''}` : ''}
+          {/* Role badge — lifecycle-aware for owned cards */}
+          {isOwn && reqStatusBadge ? (
+            <span
+              data-testid="card-role-status"
+              data-lifecycle-badge={cardLifecycleState}
+              className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${reqStatusBadge.cls}`}
+            >
+              {reqStatusBadge.label}
             </span>
           ) : myOfferStatus != null ? (
             <span data-testid="card-role-status" className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none ${OFFER_STATUS_BADGE[myOfferStatus]}`}>
@@ -1048,6 +1063,13 @@ function RequestCard({
             </span>
           ) : null}
         </div>
+
+        {/* Lifecycle reason — shown on owned cards to surface factual status */}
+        {isOwn && (
+          <p data-testid="req-lifecycle-reason" className="text-[11px] text-slate-500 mb-1.5 leading-snug">
+            {getLifecycleReason(cardLifecycleState, formatWhen(req))}
+          </p>
+        )}
 
         {/* Parser summary — context hint, shown when collapsed */}
         {!isRide && !isExpanded && typeof req.structured_data?.summary === 'string' && (
@@ -1274,14 +1296,14 @@ function RequestCard({
           {isRide && req.is_round_trip && (
             <Badge text="Round trip" color="text-slate-400 bg-white/[0.03] border-slate-200" />
           )}
-          {isPastRide && req.status !== 'completed' && (
-            <Badge text="Pending completion" color="text-yellow-400 bg-yellow-500/10 border-yellow-500/20" />
+          {isOwn && cardLifecycleState === 'accepted_past_due' && (
+            <Badge text="Pending completion" color="text-amber-600 bg-amber-50 border-amber-200" />
           )}
-          {isExpired && (
-            <Badge text="Expired" color="text-slate-500 bg-white/[0.02] border-slate-200" />
+          {isOwn && (cardLifecycleState === 'expired_no_offers' || cardLifecycleState === 'expired_with_unaccepted_offers') && (
+            <Badge text="Expired" color="text-slate-500 bg-slate-50 border-slate-200" />
           )}
-          {req.status === 'completed' && (
-            <Badge text="Completed" color="text-emerald-400 bg-emerald-500/10 border-emerald-500/20" />
+          {isOwn && cardLifecycleState === 'completed' && (
+            <Badge text="Completed" color="text-emerald-600 bg-emerald-50 border-emerald-200" />
           )}
         </div>
 
@@ -1524,40 +1546,47 @@ function RequestCard({
             </button>
           </div>
 
-          {isPast ? (
-            req.status === 'completed'
-              ? <span data-testid="req-completed-label" className="text-xs font-semibold text-emerald-400">Completed ✓</span>
-              : req.status === 'matched'
-              ? <span data-testid="req-past-due-label" className="text-xs font-semibold text-amber-500">Past due — awaiting completion</span>
-              : isPastRide && onComplete
-              ? (
-                <button
-                  data-testid="mark-complete-btn"
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onComplete() }}
-                  disabled={completing}
-                  className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
-                >
-                  {completing ? '…' : 'Mark complete'}
-                </button>
-              )
-              : <span data-testid="req-expired-label" className="text-xs text-slate-500">Expired — no helper accepted</span>
-          ) : isOwn ? (
-            <button
-              data-testid="view-offers-btn"
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onViewOffers() }}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-400 transition-all hover:border-white/20 hover:text-slate-200"
-            >
-              {/* Smart label: context-aware based on offer state */}
-              {(() => {
-                const pendingCount = inlineOffers.length
-                const acceptedCount = acceptedOffers?.length ?? 0
-                if (acceptedCount > 0 || req.status === 'matched') return 'View accepted helper'
-                if (pendingCount > 0) return `Review ${pendingCount} offer${pendingCount !== 1 ? 's' : ''}`
-                return 'View offers'
-              })()}
-            </button>
+          {isOwn ? (
+            // Lifecycle-driven footer for requester-owned cards
+            (() => {
+              switch (cardLifecycleState) {
+                case 'completed':
+                  return <span data-testid="req-completed-label" className="text-xs font-semibold text-emerald-600">Completed ✓</span>
+                case 'accepted_past_due':
+                  return (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span data-testid="req-past-due-label" className="text-xs font-semibold text-amber-600">Past due — awaiting completion</span>
+                      {onComplete && (
+                        <button
+                          data-testid="mark-complete-btn"
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onComplete() }}
+                          disabled={completing}
+                          className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-500 disabled:opacity-40"
+                        >
+                          {completing ? '…' : 'Mark complete'}
+                        </button>
+                      )}
+                    </div>
+                  )
+                case 'expired_no_offers':
+                case 'expired_with_unaccepted_offers':
+                  return <span data-testid="req-expired-label" className="text-xs text-slate-500">Expired — no helper accepted</span>
+                case 'cancelled':
+                  return <span data-testid="req-cancelled-label" className="text-xs text-slate-500">Cancelled</span>
+                default:
+                  return (
+                    <button
+                      data-testid="view-offers-btn"
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onViewOffers() }}
+                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-500 transition-all hover:border-blue-300 hover:text-slate-700"
+                    >
+                      {getRequesterViewOffersLabel(cardLifecycleState, inlineOffers.length)}
+                    </button>
+                  )
+              }
+            })()
           ) : (hasOffered || myOfferStatus) ? (
             myOfferStatus === 'countered' ? (
               <button

@@ -2,7 +2,7 @@
 // Pure functions — no React, no side effects.
 
 import { inferDateFromDeadlineText } from '@/lib/timingNormalizer'
-import type { OfferLifecycleState } from '@/lib/marketplaceLifecycle'
+import type { OfferLifecycleState, RequestLifecycleState } from '@/lib/marketplaceLifecycle'
 
 export interface CardRequest {
   category: string
@@ -154,6 +154,29 @@ const NEXT_ACTION_COLOR: Record<NextActionVariant, string> = {
 
 export function nextActionColor(variant: NextActionVariant): string {
   return NEXT_ACTION_COLOR[variant]
+}
+
+export interface RequestStatusBadge { label: string; cls: string }
+
+/** Primary lifecycle status badge for a requester-owned request card. */
+export function formatRequestStatusBadge(state: RequestLifecycleState): RequestStatusBadge {
+  switch (state) {
+    case 'open_no_offers':
+      return { label: 'Open', cls: 'text-slate-600 bg-slate-100 border-slate-200' }
+    case 'open_with_offers':
+      return { label: 'Offers pending', cls: 'text-amber-700 bg-amber-50 border-amber-200' }
+    case 'accepted_upcoming':
+      return { label: 'Accepted', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
+    case 'accepted_past_due':
+      return { label: 'Past due', cls: 'text-amber-700 bg-amber-50 border-amber-200' }
+    case 'completed':
+      return { label: 'Completed', cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' }
+    case 'expired_no_offers':
+    case 'expired_with_unaccepted_offers':
+      return { label: 'Expired', cls: 'text-slate-500 bg-slate-50 border-slate-200' }
+    case 'cancelled':
+      return { label: 'Cancelled', cls: 'text-slate-500 bg-slate-50 border-slate-200' }
+  }
 }
 
 /**
