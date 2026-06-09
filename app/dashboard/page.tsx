@@ -457,10 +457,10 @@ function FinanceStrip({ committed, earned, owed, openRequests }: {
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <FinStat label="You could earn" sub="this month" value={fmtDollars(committed)} dim={committed === 0} accent="emerald" testId="fin-in-play" href="/dashboard/activity" />
-        <FinStat label="Earned" sub="this month" value={fmtDollars(earned)} dim={earned === 0} accent="blue" testId="fin-earned" href="/dashboard/activity" />
-        <FinStat label="To pay" sub="this month" value={fmtDollars(owed)} dim={owed === 0} accent="orange" testId="fin-to-pay" href="/dashboard/activity" />
-        <FinStat label="Open nearby" sub="need help" value={openRequests.toLocaleString()} dim={openRequests === 0} accent="violet" testId="fin-active" href="/dashboard/activity" />
+        <FinStat label="You could earn" sub="this month" value={fmtDollars(committed)} dim={committed === 0} accent="emerald" testId="fin-in-play" href="/dashboard/activity?view=you-could-earn" />
+        <FinStat label="Earned" sub="this month" value={fmtDollars(earned)} dim={earned === 0} accent="blue" testId="fin-earned" href="/dashboard/activity?view=earned" />
+        <FinStat label="To pay" sub="this month" value={fmtDollars(owed)} dim={owed === 0} accent="orange" testId="fin-to-pay" href="/dashboard/activity?view=to-pay" />
+        <FinStat label="Open nearby" sub="need help" value={openRequests.toLocaleString()} dim={openRequests === 0} accent="violet" testId="fin-active" href="/dashboard/activity?view=open-nearby" />
       </div>
       <p className="text-[10px] text-slate-400 text-right leading-tight px-0.5">
         Pay each other directly — Venmo, Zelle, or cash

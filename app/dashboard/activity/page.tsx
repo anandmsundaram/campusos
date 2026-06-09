@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getRequestLifecycleState, getOfferLifecycleState, type OfferSummary } from '@/lib/marketplaceLifecycle'
 
-// ─── Date range helpers ────────────────────────────────────────────────────────
+// ─── Range helpers ────────────────────────────────────────────────────────────
 
 type RangeKey = 'month' | '30d' | '3mo' | '12mo'
 
@@ -28,10 +28,86 @@ function getRangeLabel(range: RangeKey): string {
   return RANGE_OPTIONS.find(o => o.key === range)?.label ?? 'This month'
 }
 
+// ─── View param ───────────────────────────────────────────────────────────────
+
+type ViewKey = 'you-could-earn' | 'earned' | 'to-pay' | 'open-nearby'
+const VALID_VIEWS: readonly ViewKey[] = ['you-could-earn', 'earned', 'to-pay', 'open-nearby']
+
+function parseView(raw: string | undefined): ViewKey | null {
+  if (VALID_VIEWS.includes(raw as ViewKey)) return raw as ViewKey
+  return null
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface ReqOffer {
+  id: string
+  status: string
+  counter_budget: number | null
+  requester_counter: number | null
+  final_agreed_price: number | null
+  seats_requested: number | null
+}
+
+interface RequestRow {
+  id: string
+  category: string
+  title: string
+  status: string
+  budget: number | null
+  is_driver: boolean | null
+  created_at: string
+  scheduled_time: string | null
+  flexible_time: boolean | null
+  request_offers: ReqOffer[] | null
+}
+
+interface OfferReqRef {
+  id: string
+  title: string
+  category: string
+  status: string
+  budget: number | null
+  is_driver: boolean | null
+  scheduled_time: string | null
+  flexible_time: boolean | null
+  created_at: string
+}
+
+interface OfferRow {
+  id: string
+  status: string
+  created_at: string
+  counter_budget: number | null
+  requester_counter: number | null
+  final_agreed_price: number | null
+  seats_requested: number | null
+  requests: OfferReqRef | OfferReqRef[] | null
+}
+
+// ─── Price helper ─────────────────────────────────────────────────────────────
+
+function offerPrice(o: { final_agreed_price: number | null; requester_counter: number | null; counter_budget: number | null; seats_requested: number | null }, budget: number | null): number {
+  const unit = (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? budget) ?? 0
+  return unit * (o.seats_requested ?? 1)
+}
+
+// ─── Category label ───────────────────────────────────────────────────────────
+
+function catLabel(category: string): string {
+  switch (category) {
+    case 'rides': return 'Ride'
+    case 'peer_help': return 'Peer help'
+    case 'errand': return 'Errand'
+    case 'tutoring': return 'Tutoring'
+    default: return category
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 interface ActivityPageProps {
-  searchParams: Promise<{ range?: string }>
+  searchParams: Promise<{ range?: string; view?: string; filter?: string }>
 }
 
 export default async function ActivityPage({ searchParams }: ActivityPageProps) {
@@ -40,6 +116,8 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   const range: RangeKey = (['month', '30d', '3mo', '12mo'] as const).includes(rawRange as RangeKey)
     ? (rawRange as RangeKey)
     : 'month'
+  const view = parseView(params.view)
+  const filterState = params.filter ?? null
 
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -60,7 +138,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   // ── Fetch my offers in range ──────────────────────────────────────────────
   const { data: myOffersRaw } = await supabase
     .from('request_offers')
-    .select('id, status, created_at, counter_budget, requester_counter, final_agreed_price, seats_requested, requests(id, status, budget, is_driver, scheduled_time, flexible_time, created_at)')
+    .select('id, status, created_at, counter_budget, requester_counter, final_agreed_price, seats_requested, requests(id, title, category, status, budget, is_driver, scheduled_time, flexible_time, created_at)')
     .eq('helper_id', user.id)
     .gte('created_at', rangeStartIso)
     .order('created_at', { ascending: false })
@@ -69,9 +147,9 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   const myRequests = (myRequestsRaw ?? []) as RequestRow[]
   const myOffers = (myOffersRaw ?? []) as OfferRow[]
 
-  // ── Compute lifecycle-driven stats ────────────────────────────────────────
+  // ── Compute request lifecycle stats ───────────────────────────────────────
 
-  // Requests I posted — grouped by lifecycle state
+  type ReqState = keyof typeof reqByState
   const reqByState = {
     open_no_offers: 0,
     open_with_offers: 0,
@@ -82,33 +160,36 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     expired_with_unaccepted_offers: 0,
     cancelled: 0,
   }
+  // Detail records per state
+  const reqRecords: Record<string, RequestRow[]> = {}
 
   let owed = 0
-  let toPay = 0
   let completedPaid = 0
 
   for (const r of myRequests) {
+    if (r.is_driver === true) continue // driver requests are earnings, not obligations
     const offers = r.request_offers ?? []
     const summary: OfferSummary = {
       pendingCount: offers.filter(o => o.status === 'pending' || o.status === 'countered').length,
       acceptedCount: offers.filter(o => o.status === 'accepted').length,
       totalCount: offers.length,
     }
-    const state = getRequestLifecycleState(r, summary)
+    const state = getRequestLifecycleState(r, summary) as ReqState
     reqByState[state] = (reqByState[state] ?? 0) + 1
+    if (!reqRecords[state]) reqRecords[state] = []
+    reqRecords[state].push(r)
 
-    // Financial: what I owe as requester
     for (const o of offers) {
       if (o.status !== 'accepted') continue
-      if (r.is_driver === true) continue // driver earns, not pays
-      const price = (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? r.budget) ?? 0
-      const total = price * (o.seats_requested ?? 1)
+      const total = offerPrice(o, r.budget)
       if (state === 'completed') completedPaid += total
       else if (state === 'accepted_upcoming' || state === 'accepted_past_due') owed += total
     }
   }
 
-  // Offers I made — grouped by lifecycle state
+  // ── Compute offer lifecycle stats ─────────────────────────────────────────
+
+  type OfferState = keyof typeof offerByState
   const offerByState = {
     pending_open: 0,
     pending_expired: 0,
@@ -119,6 +200,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     not_selected: 0,
     cancelled: 0,
   }
+  const offerRecords: Record<string, OfferRow[]> = {}
 
   let earned = 0
   let pendingEarnings = 0
@@ -126,17 +208,26 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   for (const o of myOffers) {
     const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
     if (!req) continue
-    if (req.is_driver === true) continue // passenger offers — not helper earnings
-    const state = getOfferLifecycleState(o.status, req)
+    if (req.is_driver === true) continue // passenger seat offers — not helper earnings
+    const state = getOfferLifecycleState(o.status, req) as OfferState
     offerByState[state] = (offerByState[state] ?? 0) + 1
+    if (!offerRecords[state]) offerRecords[state] = []
+    offerRecords[state].push(o)
 
-    const price = (o.final_agreed_price ?? o.requester_counter ?? o.counter_budget ?? req.budget) ?? 0
-    const total = price * (o.seats_requested ?? 1)
+    const total = offerPrice(o, req.budget)
     if (state === 'completed') earned += total
     else if (state === 'accepted_upcoming' || state === 'accepted_past_due') pendingEarnings += total
+    else if (state === 'pending_open') pendingEarnings += total  // include pending/countered in pipeline
   }
 
   const rangeLabel = getRangeLabel(range)
+  const rangeParam = `range=${range}`
+
+  // ── Section order driven by view param ───────────────────────────────────
+  const offersFirst = view === 'you-could-earn' || view === 'earned'
+  const requestsFirst = view === 'to-pay' || view === 'open-nearby'
+  const highlightOffers = offersFirst
+  const highlightRequests = requestsFirst
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8">
@@ -146,10 +237,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
           <h1 className="text-xl font-bold text-slate-900">Activity</h1>
           <p className="text-sm text-slate-500 mt-0.5">{rangeLabel}</p>
         </div>
-        <Link
-          href="/dashboard"
-          className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
-        >
+        <Link href="/dashboard" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
           ← Back to dashboard
         </Link>
       </div>
@@ -176,42 +264,191 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
       <section className="mb-8">
         <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3">Finances</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Earned" value={fmtDollars(earned)} sub="as helper" accent="emerald" testId="activity-earned" />
-          <StatCard label="In pipeline" value={fmtDollars(pendingEarnings)} sub="pending/accepted" accent="blue" testId="activity-pipeline" />
+          <StatCard label="Earned" value={fmtDollars(earned)} sub="as helper (done)" accent="emerald" testId="activity-earned" />
+          <StatCard label="In pipeline" value={fmtDollars(pendingEarnings)} sub="pending + active" accent="blue" testId="activity-pipeline" />
           <StatCard label="To pay" value={fmtDollars(owed)} sub="active accepted" accent="orange" testId="activity-to-pay" />
           <StatCard label="Paid out" value={fmtDollars(completedPaid)} sub="completed requests" accent="slate" testId="activity-paid" />
         </div>
+        <p className="mt-2 text-[10px] text-slate-400 text-right">Pay each other directly — Venmo, Zelle, or cash</p>
       </section>
 
-      {/* My requests breakdown */}
-      <section className="mb-8">
-        <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3">My Requests</h2>
-        <div data-testid="activity-requests-breakdown" className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-          <BreakdownRow label="Open — no offers yet" count={reqByState.open_no_offers} />
-          <BreakdownRow label="Open — offers pending" count={reqByState.open_with_offers} accent="amber" />
-          <BreakdownRow label="Accepted (upcoming)" count={reqByState.accepted_upcoming} accent="emerald" />
-          <BreakdownRow label="Accepted (past due)" count={reqByState.accepted_past_due} accent="amber" />
-          <BreakdownRow label="Completed" count={reqByState.completed} accent="emerald" />
-          <BreakdownRow label="Expired — no offers" count={reqByState.expired_no_offers} />
-          <BreakdownRow label="Expired — offers declined" count={reqByState.expired_with_unaccepted_offers} />
-          <BreakdownRow label="Cancelled" count={reqByState.cancelled} />
-        </div>
-      </section>
+      {/* Sections — order driven by view param */}
+      {offersFirst ? (
+        <>
+          <OffersSection offerByState={offerByState} offerRecords={offerRecords} rangeParam={rangeParam} filterState={filterState} highlight={highlightOffers} />
+          <div className="mt-8">
+            <RequestsSection reqByState={reqByState} reqRecords={reqRecords} rangeParam={rangeParam} filterState={filterState} highlight={highlightRequests} />
+          </div>
+        </>
+      ) : (
+        <>
+          <RequestsSection reqByState={reqByState} reqRecords={reqRecords} rangeParam={rangeParam} filterState={filterState} highlight={highlightRequests} />
+          <div className="mt-8">
+            <OffersSection offerByState={offerByState} offerRecords={offerRecords} rangeParam={rangeParam} filterState={filterState} highlight={highlightOffers} />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
-      {/* My offers breakdown */}
-      <section>
-        <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wider mb-3">My Offers (as helper)</h2>
-        <div data-testid="activity-offers-breakdown" className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
-          <BreakdownRow label="Pending — awaiting response" count={offerByState.pending_open} />
-          <BreakdownRow label="Expired — no helper accepted" count={offerByState.pending_expired} />
-          <BreakdownRow label="Accepted (upcoming)" count={offerByState.accepted_upcoming} accent="emerald" />
-          <BreakdownRow label="Accepted (past due)" count={offerByState.accepted_past_due} accent="amber" />
-          <BreakdownRow label="Completed" count={offerByState.completed} accent="emerald" />
-          <BreakdownRow label="Declined" count={offerByState.declined} />
-          <BreakdownRow label="Not selected" count={offerByState.not_selected} />
-          <BreakdownRow label="Cancelled" count={offerByState.cancelled} />
-        </div>
-      </section>
+// ─── Requests section ─────────────────────────────────────────────────────────
+
+function RequestsSection({ reqByState, reqRecords, rangeParam, filterState, highlight }: {
+  reqByState: Record<string, number>
+  reqRecords: Record<string, RequestRow[]>
+  rangeParam: string
+  filterState: string | null
+  highlight: boolean
+}) {
+  const rows: { state: string; label: string; accent?: 'emerald' | 'amber' }[] = [
+    { state: 'open_no_offers',                  label: 'Open — no offers yet' },
+    { state: 'open_with_offers',                label: 'Open — offers pending',           accent: 'amber' },
+    { state: 'accepted_upcoming',               label: 'Accepted (upcoming)',              accent: 'emerald' },
+    { state: 'accepted_past_due',               label: 'Accepted (past due)',              accent: 'amber' },
+    { state: 'completed',                       label: 'Completed',                        accent: 'emerald' },
+    { state: 'expired_no_offers',               label: 'Expired — no offers' },
+    { state: 'expired_with_unaccepted_offers',  label: 'Expired — offers declined' },
+    { state: 'cancelled',                       label: 'Cancelled' },
+  ]
+
+  const activeFilter = filterState && rows.some(r => r.state === filterState) ? filterState : null
+
+  return (
+    <section id="requests" data-testid="activity-requests-breakdown">
+      <h2 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${highlight ? 'text-blue-700' : 'text-slate-700'}`}>
+        My Requests
+      </h2>
+      <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+        {rows.map(({ state, label, accent }) => {
+          const count = reqByState[state] ?? 0
+          if (count === 0) return null
+          const isActive = activeFilter === state
+          return (
+            <div key={state}>
+              <Link
+                href={`/dashboard/activity?${rangeParam}&filter=${isActive ? '' : state}${isActive ? '' : `#requests`}`}
+                className={`flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors ${isActive ? 'bg-slate-50' : ''}`}
+              >
+                <span className={`text-sm ${isActive ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{label}</span>
+                <span className={`text-sm tabular-nums ${
+                  accent === 'emerald' ? 'text-emerald-600 font-semibold'
+                  : accent === 'amber' ? 'text-amber-600 font-semibold'
+                  : 'text-slate-700'
+                }`}>{count}</span>
+              </Link>
+              {isActive && reqRecords[state] && reqRecords[state].length > 0 && (
+                <div className="border-t border-slate-100 divide-y divide-slate-50">
+                  {reqRecords[state].map(r => <RequestDetailRow key={r.id} r={r} />)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {rows.every(({ state }) => (reqByState[state] ?? 0) === 0) && (
+          <div className="px-4 py-6 text-center text-sm text-slate-400">No requests in this period</div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ─── Offers section ───────────────────────────────────────────────────────────
+
+function OffersSection({ offerByState, offerRecords, rangeParam, filterState, highlight }: {
+  offerByState: Record<string, number>
+  offerRecords: Record<string, OfferRow[]>
+  rangeParam: string
+  filterState: string | null
+  highlight: boolean
+}) {
+  const rows: { state: string; label: string; accent?: 'emerald' | 'amber' }[] = [
+    { state: 'pending_open',      label: 'Pending — awaiting response' },
+    { state: 'pending_expired',   label: 'Expired — request closed' },
+    { state: 'accepted_upcoming', label: 'Accepted (upcoming)',         accent: 'emerald' },
+    { state: 'accepted_past_due', label: 'Accepted (past due)',         accent: 'amber' },
+    { state: 'completed',         label: 'Completed',                   accent: 'emerald' },
+    { state: 'declined',          label: 'Declined' },
+    { state: 'not_selected',      label: 'Not selected' },
+    { state: 'cancelled',         label: 'Cancelled' },
+  ]
+
+  const activeFilter = filterState && rows.some(r => r.state === filterState) ? filterState : null
+
+  return (
+    <section id="offers" data-testid="activity-offers-breakdown">
+      <h2 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${highlight ? 'text-blue-700' : 'text-slate-700'}`}>
+        My Offers (as helper)
+      </h2>
+      <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
+        {rows.map(({ state, label, accent }) => {
+          const count = offerByState[state] ?? 0
+          if (count === 0) return null
+          const isActive = activeFilter === state
+          return (
+            <div key={state}>
+              <Link
+                href={`/dashboard/activity?${rangeParam}&filter=${isActive ? '' : state}${isActive ? '' : `#offers`}`}
+                className={`flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors ${isActive ? 'bg-slate-50' : ''}`}
+              >
+                <span className={`text-sm ${isActive ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{label}</span>
+                <span className={`text-sm tabular-nums ${
+                  accent === 'emerald' ? 'text-emerald-600 font-semibold'
+                  : accent === 'amber' ? 'text-amber-600 font-semibold'
+                  : 'text-slate-700'
+                }`}>{count}</span>
+              </Link>
+              {isActive && offerRecords[state] && offerRecords[state].length > 0 && (
+                <div className="border-t border-slate-100 divide-y divide-slate-50">
+                  {offerRecords[state].map(o => <OfferDetailRow key={o.id} o={o} />)}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        {rows.every(({ state }) => (offerByState[state] ?? 0) === 0) && (
+          <div className="px-4 py-6 text-center text-sm text-slate-400">No offers made in this period</div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+// ─── Detail rows ──────────────────────────────────────────────────────────────
+
+function RequestDetailRow({ r }: { r: RequestRow }) {
+  const acceptedOffer = r.request_offers?.find(o => o.status === 'accepted')
+  const price = acceptedOffer
+    ? offerPrice(acceptedOffer, r.budget)
+    : r.budget ?? 0
+
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/60">
+      <div className="min-w-0 pr-3">
+        <p className="text-xs font-medium text-slate-800 truncate">{r.title}</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">{catLabel(r.category)}</p>
+      </div>
+      <span className="shrink-0 text-xs tabular-nums text-slate-600">
+        {price > 0 ? fmtDollars(price) : '—'}
+      </span>
+    </div>
+  )
+}
+
+function OfferDetailRow({ o }: { o: OfferRow }) {
+  const req = Array.isArray(o.requests) ? o.requests[0] : o.requests
+  if (!req) return null
+  const price = offerPrice(o, req.budget)
+
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/60">
+      <div className="min-w-0 pr-3">
+        <p className="text-xs font-medium text-slate-800 truncate">{req.title}</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">{catLabel(req.category)}</p>
+      </div>
+      <span className="shrink-0 text-xs tabular-nums text-slate-600">
+        {price > 0 ? fmtDollars(price) : '—'}
+      </span>
     </div>
   )
 }
@@ -239,59 +476,4 @@ function StatCard({ label, value, sub, accent, testId }: {
       <p className="text-[10px] text-slate-400 leading-tight">{sub}</p>
     </div>
   )
-}
-
-function BreakdownRow({ label, count, accent }: { label: string; count: number; accent?: 'emerald' | 'amber' }) {
-  if (count === 0) return null
-  const countColor = accent === 'emerald' ? 'text-emerald-600 font-semibold' : accent === 'amber' ? 'text-amber-600 font-semibold' : 'text-slate-700'
-  return (
-    <div className="flex items-center justify-between px-4 py-3">
-      <span className="text-sm text-slate-700">{label}</span>
-      <span className={`text-sm tabular-nums ${countColor}`}>{count}</span>
-    </div>
-  )
-}
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface ReqOffer {
-  status: string
-  counter_budget: number | null
-  requester_counter: number | null
-  final_agreed_price: number | null
-  seats_requested: number | null
-}
-
-interface RequestRow {
-  id: string
-  category: string
-  title: string
-  status: string
-  budget: number | null
-  is_driver: boolean | null
-  created_at: string
-  scheduled_time: string | null
-  flexible_time: boolean | null
-  request_offers: ReqOffer[] | null
-}
-
-interface OfferReqRef {
-  id: string
-  status: string
-  budget: number | null
-  is_driver: boolean | null
-  scheduled_time: string | null
-  flexible_time: boolean | null
-  created_at: string
-}
-
-interface OfferRow {
-  id: string
-  status: string
-  created_at: string
-  counter_budget: number | null
-  requester_counter: number | null
-  final_agreed_price: number | null
-  seats_requested: number | null
-  requests: OfferReqRef | OfferReqRef[] | null
 }

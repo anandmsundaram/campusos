@@ -100,8 +100,8 @@ test.describe('Date windows, PWA CTA, dashboard metrics, and activity page', () 
   test('dashboard metric cards link to activity page', async ({ driverPage }) => {
     await goToDashboard(driverPage)
 
-    // Check that at least one FinStat card links to /dashboard/activity
-    const activityLinks = driverPage.locator('a[href="/dashboard/activity"]')
+    // Cards now use ?view= params — match any href starting with /dashboard/activity
+    const activityLinks = driverPage.locator('a[href^="/dashboard/activity"]')
     const count = await activityLinks.count()
     expect(count).toBeGreaterThan(0)
   })

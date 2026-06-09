@@ -28,6 +28,49 @@ async function isAllowedEmail(email: string): Promise<boolean> {
   return !!data
 }
 
+type CampusCheckResult =
+  | { ok: true }
+  | { ok: false; reason: 'waitlist'; message: string }
+  | { ok: false; reason: 'disabled'; message: string }
+  | { ok: false; reason: 'unsupported'; message: string }
+
+async function checkCampusStatus(email: string): Promise<CampusCheckResult> {
+  const normalized = email.trim().toLowerCase()
+  // Whitelisted non-.edu users bypass campus check (internal testers)
+  if (!normalized.endsWith('.edu')) return { ok: true }
+
+  const domain = normalized.split('@')[1] ?? ''
+  const supabase = createClient()
+  const { data } = await supabase.rpc('get_campus_for_domain', { p_domain: domain })
+  const row = Array.isArray(data) ? data[0] : data
+
+  if (!row) {
+    return {
+      ok: false,
+      reason: 'unsupported',
+      message: "CampusOS isn't available at your school yet. We're expanding to more campuses soon — check back or contact us at campusosapp@gmail.com.",
+    }
+  }
+
+  if (row.campus_status === 'waitlist') {
+    return {
+      ok: false,
+      reason: 'waitlist',
+      message: "CampusOS isn't live at your campus yet. We're launching Texas campuses in phases — your school is on our list. Check back soon!",
+    }
+  }
+
+  if (row.campus_status === 'disabled') {
+    return {
+      ok: false,
+      reason: 'disabled',
+      message: 'CampusOS is not currently available at your campus. Contact campusosapp@gmail.com for more info.',
+    }
+  }
+
+  return { ok: true }
+}
+
 export default function SignupPage() {
   const router = useRouter()
   const [form, setForm] = useState({
@@ -59,6 +102,13 @@ export default function SignupPage() {
 
     if (!(await isAllowedEmail(form.email))) {
       setError('Use a .edu email, or ask us to pre-approve this email.')
+      setLoading(false)
+      return
+    }
+
+    const campusCheck = await checkCampusStatus(form.email)
+    if (!campusCheck.ok) {
+      setError(campusCheck.message)
       setLoading(false)
       return
     }
@@ -235,6 +285,11 @@ export default function SignupPage() {
             {error && (
               <p data-testid="signup-error" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600">
                 {error}
+              </p>
+            )}
+            {error && (error.includes("isn't live") || error.includes("isn't available") || error.includes("not currently")) && (
+              <p data-testid="campus-waitlist-msg" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-700">
+                Questions? Email us at campusosapp@gmail.com
               </p>
             )}
 
