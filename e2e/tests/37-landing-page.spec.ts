@@ -145,4 +145,12 @@ test.describe('Landing page', () => {
     await driverPage.goto('/')
     await expect(driverPage).toHaveURL(/\/dashboard/, { timeout: 10_000 })
   })
+
+  test('sign out redirects to landing page /', async ({ driverPage }) => {
+    await driverPage.goto('/dashboard')
+    await expect(driverPage).toHaveURL(/\/dashboard/, { timeout: 10_000 })
+    // Click desktop logout button
+    await driverPage.locator('[data-testid="logout-btn"]').click()
+    await expect(driverPage).toHaveURL(/\/$/, { timeout: 10_000 })
+  })
 })

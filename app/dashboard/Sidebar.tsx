@@ -377,6 +377,7 @@ export default function Sidebar({ userName, userEmail, userId, isAdmin, logout }
           <form action={logout} className="mt-1">
             <button
               type="submit"
+              data-testid="logout-btn"
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-slate-500 hover:text-red-400 hover:bg-red-500/[0.08] transition-colors"
             >
               <LogoutIcon />

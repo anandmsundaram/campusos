@@ -10,7 +10,7 @@ const HOW_IT_WORKS = [
     n: '1',
     emoji: '✍️',
     title: 'Post what you need',
-    body: 'Type your request in plain English. Rides, moving help, errands, tutoring, borrowing — anything campus-practical.',
+    body: 'Type your request in plain English. Rides, moving help, food runs, errands — anything practical on campus.',
   },
   {
     n: '2',
@@ -34,11 +34,11 @@ const HOW_IT_WORKS = [
 
 const CATEGORIES = [
   { emoji: '🚗', label: 'Rides', body: 'Airport runs, downtown trips, late-night campus pickups.' },
-  { emoji: '🛒', label: 'Errands & pickups', body: 'Groceries, food orders, package pickups, quick store runs.' },
-  { emoji: '📦', label: 'Moving help', body: 'Dorm moves, furniture hauls, carrying boxes across campus.' },
-  { emoji: '📚', label: 'Peer tutoring', body: 'Homework help, exam prep, concept walkthroughs.' },
-  { emoji: '🔌', label: 'Borrow stuff', body: 'Calculators, chargers, textbooks, tools — short-term loans.' },
-  { emoji: '🤝', label: 'Quick favors', body: "Anything practical that doesn't fit a box. Just ask." },
+  { emoji: '🍕', label: 'Food & grocery runs', body: 'Pick up a food order, grab groceries, or swing by a store.' },
+  { emoji: '📦', label: 'Moving & carrying', body: 'Dorm moves, furniture hauls, carrying boxes across campus.' },
+  { emoji: '📬', label: 'Package & errand runs', body: 'Grab a package, drop something off, handle a quick errand.' },
+  { emoji: '💪', label: 'Labor & odd jobs', body: 'Heavy lifting, assembly help, or anything that takes an extra pair of hands.' },
+  { emoji: '🤝', label: 'Quick paid favors', body: "Anything practical on campus. Post it — someone nearby can help." },
 ]
 
 const TRUST = [

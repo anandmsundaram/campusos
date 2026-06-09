@@ -97,31 +97,24 @@ export default function SignupPage() {
   }
 
   const inputClass =
-    'w-full rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-blue-500/60 focus:bg-white/[0.06] focus:ring-2 focus:ring-blue-500/10'
+    'w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100'
 
-  const labelClass = 'text-xs font-medium text-slate-400 uppercase tracking-wider'
+  const labelClass = 'text-xs font-semibold text-slate-600 uppercase tracking-wider'
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#070d1f] px-4 py-12">
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            'radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37,99,235,0.15), transparent)',
-        }}
-      />
-
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-blue-50/70 via-slate-50 to-white px-4 py-12">
       <div className="relative w-full max-w-sm">
+        {/* Logo */}
         <div className="mb-8 text-center">
-          <span className="inline-flex items-center gap-2 text-2xl font-semibold tracking-tight text-white">
-            <span className="text-blue-400">⬡</span> CampusOS
-          </span>
-          <p className="mt-2 text-sm text-slate-400">
-            Create your campus account
+          <Link href="/" className="inline-flex items-center gap-2 text-xl font-bold tracking-tight text-slate-900 hover:opacity-80 transition-opacity">
+            <span className="text-blue-600">⬡</span> CampusOS
+          </Link>
+          <p className="mt-2 text-sm text-slate-500">
+            Join your campus — get help or earn by helping
           </p>
         </div>
 
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] p-8 shadow-2xl shadow-black/40 backdrop-blur-sm">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-md shadow-slate-200/60">
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="name" className={labelClass}>Full Name</label>
@@ -140,7 +133,7 @@ export default function SignupPage() {
             <div className="flex flex-col gap-1.5">
               <label htmlFor="email" className={labelClass}>
                 University Email
-                <span className="ml-1.5 text-blue-400/70 normal-case font-normal tracking-normal">.edu required</span>
+                <span className="ml-1.5 text-blue-500/80 normal-case font-normal tracking-normal">.edu required</span>
               </label>
               <input
                 id="email"
@@ -160,11 +153,11 @@ export default function SignupPage() {
                 placeholder="you@university.edu"
                 className={[
                   inputClass,
-                  eduError ? 'border-red-500/50 focus:border-red-500/60 focus:ring-red-500/10' : '',
+                  eduError ? 'border-red-300 focus:border-red-400 focus:ring-red-100' : '',
                 ].join(' ')}
               />
               {eduError && (
-                <p data-testid="email-inline-error" className="text-xs text-red-400">Must be a .edu address or pre-approved email</p>
+                <p data-testid="email-inline-error" className="text-xs text-red-500">Must be a .edu address or pre-approved email</p>
               )}
             </div>
 
@@ -187,7 +180,7 @@ export default function SignupPage() {
                     { met: pwdHasLength, text: 'At least 10 characters' },
                     { met: pwdHasSpecial, text: 'At least one special character (!@#$…)' },
                   ].map(({ met, text }) => (
-                    <li key={text} className={`flex items-center gap-1.5 text-[11px] transition-colors ${met ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    <li key={text} className={`flex items-center gap-1.5 text-[11px] transition-colors ${met ? 'text-emerald-600' : 'text-slate-400'}`}>
                       <span>{met ? '✓' : '○'}</span>{text}
                     </li>
                   ))}
@@ -231,16 +224,16 @@ export default function SignupPage() {
                   onChange={set('year')}
                   className={[inputClass, 'cursor-pointer appearance-none'].join(' ')}
                 >
-                  <option value="" disabled className="bg-[#0d1a2d]">Select…</option>
+                  <option value="" disabled>Select…</option>
                   {YEARS.map((y) => (
-                    <option key={y} value={y} className="bg-[#0d1a2d]">{y}</option>
+                    <option key={y} value={y}>{y}</option>
                   ))}
                 </select>
               </div>
             </div>
 
             {error && (
-              <p data-testid="signup-error" className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">
+              <p data-testid="signup-error" className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-600">
                 {error}
               </p>
             )}
@@ -249,18 +242,18 @@ export default function SignupPage() {
               data-testid="signup-submit-btn"
               type="submit"
               disabled={loading}
-              className="mt-1 w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-all hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-1 w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Creating account…' : 'Create account'}
             </button>
 
-            <p className="text-center text-[11px] text-slate-600 leading-relaxed">
+            <p className="text-center text-[11px] text-slate-400 leading-relaxed">
               By creating an account you agree to our{' '}
-              <a href="/terms" target="_blank" rel="noopener" className="text-slate-500 underline underline-offset-2 hover:text-slate-300 transition-colors">
+              <a href="/terms" target="_blank" rel="noopener" className="text-slate-500 underline underline-offset-2 hover:text-slate-800 transition-colors">
                 Terms of Service
               </a>{' '}
               and{' '}
-              <a href="/privacy" target="_blank" rel="noopener" className="text-slate-500 underline underline-offset-2 hover:text-slate-300 transition-colors">
+              <a href="/privacy" target="_blank" rel="noopener" className="text-slate-500 underline underline-offset-2 hover:text-slate-800 transition-colors">
                 Privacy Policy
               </a>.
             </p>
@@ -269,9 +262,13 @@ export default function SignupPage() {
 
         <p className="mt-6 text-center text-sm text-slate-500">
           Already have an account?{' '}
-          <Link href="/login" className="text-blue-400 hover:text-blue-300 transition-colors font-medium">
+          <Link href="/login" className="text-blue-600 hover:text-blue-500 transition-colors font-semibold">
             Sign in
           </Link>
+        </p>
+
+        <p className="mt-3 text-center text-xs text-slate-400">
+          <Link href="/" className="hover:text-slate-600 transition-colors">← Back to CampusOS</Link>
         </p>
       </div>
     </div>
