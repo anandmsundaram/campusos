@@ -17,6 +17,11 @@ import {
   getCounterLabel,
   getStatusLabel,
 } from '@/lib/offerText'
+import {
+  isRequestExpired,
+  isOfferEffectivelyExpired,
+  validateOfferAmount,
+} from '@/lib/marketplaceLifecycle'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -94,6 +99,8 @@ interface RequestInfo {
   available_seats: number | null
   seats_filled: number | null
   structured_data: Record<string, unknown> | null
+  origin_city?: string | null
+  destination_city?: string | null
 }
 
 interface ProfileInfo {
@@ -177,6 +184,7 @@ const OFFER_STATUS_BADGE: Record<string, string> = {
   countered: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
   accepted: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
   rejected: 'text-slate-400 bg-white/[0.03] border-white/10',
+  expired: 'text-slate-500 bg-slate-500/[0.05] border-slate-300/40',
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -403,6 +411,9 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
     if (!offerTarget || submitting) return
     setSubmitError(null)
     setSubmitting(true)
+
+    const amtErr = validateOfferAmount(counterBudget)
+    if (amtErr) { setSubmitError(amtErr); setSubmitting(false); return }
 
     const parsedBudget = counterBudget !== '' ? parseFloat(counterBudget) : null
     const supabase = createClient()
@@ -1639,6 +1650,8 @@ function InlineOfferRow({
   }
 
   async function submitCounter() {
+    const amtErr = validateOfferAmount(counterAmt)
+    if (amtErr) { setRowError(amtErr); return }
     setActing(true)
     setRowError(null)
     const supabase = createClient()
@@ -1889,7 +1902,11 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
         const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
         const seats = offer.seats_requested ?? 1
         const offerSubflow = subflowFromCategory(req.category, req.structured_data?.errand_type as string | null)
-        const statusLabel = getStatusLabel(offer.status, offerSubflow, { agreedPrice, seats })
+        const isEffExpired = isOfferEffectivelyExpired(offer.status, req)
+        const displayStatusKey = isEffExpired ? 'expired' : offer.status
+        const statusLabel = isEffExpired
+          ? 'Expired'
+          : getStatusLabel(offer.status, offerSubflow, { agreedPrice, seats })
 
         return (
           <div
@@ -1898,7 +1915,9 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
             data-offer-id={offer.id}
             data-offer-status={offer.status}
             className={`relative overflow-hidden rounded-xl border bg-white transition-all ${
-              offer.status === 'accepted'
+              isEffExpired
+                ? 'border-slate-200 opacity-50'
+                : offer.status === 'accepted'
                 ? 'border-emerald-500/20'
                 : offer.status === 'rejected'
                 ? 'border-slate-200 opacity-60'
@@ -1913,7 +1932,10 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
               <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
                 <Badge text={CATEGORY_LABELS[req.category] ?? req.category} color={CATEGORY_BADGE[req.category]} />
                 <Badge text={req.urgency} color={URGENCY_BADGE[req.urgency]} capitalize />
-                <span className={`ml-auto rounded-full border px-2.5 py-0.5 text-xs font-semibold ${OFFER_STATUS_BADGE[offer.status]}`}>
+                <span
+                  data-testid="my-offer-status-badge"
+                  className={`ml-auto rounded-full border px-2.5 py-0.5 text-xs font-semibold ${OFFER_STATUS_BADGE[displayStatusKey] ?? OFFER_STATUS_BADGE.rejected}`}
+                >
                   {statusLabel}
                 </span>
               </div>
@@ -1921,7 +1943,17 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
               <p className="text-[15px] font-semibold text-slate-900 leading-snug mb-3">{req.title}</p>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-3">
-                {req.location && <span className="flex items-center gap-1.5"><span>📍</span>{req.location}</span>}
+                {/* Ride route — prefer origin/destination over free-text location */}
+                {req.category === 'rides' && req.is_driver && req.origin_city && req.destination_city ? (
+                  <span className="flex items-center gap-1.5">
+                    <span>🚗</span>
+                    <span className="font-medium text-slate-700">{req.origin_city}</span>
+                    <span className="text-slate-400">→</span>
+                    <span className="font-medium text-slate-700">{req.destination_city}</span>
+                  </span>
+                ) : req.location ? (
+                  <span className="flex items-center gap-1.5"><span>📍</span>{req.location}</span>
+                ) : null}
                 {req.scheduled_time && (
                   <span className="flex items-center gap-1.5">
                     <span>🕐</span>
@@ -1930,6 +1962,15 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                 )}
                 {req.budget != null && <span className="flex items-center gap-1.5"><span>💵</span>${req.budget}</span>}
               </div>
+
+              {/* Next-action hint */}
+              {isEffExpired ? (
+                <p className="text-[11px] text-slate-500 mb-3">Request expired — no action needed</p>
+              ) : offer.status === 'pending' ? (
+                <p className="text-[11px] text-slate-500 mb-3">Waiting for requester to respond</p>
+              ) : offer.status === 'accepted' ? (
+                <p className="text-[11px] text-emerald-500 mb-3">Accepted — coordinate directly via Messages</p>
+              ) : null}
 
               {/* Your original offer */}
               {(offer.message || offer.counter_budget != null) && (
@@ -1956,7 +1997,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
               )}
 
               {/* Accept / Decline counter (helper's one-time response) */}
-              {isCountered && (
+              {isCountered && !isEffExpired && (
                 <div className="mb-3 flex gap-2">
                   <button
                     data-testid="accept-counter-btn"
@@ -2245,6 +2286,7 @@ function OfferRowCard({
 }) {
   const [showCounter, setShowCounter] = useState(false)
   const [counterAmt, setCounterAmt] = useState('')
+  const [counterError, setCounterError] = useState<string | null>(null)
   const profile = normalizeProfile(offer.profiles)
   const isActing = acting === offer.id
   const isPending = offer.status === 'pending'
@@ -2356,7 +2398,13 @@ function OfferRowCard({
           <button
             data-testid="modal-counter-send"
             type="button"
-            onClick={() => { onCounter?.(offer.id, counterAmt !== '' ? parseFloat(counterAmt) : null); setShowCounter(false) }}
+            onClick={() => {
+              const err = validateOfferAmount(counterAmt)
+              if (err) { setCounterError(err); return }
+              setCounterError(null)
+              onCounter?.(offer.id, counterAmt !== '' ? parseFloat(counterAmt) : null)
+              setShowCounter(false)
+            }}
             disabled={isActing}
             className="rounded-lg bg-orange-600/80 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-orange-500 disabled:opacity-40"
           >
@@ -2364,7 +2412,7 @@ function OfferRowCard({
           </button>
           <button
             type="button"
-            onClick={() => { setShowCounter(false); setCounterAmt('') }}
+            onClick={() => { setShowCounter(false); setCounterAmt(''); setCounterError(null) }}
             disabled={isActing}
             className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300 disabled:opacity-40"
           >
@@ -2372,6 +2420,7 @@ function OfferRowCard({
           </button>
         </div>
       )}
+      {counterError && <p className="mt-1.5 text-[11px] text-red-400">{counterError}</p>}
     </div>
   )
 }

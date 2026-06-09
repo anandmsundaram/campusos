@@ -138,6 +138,8 @@ export interface SeedRequestOptions {
   budget?: number | null
   location?: string
   structuredData?: Record<string, unknown>
+  /** Seconds from now (negative = in the past). Omit to leave scheduled_time null. */
+  scheduledOffsetSeconds?: number
 }
 
 /**
@@ -154,7 +156,12 @@ export async function seedRequest(opts: SeedRequestOptions): Promise<string> {
     budget = null,
     location = null,
     structuredData,
+    scheduledOffsetSeconds,
   } = opts
+
+  const scheduledTime = scheduledOffsetSeconds != null
+    ? new Date(Date.now() + scheduledOffsetSeconds * 1000).toISOString()
+    : null
 
   const { data, error } = await adminClient()
     .from('requests')
@@ -167,6 +174,7 @@ export async function seedRequest(opts: SeedRequestOptions): Promise<string> {
       budget,
       location,
       structured_data: structuredData ?? null,
+      scheduled_time: scheduledTime,
     })
     .select('id')
     .single()

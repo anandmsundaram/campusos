@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import RequestInput from './RequestInput'
 import RequestFeed, { type FeedRequest, type MyOffer, type FeedRequestWithOffers } from './RequestFeed'
+import { isRequestExpired } from '@/lib/marketplaceLifecycle'
 import OnboardingCard from './OnboardingCard'
 import ActivityPulse from './ActivityPulse'
 import ContextualBanner from './ContextualBanner'
@@ -155,6 +156,15 @@ export default async function DashboardPage() {
     feedData = (fallback ?? []) as unknown[]
   }
 
+  // Remove expired requests from "All Open" feed.
+  // Rides auto-complete to 'completed' on page load; non-ride requests with a past
+  // scheduled_time or no scheduled_time for >72 h are filtered here so the feed
+  // stays fresh without requiring a schema migration.
+  const feedDataFiltered = feedData.filter(r => {
+    const req = r as { scheduled_time: string | null; created_at: string }
+    return !isRequestExpired(req)
+  })
+
   // ── My requests ────────────────────────────────────────────────────────────
   const { data: myRequestsRaw, error: myReqError } = await supabase
     .from('requests')
@@ -190,7 +200,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase
       .from('request_offers')
-      .select('id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, structured_data, profiles!requester_id(name, rating))')
+      .select('id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, structured_data, origin_city, destination_city, profiles!requester_id(name, rating))')
       .eq('helper_id', user!.id)
       .order('created_at', { ascending: false }),
     // Next ride as driver — only migration-005 columns to avoid schema cache risk
@@ -390,7 +400,7 @@ export default async function DashboardPage() {
         {/* Activity pulse + contextual banner */}
         <div className="mt-4">
           <ActivityPulse
-            openCount={feedData.length}
+            openCount={feedDataFiltered.length}
             completedThisWeek={completedThisWeek ?? 0}
             helpedToday={helpedToday ?? 0}
           />
@@ -400,7 +410,7 @@ export default async function DashboardPage() {
         {/* Request feed */}
         <div className="mt-2">
           <RequestFeed
-            requests={feedData as unknown as FeedRequest[]}
+            requests={feedDataFiltered as unknown as FeedRequest[]}
             myRequests={myReqData as unknown as FeedRequestWithOffers[]}
             myOffers={(myOffersRaw ?? []) as unknown as MyOffer[]}
             currentUserId={user!.id}
