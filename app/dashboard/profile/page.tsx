@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 interface Profile {
@@ -39,6 +40,7 @@ function timeAgo(iso: string): string {
 }
 
 export default function ProfilePage() {
+  const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [reviews, setReviews] = useState<Review[]>([])
   const [requestCount, setRequestCount] = useState(0)
@@ -52,6 +54,10 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+
+  // ── Account deletion state ──
+  const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm' | 'working'>('idle')
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -108,6 +114,25 @@ export default function ProfilePage() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  async function handleDeleteAccount() {
+    setDeleteError(null)
+    setDeleteStep('working')
+    try {
+      const res = await fetch('/api/account/delete', { method: 'POST' })
+      const body = await res.json()
+      if (!res.ok) {
+        setDeleteError(body.error ?? 'Something went wrong. Please try again.')
+        setDeleteStep('confirm')
+        return
+      }
+      // Deletion succeeded — navigate to landing page.
+      router.push('/')
+    } catch {
+      setDeleteError('Network error. Please try again.')
+      setDeleteStep('confirm')
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -326,6 +351,66 @@ export default function ProfilePage() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+      </div>
+      {/* ── Danger Zone ── */}
+      <div data-testid="danger-zone" className="rounded-2xl border border-red-500/20 bg-red-500/[0.03] px-6 py-6">
+        <h2 className="text-sm font-semibold text-red-400 mb-1">Danger Zone</h2>
+        <p className="text-xs text-slate-500 leading-relaxed mb-5">
+          Deleting your account permanently removes your profile, requests, offers, and messages.
+          This cannot be undone.
+        </p>
+
+        {deleteStep === 'idle' && (
+          <button
+            type="button"
+            data-testid="delete-account-btn"
+            onClick={() => { setDeleteStep('confirm'); setDeleteError(null) }}
+            className="rounded-lg border border-red-500/30 px-4 py-2 text-xs font-semibold text-red-400 transition-colors hover:bg-red-500/[0.08] hover:border-red-500/50"
+          >
+            Delete my account
+          </button>
+        )}
+
+        {deleteStep === 'confirm' && (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-red-500/20 bg-red-500/[0.06] px-4 py-3">
+              <p className="text-xs font-semibold text-red-300 mb-1">Are you sure?</p>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Your CampusOS account, profile, and all associated data will be permanently deleted.
+                You will not be able to use this account after deletion.
+              </p>
+            </div>
+
+            {deleteError && (
+              <p className="text-xs text-red-400 leading-relaxed">{deleteError}</p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                data-testid="delete-account-confirm-btn"
+                onClick={handleDeleteAccount}
+                className="rounded-lg bg-red-700/80 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+              >
+                Yes, delete my account
+              </button>
+              <button
+                type="button"
+                data-testid="delete-account-cancel-btn"
+                onClick={() => { setDeleteStep('idle'); setDeleteError(null) }}
+                className="rounded-lg border border-[#1e2d4a] px-4 py-2 text-xs font-medium text-slate-400 transition-colors hover:border-white/20 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {deleteStep === 'working' && (
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <Spinner /> Deleting account…
           </div>
         )}
       </div>

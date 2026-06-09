@@ -187,9 +187,8 @@ export default function TermsPage() {
 
       <div className="mt-12 rounded-xl border border-[#1e2d4a] bg-[#0d1526] px-5 py-4">
         <p className="text-xs text-slate-500 leading-relaxed">
-          <strong className="text-slate-400">Note:</strong> These terms are designed for a private beta
-          and have not been reviewed by a lawyer. If you are a legal professional and spot something
-          important, we would appreciate a heads-up at campusosapp@gmail.com.
+          Questions or feedback about these terms? Email{' '}
+          <a href="mailto:campusosapp@gmail.com" className="text-blue-400 hover:underline">campusosapp@gmail.com</a>.
         </p>
       </div>
     </>

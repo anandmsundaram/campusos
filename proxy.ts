@@ -39,6 +39,7 @@ export async function proxy(request: NextRequest) {
     pathname === '/privacy' ||
     pathname === '/guidelines' ||
     pathname === '/safety' ||
+    pathname === '/support' ||
     pathname.startsWith('/api/auth')
 
   if (!user && !isPublicPath) {

@@ -15,6 +15,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
             <Link href="/privacy"  className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Privacy</Link>
             <Link href="/guidelines" className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Guidelines</Link>
             <Link href="/safety"   className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Safety</Link>
+            <Link href="/support"  className="text-xs text-slate-500 hover:text-slate-300 transition-colors">Support</Link>
           </div>
         </div>
       </header>
@@ -36,6 +37,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
             <Link href="/privacy"    className="hover:text-slate-400 transition-colors">Privacy Policy</Link>
             <Link href="/guidelines" className="hover:text-slate-400 transition-colors">Community Guidelines</Link>
             <Link href="/safety"     className="hover:text-slate-400 transition-colors">Safety</Link>
+            <Link href="/support"    className="hover:text-slate-400 transition-colors">Support</Link>
             <a href="mailto:campusosapp@gmail.com" className="hover:text-slate-400 transition-colors">Contact</a>
           </div>
         </div>

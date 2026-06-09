@@ -403,6 +403,7 @@ export default async function LandingPage() {
             <Link href="/privacy"    className="hover:text-slate-700 transition-colors">Privacy</Link>
             <Link href="/guidelines" className="hover:text-slate-700 transition-colors">Guidelines</Link>
             <Link href="/safety"     className="hover:text-slate-700 transition-colors">Safety</Link>
+            <Link href="/support"    className="hover:text-slate-700 transition-colors">Support</Link>
             <a href="mailto:campusosapp@gmail.com" className="hover:text-slate-700 transition-colors">Contact</a>
           </div>
         </div>
