@@ -200,7 +200,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     supabase
       .from('request_offers')
-      .select('id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, structured_data, origin_city, destination_city, profiles!requester_id(name, rating))')
+      .select('id, message, counter_budget, requester_counter, final_agreed_price, seats_requested, status, confirmed_completion, created_at, requests(id, title, category, urgency, status, budget, location, scheduled_time, created_at, requester_id, is_driver, available_seats, seats_filled, structured_data, origin_city, destination_city, flexible_time, description, pickup_location, dropoff_location, profiles!requester_id(name, rating))')
       .eq('helper_id', user!.id)
       .order('created_at', { ascending: false }),
     // Next ride as driver — only migration-005 columns to avoid schema cache risk

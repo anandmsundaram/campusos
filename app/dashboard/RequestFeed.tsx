@@ -22,6 +22,14 @@ import {
   isOfferEffectivelyExpired,
   validateOfferAmount,
 } from '@/lib/marketplaceLifecycle'
+import {
+  formatWhere,
+  formatWhen,
+  formatNote,
+  formatNextAction,
+  hasExpectedLocation,
+  nextActionColor,
+} from '@/lib/cardViewModel'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +109,10 @@ interface RequestInfo {
   structured_data: Record<string, unknown> | null
   origin_city?: string | null
   destination_city?: string | null
+  flexible_time?: boolean | null
+  description?: string | null
+  pickup_location?: Record<string, unknown> | null
+  dropoff_location?: Record<string, unknown> | null
 }
 
 interface ProfileInfo {
@@ -152,7 +164,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   peer_help: 'Peer Help',
   errands: 'Errands',
   borrow: 'Borrow',
-  meal_meetup: 'Meal & Social',
 }
 
 const CATEGORY_BADGE: Record<string, string> = {
@@ -161,7 +172,6 @@ const CATEGORY_BADGE: Record<string, string> = {
   peer_help: 'text-green-400 bg-green-500/10 border-green-500/20',
   errands: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
   borrow: 'text-pink-400 bg-pink-500/10 border-pink-500/20',
-  meal_meetup: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
 }
 
 const CATEGORY_ACCENT: Record<string, string> = {
@@ -170,7 +180,6 @@ const CATEGORY_ACCENT: Record<string, string> = {
   peer_help: 'bg-green-500',
   errands: 'bg-purple-500',
   borrow: 'bg-pink-500',
-  meal_meetup: 'bg-rose-500',
 }
 
 const URGENCY_BADGE: Record<string, string> = {
@@ -1940,37 +1949,61 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                 </span>
               </div>
 
-              <p className="text-[15px] font-semibold text-slate-900 leading-snug mb-3">{req.title}</p>
+              <p className="text-[15px] font-semibold text-slate-900 leading-snug mb-2">{req.title}</p>
+
+              {/* Note / description */}
+              {(() => {
+                const note = formatNote(req)
+                return note ? (
+                  <p className="text-[11px] text-slate-500 italic leading-relaxed mb-2 line-clamp-2">&ldquo;{note}&rdquo;</p>
+                ) : null
+              })()}
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 mb-3">
-                {/* Ride route — prefer origin/destination over free-text location */}
-                {req.category === 'rides' && req.is_driver && req.origin_city && req.destination_city ? (
+                {/* Where */}
+                {(() => {
+                  const where = formatWhere(req)
+                  if (where) {
+                    const isRideRoute = req.category === 'rides' && req.origin_city && req.destination_city
+                    return isRideRoute ? (
+                      <span className="flex items-center gap-1.5">
+                        <span>🚗</span>
+                        <span className="font-medium text-slate-700">{req.origin_city}</span>
+                        <span className="text-slate-400">→</span>
+                        <span className="font-medium text-slate-700">{req.destination_city}</span>
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5">
+                        <span>{req.category === 'moving' ? '📦' : '📍'}</span>
+                        <span>{where}</span>
+                      </span>
+                    )
+                  }
+                  return hasExpectedLocation(req.category) ? (
+                    <span className="flex items-center gap-1.5 italic text-slate-400"><span>📍</span>Location not provided</span>
+                  ) : null
+                })()}
+                {/* When needed */}
+                {(() => {
+                  const when = formatWhen(req)
+                  return when ? (
+                    <span className="flex items-center gap-1.5"><span>🕐</span>{when}</span>
+                  ) : null
+                })()}
+                {/* Budget */}
+                {req.budget != null && (
                   <span className="flex items-center gap-1.5">
-                    <span>🚗</span>
-                    <span className="font-medium text-slate-700">{req.origin_city}</span>
-                    <span className="text-slate-400">→</span>
-                    <span className="font-medium text-slate-700">{req.destination_city}</span>
-                  </span>
-                ) : req.location ? (
-                  <span className="flex items-center gap-1.5"><span>📍</span>{req.location}</span>
-                ) : null}
-                {req.scheduled_time && (
-                  <span className="flex items-center gap-1.5">
-                    <span>🕐</span>
-                    {new Date(req.scheduled_time).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                    <span>💵</span>${req.budget}{req.is_driver ? ' / seat' : ''}
                   </span>
                 )}
-                {req.budget != null && <span className="flex items-center gap-1.5"><span>💵</span>${req.budget}</span>}
               </div>
 
               {/* Next-action hint */}
-              {isEffExpired ? (
-                <p className="text-[11px] text-slate-500 mb-3">Request expired — no action needed</p>
-              ) : offer.status === 'pending' ? (
-                <p className="text-[11px] text-slate-500 mb-3">Waiting for requester to respond</p>
-              ) : offer.status === 'accepted' ? (
-                <p className="text-[11px] text-emerald-500 mb-3">Accepted — coordinate directly via Messages</p>
-              ) : null}
+              {(() => {
+                const action = formatNextAction(offer.status, isEffExpired, req.status)
+                if (action.variant === 'open') return null
+                return <p className={`text-[11px] ${nextActionColor(action.variant)} mb-3`}>{action.label}</p>
+              })()}
 
               {/* Your original offer */}
               {(offer.message || offer.counter_budget != null) && (
