@@ -1183,6 +1183,18 @@ function RequestCard({
                 </span>
               )
             }
+            if (isOwn && acceptedOffers && acceptedOffers.length > 0) {
+              const ao = acceptedOffers[0]
+              const agreedAmt = ao.final_agreed_price ?? ao.requester_counter ?? ao.counter_budget
+              if (agreedAmt != null) {
+                return (
+                  <span data-testid="card-final-price" className="flex items-center gap-1.5 text-emerald-400">
+                    <span className="text-[11px]">💰</span>
+                    <span className="font-medium">Agreed: ${agreedAmt}</span>
+                  </span>
+                )
+              }
+            }
             if (moneySd?.payment_summary) {
               return (
                 <span data-testid="card-payment-meta" className="flex items-center gap-1.5">
@@ -1366,20 +1378,30 @@ function RequestCard({
               })()}
 
               {/* Payment row */}
-              {(!!(req.structured_data as Record<string, unknown> | null)?.payment_summary || req.budget != null) && (
-                <div data-testid="request-card-payment" className="flex items-start gap-2">
-                  <span className="text-[11px] mt-0.5 flex-shrink-0">💳</span>
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">Payment</p>
-                    <p className="text-xs text-slate-700">
-                      {(req.structured_data as Record<string, unknown> | null)?.payment_summary
-                        ? String((req.structured_data as Record<string, unknown>).payment_summary)
-                        : `$${req.budget}${isRide && req.is_driver ? ' / seat' : ''}`
-                      }
-                    </p>
+              {(() => {
+                const moneySdDetail = req.structured_data as Record<string, unknown> | null
+                const detailAccepted = isOwn && acceptedOffers && acceptedOffers.length > 0 ? acceptedOffers[0] : null
+                const detailAgreed = detailAccepted
+                  ? (detailAccepted.final_agreed_price ?? detailAccepted.requester_counter ?? detailAccepted.counter_budget)
+                  : null
+                if (detailAgreed == null && !moneySdDetail?.payment_summary && req.budget == null) return null
+                return (
+                  <div data-testid="request-card-payment" className="flex items-start gap-2">
+                    <span className="text-[11px] mt-0.5 flex-shrink-0">💳</span>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-slate-600 font-semibold mb-0.5">Payment</p>
+                      <p className="text-xs text-slate-700">
+                        {detailAgreed != null
+                          ? `$${detailAgreed} agreed`
+                          : moneySdDetail?.payment_summary
+                          ? String(moneySdDetail.payment_summary)
+                          : `$${req.budget}${isRide && req.is_driver ? ' / seat' : ''}`
+                        }
+                      </p>
+                    </div>
                   </div>
-                </div>
-              )}
+                )
+              })()}
 
               {/* Location row (non-ride) */}
               {!isRide && (!!(req.pickup_location?.place_name) || !!(req.dropoff_location?.place_name)) && (

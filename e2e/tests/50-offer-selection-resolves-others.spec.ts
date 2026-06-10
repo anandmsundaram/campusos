@@ -174,6 +174,28 @@ test.describe('Accepted offer amount priority rule', () => {
     expect(state).toBe('not_selected')
   })
 
+  // Card meta + details panel display logic mirrors RequestFeed.tsx priority
+  test('card display: accepted offer amount overrides structured_data.payment_summary', () => {
+    const acceptedOffers = [
+      { status: 'accepted' as const, final_agreed_price: 50, requester_counter: 10, counter_budget: 20 },
+    ]
+    const paymentSummary = '💰 You\'ll pay $10'  // baked-in at request creation
+    const ao = acceptedOffers[0]
+    const displayAmount = ao.final_agreed_price ?? ao.requester_counter ?? ao.counter_budget
+    // Display logic: if accepted offer exists, use its amount — never fall through to payment_summary
+    const display = displayAmount != null ? `$${displayAmount} agreed` : paymentSummary
+    expect(display).toBe('$50 agreed')
+  })
+
+  test('card display: open request with no accepted offer still uses payment_summary', () => {
+    const acceptedOffers: Array<{ status: string; final_agreed_price: number | null; requester_counter: number | null; counter_budget: number | null }> = []
+    const paymentSummary = '💰 You\'ll pay $10'
+    const ao = acceptedOffers[0] ?? null
+    const displayAmount = ao ? (ao.final_agreed_price ?? ao.requester_counter ?? ao.counter_budget) : null
+    const display = displayAmount != null ? `$${displayAmount} agreed` : paymentSummary
+    expect(display).toBe('💰 You\'ll pay $10')
+  })
+
 })
 
 // ─── UI: My Offers page — gating and messaging ───────────────────────────────
