@@ -241,7 +241,8 @@ export default function MyOffersPage() {
             const pageSubflow = subflowFromCategory(req.category, req.structured_data?.errand_type as string | null)
             const agreedPrice = offer.final_agreed_price ?? offer.requester_counter ?? offer.counter_budget
             const seats = offer.seats_requested ?? 1
-            const statusLabelText = isEffExpired ? 'Expired' : isPastDue ? '⏱ Past due' : getStatusLabel(offer.status, pageSubflow, { agreedPrice, seats })
+            const isNotSelected = offerState === 'not_selected'
+            const statusLabelText = isEffExpired ? 'Expired' : isPastDue ? '⏱ Past due' : isNotSelected ? 'Not selected' : getStatusLabel(offer.status, pageSubflow, { agreedPrice, seats })
             const neededWhen = formatWhen(req)
             const nextAction = formatNextActionFromState(offerState, neededWhen)
 

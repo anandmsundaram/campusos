@@ -1978,11 +1978,14 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
         const offerState = getOfferLifecycleState(offer.status, req)
         const isEffExpired = offerState === 'pending_expired'
         const isPastDue = offerState === 'accepted_past_due'
-        const displayStatusKey = isEffExpired ? 'expired' : isPastDue ? 'accepted_past_due' : offer.status
+        const isNotSelected = offerState === 'not_selected'
+        const displayStatusKey = isEffExpired ? 'expired' : isPastDue ? 'accepted_past_due' : isNotSelected ? 'rejected' : offer.status
         const statusLabel = isEffExpired
           ? 'Expired'
           : isPastDue
           ? 'Past due'
+          : isNotSelected
+          ? 'Not selected'
           : getStatusLabel(offer.status, offerSubflow, { agreedPrice, seats })
 
         return (
@@ -1996,7 +1999,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                 ? 'border-slate-200 opacity-50'
                 : offer.status === 'accepted'
                 ? 'border-emerald-500/20'
-                : offer.status === 'rejected'
+                : offer.status === 'rejected' || isNotSelected
                 ? 'border-slate-200 opacity-60'
                 : isCountered
                 ? 'border-orange-500/20'
@@ -2120,6 +2123,19 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
                     {isActing ? '…' : 'Decline'}
                   </button>
                 </div>
+              )}
+
+              {/* Closed-reason note when counter can no longer be acted on */}
+              {isCountered && !canActOnOffer(offer.status, req) && !isEffExpired && (
+                <p data-testid="counter-closed-reason" className="mb-3 text-[11px] text-slate-500 italic">
+                  {offerState === 'not_selected'
+                    ? 'No actions available — another helper was accepted'
+                    : offerState === 'cancelled'
+                    ? 'No actions available — request was cancelled'
+                    : offerState === 'completed'
+                    ? 'No actions available — request was completed'
+                    : 'No actions available'}
+                </p>
               )}
 
               {/* Passenger mark-complete — ride is past, accepted, not yet confirmed */}
