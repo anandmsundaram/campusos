@@ -135,6 +135,7 @@ export function getOfferLifecycleState(
   }
 
   // pending or countered
+  if (req.status === 'matched') return 'not_selected'
   if (isRequestExpired(req)) return 'pending_expired'
   return 'pending_open'
 }

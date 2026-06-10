@@ -17,6 +17,8 @@ interface OfferOnRequest {
   helper_id: string
   status: 'pending' | 'accepted' | 'rejected' | 'countered'
   counter_budget: number | null
+  requester_counter: number | null
+  final_agreed_price: number | null
   message: string | null
   profiles: HelperProfile | HelperProfile[] | null
 }
@@ -284,7 +286,7 @@ export default function MyRequestsPage() {
       .from('requests')
       .select(`
         id, title, category, urgency, status, location, budget, scheduled_time, created_at,
-        request_offers(id, helper_id, status, counter_budget, message, profiles!helper_id(name, rating))
+        request_offers(id, helper_id, status, counter_budget, requester_counter, final_agreed_price, message, profiles!helper_id(name, rating))
       `)
       .eq('requester_id', user.id)
       .order('created_at', { ascending: false })
@@ -504,8 +506,8 @@ export default function MyRequestsPage() {
                               <span className="ml-2 text-xs text-emerald-600">★ {Number(acceptedHelper.rating).toFixed(1)}</span>
                             )}
                           </div>
-                          {acceptedOffer?.counter_budget != null && (
-                            <span className="text-xs font-semibold text-yellow-400">${acceptedOffer.counter_budget} agreed</span>
+                          {(acceptedOffer?.final_agreed_price ?? acceptedOffer?.requester_counter ?? acceptedOffer?.counter_budget) != null && (
+                            <span className="text-xs font-semibold text-yellow-400">${acceptedOffer!.final_agreed_price ?? acceptedOffer!.requester_counter ?? acceptedOffer!.counter_budget} agreed</span>
                           )}
                           <span className="text-[10px] font-medium text-emerald-500">Helper matched</span>
                         </div>

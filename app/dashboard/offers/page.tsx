@@ -391,7 +391,9 @@ export default function MyOffersPage() {
                   )}
                   {isCountered && !canActOnOffer(offer.status, req) && !isEffExpired && (
                     <p data-testid="counter-closed-reason" className="mb-3 text-[11px] text-slate-500 italic">
-                      {offerState === 'cancelled'
+                      {offerState === 'not_selected'
+                        ? 'No actions available — another helper was accepted'
+                        : offerState === 'cancelled'
                         ? 'No actions available — request was cancelled'
                         : offerState === 'completed'
                         ? 'No actions available — request was completed'

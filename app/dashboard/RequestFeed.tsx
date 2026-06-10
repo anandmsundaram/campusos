@@ -24,6 +24,7 @@ import {
   getRequestLifecycleState,
   getRequestSectionBucket,
   getOfferLifecycleState,
+  canActOnOffer,
   getRequesterViewOffersLabel,
   getLifecycleReason,
   validateOfferAmount,
@@ -347,13 +348,17 @@ export default function RequestFeed({ requests, myRequests, myOffers, currentUse
       const isMultiSeat = r.is_driver && r.available_seats != null
       const newFilled = isMultiSeat ? (r.seats_filled ?? 0) + seatsToFill : r.seats_filled
       const newStatus = isMultiSeat && newFilled! < r.available_seats! ? 'open' : 'matched'
+      const nowMatched = newStatus === 'matched'
       return {
         ...r,
         status: newStatus,
         seats_filled: newFilled,
-        request_offers: r.request_offers.map(o =>
-          o.id === offerId ? { ...o, status: 'accepted' as const } : o
-        ),
+        request_offers: r.request_offers.map(o => {
+          if (o.id === offerId) return { ...o, status: 'accepted' as const }
+          if (nowMatched && (o.status === 'pending' || o.status === 'countered'))
+            return { ...o, status: 'rejected' as const }
+          return o
+        }),
       }
     }))
   }
@@ -2094,7 +2099,7 @@ function MyOffersTab({ offers: initialOffers, currentUserId }: { offers: MyOffer
               )}
 
               {/* Accept / Decline counter (helper's one-time response) */}
-              {isCountered && !isEffExpired && (
+              {isCountered && canActOnOffer(offer.status, req) && (
                 <div className="mb-3 flex gap-2">
                   <button
                     data-testid="accept-counter-btn"
