@@ -167,6 +167,27 @@ export function getRequestSectionBucket(
 }
 
 /**
+ * Returns true when a request lifecycle state represents active/current work
+ * that belongs in the default "Current" view. Expired, completed, and cancelled
+ * states return false and belong in the "History" view.
+ */
+export function isRequestActiveState(state: RequestLifecycleState): boolean {
+  const bucket = getRequestSectionBucket(state)
+  return bucket === 'actionable' || bucket === 'current'
+}
+
+/**
+ * Returns true when an offer lifecycle state represents active work the helper
+ * should see by default in the "Current" view. Declined, expired, completed,
+ * not_selected, and cancelled states return false and belong in "History".
+ */
+export function isOfferActiveState(state: OfferLifecycleState): boolean {
+  return state === 'pending_open'
+      || state === 'accepted_upcoming'
+      || state === 'accepted_past_due'
+}
+
+/**
  * Returns a factual, human-readable lifecycle reason string for display.
  * neededWhen is the formatted needed date/time string (e.g. "Jun 9 at 9 AM").
  */

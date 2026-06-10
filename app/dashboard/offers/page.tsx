@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { subflowFromCategory, getCounterLabel, getStatusLabel, getOfferNotificationMessage } from '@/lib/offerText'
-import { getOfferLifecycleState, canActOnOffer } from '@/lib/marketplaceLifecycle'
+import { getOfferLifecycleState, canActOnOffer, isOfferActiveState } from '@/lib/marketplaceLifecycle'
 import { formatWhere, formatWhen, formatNote, formatNextActionFromState, formatPostedTime, hasExpectedLocation, nextActionColor } from '@/lib/cardViewModel'
 import BlockModal from '@/app/components/BlockModal'
 import { getMyBlocks } from '@/lib/blocking'
@@ -104,6 +104,7 @@ export default function MyOffersPage() {
   const [actError, setActError] = useState<string | null>(null)
   const [blockTarget, setBlockTarget] = useState<{ userId: string; name?: string } | null>(null)
   const [blockedRequesterIds, setBlockedRequesterIds] = useState<Set<string>>(new Set())
+  const [viewMode, setViewMode] = useState<'current' | 'history'>('current')
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -193,9 +194,24 @@ export default function MyOffersPage() {
     )
   }
 
+  // Partition offers into current vs history before rendering
+  const { currentOffers, historyOffers } = (() => {
+    const current: MyOffer[] = []
+    const history: MyOffer[] = []
+    for (const offer of offers) {
+      const req = normalizeRequest(offer.requests)
+      if (!req) { history.push(offer); continue }
+      const state = getOfferLifecycleState(offer.status, req)
+      if (isOfferActiveState(state)) current.push(offer)
+      else history.push(offer)
+    }
+    return { currentOffers: current, historyOffers: history }
+  })()
+  const displayOffers = viewMode === 'current' ? currentOffers : historyOffers
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-12">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900" data-testid="my-offers-heading">My Offers</h1>
         <p className="mt-1 text-sm text-slate-600">
           {offers.length > 0
@@ -203,6 +219,36 @@ export default function MyOffersPage() {
             : "Requests you've offered to help with"}
         </p>
       </div>
+
+      {/* Current / History toggle */}
+      {offers.length > 0 && (
+        <div className="flex items-center gap-1 rounded-xl border border-[#1e2d4a] bg-[#0a0f1e] p-1 w-fit mb-6">
+          <button
+            type="button"
+            data-testid="offers-view-current"
+            onClick={() => setViewMode('current')}
+            className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${
+              viewMode === 'current'
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Current{currentOffers.length > 0 ? ` (${currentOffers.length})` : ''}
+          </button>
+          <button
+            type="button"
+            data-testid="offers-view-history"
+            onClick={() => setViewMode('history')}
+            className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${
+              viewMode === 'history'
+                ? 'bg-[#1e2d4a] text-slate-200'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            History{historyOffers.length > 0 ? ` (${historyOffers.length})` : ''}
+          </button>
+        </div>
+      )}
 
       {offers.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1e2d4a] bg-[#0d1526] py-16 px-6 text-center">
@@ -224,7 +270,38 @@ export default function MyOffersPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {actError && <p className="rounded-lg border border-red-500/20 bg-red-500/[0.08] px-4 py-2.5 text-xs text-red-400">{actError}</p>}
-          {offers.map(offer => {
+
+          {displayOffers.length === 0 && (
+            <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] py-10 px-6 text-center">
+              {viewMode === 'current' ? (
+                <>
+                  <p className="text-sm text-slate-400">No active offers right now.</p>
+                  {historyOffers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setViewMode('history')}
+                      className="mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                    >
+                      View {historyOffers.length} past offer{historyOffers.length !== 1 ? 's' : ''} in History →
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-slate-400">No past offers to show.</p>
+              )}
+            </div>
+          )}
+
+          {viewMode === 'history' && displayOffers.length > 0 && (
+            <p className="text-[11px] text-slate-500">
+              Declined, expired, and completed offers.{' '}
+              <a href="/dashboard/activity" className="text-blue-400 hover:text-blue-300 transition-colors">
+                View date-filtered history →
+              </a>
+            </p>
+          )}
+
+          {displayOffers.map(offer => {
             const req = normalizeRequest(offer.requests)
             if (!req) return null
             const profile = normalizeProfile(req.profiles)

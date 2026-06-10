@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { getRequestActions, getRequestLifecycleState, type OfferSummary, type RequestLifecycleState } from '@/lib/marketplaceLifecycle'
+import { getRequestActions, getRequestLifecycleState, isRequestActiveState, type OfferSummary, type RequestLifecycleState } from '@/lib/marketplaceLifecycle'
 
 type RequestStatus = 'open' | 'matched' | 'completed' | 'cancelled'
 
@@ -276,6 +276,7 @@ export default function MyRequestsPage() {
   const [acting, setActing] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null)
+  const [viewMode, setViewMode] = useState<'current' | 'history'>('current')
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -409,13 +410,14 @@ export default function MyRequestsPage() {
 
   // Group by lifecycle state (not raw DB status) so expired-open records don't
   // appear as "Open" with actionable buttons.
-  const sectionOrder: Array<{ key: string; label: string; badgeClass: string; items: MyRequest[] }> = []
-  const sectionMap = new Map<string, { label: string; badgeClass: string; items: MyRequest[] }>()
+  const sectionOrder: Array<{ key: string; label: string; badgeClass: string; items: MyRequest[]; isHistory: boolean }> = []
+  const sectionMap = new Map<string, { label: string; badgeClass: string; items: MyRequest[]; isHistory: boolean }>()
 
   for (const req of requests) {
     const lc = getRequestLifecycleState(req, getOfferSummary(req))
     const sectionLabel = LIFECYCLE_SECTION_LABEL[lc] ?? 'Open'
     const key = sectionLabel
+    const isHistory = !isRequestActiveState(lc)
     if (!sectionMap.has(key)) {
       const badgeClass =
         key === 'Open'      ? 'text-blue-400 bg-blue-500/10 border-blue-500/20'
@@ -423,27 +425,89 @@ export default function MyRequestsPage() {
         : key === 'Expired' ? 'text-amber-400 bg-amber-500/10 border-amber-500/20'
         : key === 'Completed' ? 'text-slate-400 bg-white/[0.03] border-white/10'
         : 'text-slate-600 bg-white/[0.02] border-[#1e2d4a]'
-      sectionMap.set(key, { label: key, badgeClass, items: [] })
-      sectionOrder.push({ key, label: key, badgeClass, items: sectionMap.get(key)!.items })
+      sectionMap.set(key, { label: key, badgeClass, items: [], isHistory })
+      sectionOrder.push({ key, label: key, badgeClass, items: sectionMap.get(key)!.items, isHistory })
     }
     sectionMap.get(key)!.items.push(req)
   }
 
   // Canonical section display order
   const SECTION_DISPLAY_ORDER = ['Open', 'Matched', 'Expired', 'Completed', 'Cancelled']
-  const grouped = SECTION_DISPLAY_ORDER
+  const allGrouped = SECTION_DISPLAY_ORDER
     .map(label => sectionOrder.find(s => s.label === label))
     .filter((s): s is NonNullable<typeof s> => !!s && s.items.length > 0)
+
+  const grouped = allGrouped.filter(s => viewMode === 'history' ? s.isHistory : !s.isHistory)
+  const currentCount = allGrouped.filter(s => !s.isHistory).reduce((n, s) => n + s.items.length, 0)
+  const historyCount = allGrouped.filter(s => s.isHistory).reduce((n, s) => n + s.items.length, 0)
 
   return (
     <>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 pb-12 space-y-10">
         <PageHeader title="My Requests" sub={`${requests.length} total request${requests.length !== 1 ? 's' : ''}`} />
 
+        {/* Current / History toggle */}
+        <div className="flex items-center gap-1 rounded-xl border border-[#1e2d4a] bg-[#0a0f1e] p-1 w-fit">
+          <button
+            type="button"
+            data-testid="requests-view-current"
+            onClick={() => setViewMode('current')}
+            className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${
+              viewMode === 'current'
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            Current{currentCount > 0 ? ` (${currentCount})` : ''}
+          </button>
+          <button
+            type="button"
+            data-testid="requests-view-history"
+            onClick={() => setViewMode('history')}
+            className={`rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors ${
+              viewMode === 'history'
+                ? 'bg-[#1e2d4a] text-slate-200'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            History{historyCount > 0 ? ` (${historyCount})` : ''}
+          </button>
+        </div>
+
         {actionError && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-sm text-red-400">
             {actionError}
           </div>
+        )}
+
+        {grouped.length === 0 && (
+          <div className="rounded-xl border border-[#1e2d4a] bg-[#0d1526] py-10 px-6 text-center">
+            {viewMode === 'current' ? (
+              <>
+                <p className="text-sm text-slate-400">No active requests right now.</p>
+                {historyCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('history')}
+                    className="mt-3 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                  >
+                    View {historyCount} past request{historyCount !== 1 ? 's' : ''} in History →
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-slate-400">No past requests in this period.</p>
+            )}
+          </div>
+        )}
+
+        {viewMode === 'history' && grouped.length > 0 && (
+          <p className="text-[11px] text-slate-500 -mt-6">
+            Completed, expired, and cancelled requests.{' '}
+            <a href="/dashboard/activity" className="text-blue-400 hover:text-blue-300 transition-colors">
+              View date-filtered history →
+            </a>
+          </p>
         )}
 
         {grouped.map(({ key, label, badgeClass, items }) => (
